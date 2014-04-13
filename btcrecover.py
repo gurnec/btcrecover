@@ -24,6 +24,8 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
+__version__ =  "0.1.0"
+
 import sys, argparse, itertools, string, re, multiprocessing, signal, \
        os, os.path, cPickle, gc, time, hashlib, collections, base64, struct
 
@@ -210,7 +212,7 @@ def load_bitcoincore_wallet(wallet_filename):
     assert method == 0, "key derivation method is 0"
     wallet = (encrypted_master_key, salt, iter_count)
 
-# Estimate the time it takes to try a single password (on a single CPU) for Multibit
+# Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
 def get_bitcoincore_est_secs_per_password():
     start = time.clock()
     for i in xrange(5):  # about 0.5s by design
@@ -293,7 +295,8 @@ if __name__ == '__main__':
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
     parser.add_argument("--no-progress", action="store_true", help="disable the progress bar")
-    parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and then exit")
+    parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
+    parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
     args = parser.parse_args()
 
     # If we're restoring from an autosave, the argv arguments saved in the autosave file

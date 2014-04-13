@@ -90,9 +90,9 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%ia`   - a “case-insensitive” version of %a: a single lower or uppercase letter
  * `%in`   - a single digit, lower or uppercase letter
  * `%1,2in`- between 1 and 2 characters long of digits, lower or uppercase letters
- * `%c`    - a single character from a custom set specified at the command line with --custom-wild
- * `%C`    - an uppercase version of %c (might be the same as %c, depending on how you set it)
- * `%ic`   - a case-insensitive version of %c
+ * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
+ * `%C`    - an uppercase version of `%c` (might be the same as `%c`, depending on how you set it)
+ * `%ic`   - a case-insensitive version of `%c`
  * `%%`    - exactly one “%” (so that %’s in your password aren’t confused as wildcards)
  * `%^`    - exactly one “^” (so it’s not confused with an anchor if it’s at the beginning of a token)
  * `%S`    - exactly one “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if	that’s confusing)
