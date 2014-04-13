@@ -16,6 +16,13 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
+# If you find this program helpful, please consider a small donation 
+# donation to the developer at the following Bitcoin address:
+#
+#           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
+#
+#                      Thank You!
+
 # TODO: Unicode support? just permit 8-bit characters?
 # TODO: convert to a proper importable module; clean up globals
 # TODO: pythonize comments/documentation
@@ -24,10 +31,10 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.1.0"
+__version__ =  "0.2.0"
 
-import sys, argparse, itertools, string, re, multiprocessing, signal, \
-       os, os.path, cPickle, gc, time, hashlib, collections, base64, struct
+import sys, argparse, itertools, string, re, multiprocessing, signal, os, \
+       os.path, cPickle, gc, time, hashlib, collections, base64, struct, ast
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -146,13 +153,24 @@ def load_wallet(wallet_filename):
 
         # Multibit private key backup file (not the wallet file)
         wallet_file.seek(0)
-        try:
-            if base64.b64decode(wallet_file.read(12)).startswith("Salted__"):
-                load_multibit_privkey(wallet_file)  # passing in a file object
-                get_est_secs_per_password         = get_multibitpk_est_secs_per_password
-                return_verified_password_or_false = return_multibitpk_verified_password_or_false
+        try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith("Salted__")
+        except: is_multibitpk = False
+        if is_multibitpk:
+            load_multibit_privkey(wallet_file)  # passing in a file object
+            get_est_secs_per_password         = get_multibitpk_est_secs_per_password
+            return_verified_password_or_false = return_multibitpk_verified_password_or_false
+            return
+
+        # Electrum
+        wallet_file.seek(0)
+        if wallet_file.read(2) == "{'":  # best we can easily do short of just trying to load it
+            try:
+                load_electrum_wallet(wallet_file)  # passing in a file object
+                get_est_secs_per_password         = get_electrum_est_secs_per_password
+                return_verified_password_or_false = return_electrum_verified_password_or_false
                 return
-        except: pass
+            except SyntaxError: pass     # probably wasn't an electrum wallet
+            except: raise
 
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
         sys.exit(2)
@@ -207,9 +225,10 @@ def load_bitcoincore_wallet(wallet_filename):
     if not mkey:
         raise Exception("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
                         "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
-    # this is a little fragile because it assumes certain sizes:
+    # This is a little fragile because it assumes the encrypted key and salt sizes are
+    # 48 and 8 bytes long respectively, which although currently true may not always be:
     (encrypted_master_key, salt, method, iter_count) = struct.unpack_from("< 49p 9p I I", mkey)
-    assert method == 0, "key derivation method is 0"
+    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + method)
     wallet = (encrypted_master_key, salt, iter_count)
 
 # Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
@@ -237,9 +256,11 @@ def load_multibit_privkey(privkey_file):
     global Crypto, wallet
     import Crypto.Cipher.AES
     privkey_file.seek(0)
-    # A bit fragile... this loads 108 base64 chars (plus 2 for a "\r\n" == 110)
-    # which decodes to 81 chars (we need the first 80 to verify a password)
-    wallet = base64.b64decode(privkey_file.read(110))
+    # Multibit privkey files contain base64 text split into multiple lines;
+    # we need the first 80 bytes after decoding, which translates to 108 before
+    wallet = "".join(privkey_file.read(120).split())  # should only be one crlf, but allow more
+    if len(wallet) < 108: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
+    wallet = base64.b64decode(wallet[:108])
     assert wallet.startswith("Salted__"), "loaded a Multibit privkey file"
 
 # Estimate the time it takes to try a single password (on a single CPU) for Multibit
@@ -252,17 +273,50 @@ def get_multibitpk_est_secs_per_password():
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_multibitpk_verified_password_or_false(p):
-    salt = wallet[8:16]
-    key1 = hashlib.md5(p + salt).digest()
-    key2 = hashlib.md5(key1 + p + salt).digest()
-    iv   = hashlib.md5(key2 + p + salt).digest()
+    salted = p + wallet[8:16]
+    key1   = hashlib.md5(salted).digest()
+    key2   = hashlib.md5(key1 + salted).digest()
+    iv     = hashlib.md5(key2 + salted).digest()
     decrypted = Crypto.Cipher.AES.new(key1 + key2, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(wallet[16:80])
     # If it looks base58-ish, we've found it
-    # (a bit fragile in the interest of speed, e.g. what about comments?)
+    # (a bit fragile in the interest of speed, e.g. what if comments or whitespace precede the first key?)
     if (decrypted[0] == "L" or decrypted[0] == "K") and \
        re.match("[LK][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{51}", decrypted):
             return p
     return False
+
+
+# Load an Electrum wallet file (the part of it we need) given an opened file object
+def load_electrum_wallet(wallet_file):
+    global Crypto, wallet
+    import Crypto.Cipher.AES
+    wallet_file.seek(0)
+    wallet = ast.literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+    seed_version = wallet.get("seed_version")
+    if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")
+    if seed_version != 4:                raise NotImplementedError("Unsupported Electrum seed version " + seed_version)
+    if not wallet.get("use_encryption"): raise ValueError("Electrum wallet is not encrypted")
+    wallet = base64.b64decode(wallet["seed"])
+    if len(wallet) != 64:                raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
+
+# Estimate the time it takes to try a single password (on a single CPU) for Electrum
+def get_electrum_est_secs_per_password():
+    start = time.clock()
+    for i in xrange(50000):  # takes about 0.5 seconds on my CPU, YMMV
+        return_electrum_verified_password_or_false("timing test passphrase")
+    return (time.clock() - start) / 50000.0
+
+# This is the function executed by worker thread(s):
+# if a password is correct, return it, else return false
+def return_electrum_verified_password_or_false(p):
+    seed = Crypto.Cipher.AES.new(
+        hashlib.sha256( hashlib.sha256( p ).digest() ).digest(),
+        Crypto.Cipher.AES.MODE_CBC,
+        wallet[:16]) \
+        .decrypt(wallet[16:])
+    # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+    if seed.endswith("\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
+    else: return False
 
 
 ############################## Argument Parsing ##############################

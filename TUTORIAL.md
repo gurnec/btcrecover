@@ -1,6 +1,11 @@
 # *btcrecover* Tutorial #
 
-*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-QT), and MultiBit (a.k.a. MultiBit Classic, MultiBit HD is *not* supported). It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-QT), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), and Electrum. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+
+If you find *btcrecover* helpful, please consider a small donation:
+**[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
+
+#### Thank You! ####
 
 ## The Token File ##
 
@@ -156,7 +161,7 @@ If you'd just like to test your token file and chosen typos, you can use the `--
 
 Just download the latest version from https://github.com/gurnec/btcrecover/archive/master.zip and unzip to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements depending on your operating system and the wallet type you’re trying to recover.
 
-### Armory ###
+### Armory (on any OS)###
 
 You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory version 0.91; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
 
@@ -166,7 +171,7 @@ In addition to requiring Armory 0.91, you will also need to download and install
 
  * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: https://www.python.org/download/
 
-### Windows – Bitcoin Core or MultiBit Classic ###
+### Windows – Bitcoin Core, MultiBit Classic, or Electrum ###
 
 With this combination, you will also need to download and install:
 
@@ -176,7 +181,7 @@ With this combination, you will also need to download and install:
 
  * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: http://sourceforge.net/projects/pywin32/files/pywin32/
 
-### Linux or OS X – Bitcoin Core or MultiBit Classic ###
+### Linux or OS X – Bitcoin Core, MultiBit Classic, or Electrum###
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
@@ -231,7 +236,7 @@ Additionally, *btcrecover* considers the following symbols special under certain
 
 This one’s easy... there is none.
 
-All input to *btcrecover* must be 7-bit ASCII. The current version of Armory (which is what *btcrecover* was originally developed for) has this same limitation, so there should be no problems with Armory wallets. Both Bitcoin Core and MultBit Classic support Unicode passwords. It would be theoretically possible to add Unicode support (at least for the Basic Multilingual Plane, which is what Python supports decently; the SMP would be harder, especially with support for the typos feature), however neither Bitcoin Core nor MultBit normalize their Unicode strings before passing them along to their key derivation functions, and this could cause issues.
+All input to *btcrecover* must be 7-bit ASCII. The current version of Armory (which is what *btcrecover* was originally developed for) has this same limitation, so there should be no problems with Armory wallets. Bitcoin Core, MultBit Classic, and Electrum support Unicode passwords. It would be theoretically possible to add Unicode support (at least for the Basic Multilingual Plane, which is what Python supports decently; the SMP would be harder, especially with support for the typos feature), however none of the software wallets normalize their Unicode strings before passing them along to their key derivation functions, and this could cause issues.
 
 In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect.
 
@@ -248,6 +253,10 @@ You may want to always use the `--no-dupchecks` option when working with MultiBi
 By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of threads if you'd like to decrease CPU usage. Under some circumstances, increasing the `--threads` option a little may improve search performance (usually only with MultiBit).
 
 *btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
+
+### Unsupported Wallet Types ###
+
+As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported.
 
 ### Security Issues ###
 
