@@ -31,10 +31,10 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.2.0"
+__version__ =  "0.3.0"
 
-import sys, argparse, itertools, string, re, multiprocessing, signal, os, \
-       os.path, cPickle, gc, time, hashlib, collections, base64, struct, ast
+import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
+       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -330,7 +330,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (required unless using --listpass)")
-    parser.add_argument("--tokenlist",   type=argparse.FileType('r'), metavar="FILE", help="the list of tokens/partial passwords (required)")
+    parser.add_argument("--tokenlist",   metavar="FILE", help="the list of tokens/partial passwords (required)")
     parser.add_argument("--max-tokens",  type=int, default=9999, metavar="COUNT", help="enforce a max # of tokens included per guess")
     parser.add_argument("--min-tokens",  type=int, default=1,    metavar="COUNT", help="enforce a min # of tokens included per guess")
     parser.add_argument("--typos",       type=int, default=0,    metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
@@ -343,42 +343,112 @@ if __name__ == '__main__':
     parser.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
     parser.add_argument("--delimiter",   metavar="STRING", help="the delimiter for multiple alternative tokens on each line of the tokenlist (default: whitespace)")
     parser.add_argument("--skip",        type=int, default=0, metavar="COUNT", help="skip this many initial passwords for continuing an interupted search")
-    parser.add_argument("--autosave",    metavar="FILE", help="automatically saves progress every 5 min. to the file")
-    parser.add_argument("--restore",     type=argparse.FileType("r+b", 0), metavar="FILE", help="restores progress from an autosave file (must be the only option on the command line)")
+    parser.add_argument("--autosave",    metavar="FILE",   help="autosaves (5 min) progress to/ restores it from a file")
+    parser.add_argument("--restore",     type=argparse.FileType("r+b", 0), metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
     parser.add_argument("--no-progress", action="store_true", help="disable the progress bar")
     parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
+    parser.add_argument("--pause",       action="store_true", help="pause before exiting")
     parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
+
+    # effective_argv is what we are effectively given, either via the command line, via embedded
+    # optinos in the tokenlist file, or as a result of restoring a session, before any argument
+    # processing or defaulting is done (unless it's is done by argparse). Each time effective_argv
+    # is changed (due to reading a tokenlist or restore file, we redo parser.parse_args() which
+    # overwrites args, so we only do this early on before any real args processing takes place.
+    effective_argv = sys.argv[1:]
     args = parser.parse_args()
 
-    # If we're restoring from an autosave, the argv arguments saved in the autosave file
-    # will be parsed into the args variable overwriting what's there
-    if args.restore:
-        if len(sys.argv) > 3 or sys.argv[1].startswith("--restore=") and len(sys.argv) > 2:
-            print(parser.prog+": error: the --restore option must appear by itself", file=sys.stderr)
+    # Do this as early as possible so user doesn't miss any error messages
+    if args.pause:
+       atexit.register(lambda: raw_input("Press Enter to exit ..."))
+       pause_registered = True
+    else:
+       pause_registered = False
+       
+    # If we're not --restoring, open the tokenlist_file now (if we are restoring,
+    # we don't know what to open until after the restore data is loaded)
+    if not args.restore:
+        if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
+        elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
+    else:
+        tokenlist_file = None
+
+    # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
+    # (note that command line arguments can override arguments in this file)
+    if tokenlist_file:
+        if tokenlist_file.read(3) == "#--":  # TODO: Unicode BOM breaks this
+            print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'")
+            tokenlist_args = ("--"+tokenlist_file.readline()).split()  # TODO: support quoting / escaping?
+            for arg in tokenlist_args:
+                if arg.startswith("--to"):  # --tokenlist
+                    print(parser.prog+": error: the --tokenlist option is not permitted inside a tokenlist file", file=sys.stderr)
+                    sys.exit(2)
+            effective_argv = tokenlist_args + effective_argv
+            args = parser.parse_args(effective_argv)  # reparse the arguments
+            # Check this again as early as possible so user doesn't miss any error messages
+            if not pause_registered and args.pause:
+               atexit.register(lambda: raw_input("Press Enter to exit ..."))
+               pause_registered = True
+        else:
+            tokenlist_file.seek(0)  # reset to beginning of file
+
+    # There are two ways to restore from an autosave file: either specify --restore (alone)
+    # on the command line in which case the saved arguments completely replace everything else,
+    # or specify --autosave along with the exact same arguments as are in the autosave file.
+    #
+    if args.restore:  # Load and completely replace current arguments
+        if len(effective_argv) > 2 or "=" in effective_argv[0] and len(effective_argv) > 1:
+            print(parser.prog+": error: the --restore option must be the only option when used", file=sys.stderr)
             sys.exit(2)
-
-        savestate = cPickle.load(args.restore)
-        print("Restoring session:", " ".join(savestate["argv"]))
+        autosave_file = args.restore        # reuse the restore file as the new autosave file
+        savestate = cPickle.load(autosave_file)
+        effective_argv = savestate["argv"]  # argv is effectively being replaced; it's reparsed below
+        print("Restoring session:", " ".join(effective_argv))
         print("Last session ended having finished password #", savestate["skip"])
-        print("Using autosave file '"+args.restore.name+"'")
-        autosave_file = args.restore       # reuse the restore file as the new autosave file
-        os.chdir(savestate["cwd"])
-        autosave_argv = savestate["argv"]  # the restored argv arguments are used in do_autosave()
-        args = parser.parse_args(autosave_argv)
-        args.skip = savestate["skip"]      # override this with the most recent value
+        args = parser.parse_args(effective_argv)
         assert args.autosave, "autosave option enabled in restored autosave file"
+        # Check this again as early as possible so user doesn't miss any error messages
+        if not pause_registered and args.pause:
+           atexit.register(lambda: raw_input("Press Enter to exit ..."))
+           pause_registered = True
+        #
+        # We finally know the tokenlist filename; open it here
+        if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
+        elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
+        if tokenlist_file:
+            if tokenlist_file.read(3) == "#--":
+                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'")
+                tokenlist_file.readline()
+            else:
+                tokenlist_file.seek(0)
+        print("Using autosave file '"+autosave_file.name+"'")
+        args.skip = savestate["skip"]       # override this with the most recent value
         restored = True   # a global flag for future reference
-
+    #
+    elif args.autosave and os.path.isfile(args.autosave):  # Load and compare to current arguments
+        autosave_file = open(args.autosave, "r+b", 0)
+        savestate = cPickle.load(autosave_file)
+        restored_argv = savestate["argv"]
+        print("Restoring session:", " ".join(restored_argv))
+        print("Last session ended having finished password #", savestate["skip"])
+        if restored_argv != effective_argv:  # TODO: be more lenient than an exact match?
+            print(parser.prog+": error: can't restore previous session: the command line options have changed", file=sys.stderr)
+            sys.exit(2)
+        print("Using autosave file '"+args.autosave+"'")
+        args.skip = savestate["skip"]  # override this with the most recent value
+        restored = True   # a global flag for future reference
+    #   
     else:
         restored = False  # a global flag for future reference
-        if not args.tokenlist:
-            print(parser.prog+": error: argument --tokenlist is required", file=sys.stderr)
-            sys.exit(2)
 
-    argsdict = vars(args)
+    argsdict = vars(args)  # only used to check for presence of typos_* arguments
+
+    if not tokenlist_file:
+        print(parser.prog+": error: argument --tokenlist is required (or file btcrecover-tokens-auto.txt must be present)", file=sys.stderr)
+        sys.exit(2)
 
     if args.max_tokens < args.min_tokens:
         print(parser.prog+": error: --max-tokens is less than --min-tokens", file=sys.stderr)
@@ -509,14 +579,13 @@ if __name__ == '__main__':
     # is still open and has already been assigned to autosave_file instead)
     if args.autosave and not restored:
         if args.listpass:
-            print(parser.prog+": error: --autosave cannot be used with --listpass", file=sys.stderr)
-            sys.exit(2)
+            print(parser.prog+": warning: --autosave is ignored with --listpass", file=sys.stderr)
+        
         if os.path.exists(args.autosave):
             print(parser.prog+": error: --autosave file '"+args.autosave+"' already exists, won't overwrite", file=sys.stderr)
             sys.exit(1)
         autosave_file = open(args.autosave, "wb", 0)  # (0 == buffering is disabled)
         print("Using autosave file '"+args.autosave+"'")
-        autosave_argv = sys.argv[1:] # this is used later by do_autosave()
 
 
 ############################## Tokenfile Parsing ##############################
@@ -545,7 +614,7 @@ if __name__ == '__main__':
 has_any_wildcards = False
 token_lists = []
 if __name__ == '__main__':
-    for line_num, line in enumerate(args.tokenlist, 1):
+    for line_num, line in enumerate(tokenlist_file, 1):
 
         # Ignore comments
         if line[0] == "#": continue
@@ -592,7 +661,7 @@ if __name__ == '__main__':
         # Add the completed list to the token_lists list of lists
         token_lists.append(new_list)
 
-    args.tokenlist.close()
+    tokenlist_file.close()
 
     # Tokens at the end of the outer token_lists get tried first below;
     # reverse the list here so that tokens at the beginning of the file
@@ -968,14 +1037,12 @@ def set_process_priority_idle():
 
 # TODO: implement a safer atomic autosave? fsync? (buffering is already disabled at file open)
 def do_autosave(skip):
-    assert autosave_file, "autosave_file is open"
-    assert autosave_argv, "autosave_argv is set"
+    assert autosave_file and not autosave_file.closed,  "autosave_file is open"
     autosave_file.seek(0)
     orig_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)  # ignore Ctrl-C while saving
     autosave_file.truncate()
     cPickle.dump(dict(
-            cwd=os.getcwd(),
-            argv=autosave_argv,
+            argv=effective_argv,
             skip=skip,
             token_lists_hash=token_lists_hash,
             typos_map_hash=typos_map_hash),

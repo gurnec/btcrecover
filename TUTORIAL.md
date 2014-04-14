@@ -151,7 +151,9 @@ If you then restart it using the exact same options, and with the exact same tok
 
 ### Autosave ###
 
-To make it even safer, you can add the `--autosave savefile` option when you first start *btcrecover*. It will automatically save its progress about every 5 minutes to the file that you specify (in this case, it was named `savefile` – you can just make up any file name, as long as it doesn’t already exist). If you cancel in the middle of testing (with Ctrl-C, or due to a reboot, or for any other reason), you can restart testing by providing a single option: `--restore savefile`. *btcrecover* will check that the token file hasn’t changed, and it will begin testing with the same set of options exactly where it left off. (Note that the token file, as well as the typos-map file, if used, must still be present and must be unmodified for this to work. If they are not present or if they’ve been changed, *btcrecover* will refuse to start.)
+To make it even safer, you can add the `--autosave savefile` option when you first start *btcrecover*. It will automatically save its progress about every 5 minutes to the file that you specify (in this case, it was named `savefile` – you can just make up any file name, as long as it doesn’t already exist).
+
+If you cancel in the middle of testing (with Ctrl-C, or due to a reboot, or for any other reason), you can restart testing by either running the exact same command with the exact same options, or by providing this option and nothing else: `--restore savefile`. *btcrecover* will check that the token file hasn’t changed, and it will begin testing with the same set of options exactly where it left off. (Note that the token file, as well as the typos-map file, if used, must still be present and must be unmodified for this to work. If they are not present or if they’ve been changed, *btcrecover* will refuse to start.)
 
 ## Testing your config ##
 
@@ -199,7 +201,18 @@ After installation, **make a copy of your wallet file into a different directory
 
 Locating your wallet file is up to you... Google/Bing are your friends (but read below for a special note about MultiBit). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
 
-Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the `--wallet wallet.dat --tokenlist tokens.txt` options in the command line in any order.
+Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the required `--wallet wallet.dat --tokenlist tokens.txt` options in the command line in any order.
+
+### Command Line Options inside the tokenlist file ###
+
+If you'd prefer, you can also place command line options directly inside the tokenlist file. In order to do this, the very first line of the tokenlist file must begin with exactly `#--`, and the rest of this line (and only this line) is interpreted as additional command line options. For example, if you use the `%c` custom wildcard set, you can put the `--custom-wild` option inside the tokenlist file (along with other options) like this:
+
+    #--custom-wild abcdABCD --autosave mysave --pause
+    a_password_with_three_letters_from_above_appended_%3c
+
+### btcrecover-tokens-auto.txt ###
+
+Normally, when you run *btcrecover* it expects you to run it with at least a few options, such as the location of the token file and of the wallet file. If you run it without specifying the `--tokenlist`, it will check to see if there is a file named `btcrecover-tokens-auto.txt` in the current directory, and if found it will use that for the tokenlist. Because you can specify options inside the tokenlist file if you'd prefer, this allows you to run *btcrecover* without using the command line at all. You may want to consider using the `--pause` option to prevent a command window from immediately closing once it's done running if you decide to run it this way.
 
 ### Finding MultiBit Wallet Files ###
 
@@ -229,7 +242,7 @@ Additionally, *btcrecover* considers the following symbols special under certain
  * `%` - always considered special; `%%` in a token will be replaced by `%` during searches    
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment)
+ * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the file, then the first line is parsed as additional command line options
  * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the *Mutual Exclusion* section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
 
 ### Unicode Support ###
