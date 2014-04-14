@@ -16,7 +16,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-# If you find this program helpful, please consider a small donation 
+# If you find this program helpful, please consider a small donation
 # donation to the developer at the following Bitcoin address:
 #
 #           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.3.0"
+__version__ =  "0.3.1"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit
@@ -363,18 +363,17 @@ if __name__ == '__main__':
 
     # Do this as early as possible so user doesn't miss any error messages
     if args.pause:
-       atexit.register(lambda: raw_input("Press Enter to exit ..."))
-       pause_registered = True
+        atexit.register(lambda: raw_input("Press Enter to exit ..."))
+        pause_registered = True
     else:
-       pause_registered = False
-       
+        pause_registered = False
+
     # If we're not --restoring, open the tokenlist_file now (if we are restoring,
     # we don't know what to open until after the restore data is loaded)
+    tokenlist_file = None
     if not args.restore:
         if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
-    else:
-        tokenlist_file = None
 
     # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
@@ -390,8 +389,8 @@ if __name__ == '__main__':
             args = parser.parse_args(effective_argv)  # reparse the arguments
             # Check this again as early as possible so user doesn't miss any error messages
             if not pause_registered and args.pause:
-               atexit.register(lambda: raw_input("Press Enter to exit ..."))
-               pause_registered = True
+                atexit.register(lambda: raw_input("Press Enter to exit ..."))
+                pause_registered = True
         else:
             tokenlist_file.seek(0)  # reset to beginning of file
 
@@ -412,8 +411,8 @@ if __name__ == '__main__':
         assert args.autosave, "autosave option enabled in restored autosave file"
         # Check this again as early as possible so user doesn't miss any error messages
         if not pause_registered and args.pause:
-           atexit.register(lambda: raw_input("Press Enter to exit ..."))
-           pause_registered = True
+            atexit.register(lambda: raw_input("Press Enter to exit ..."))
+            pause_registered = True
         #
         # We finally know the tokenlist filename; open it here
         if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
@@ -428,7 +427,7 @@ if __name__ == '__main__':
         args.skip = savestate["skip"]       # override this with the most recent value
         restored = True   # a global flag for future reference
     #
-    elif args.autosave and os.path.isfile(args.autosave):  # Load and compare to current arguments
+    elif args.autosave and os.path.isfile(args.autosave) and os.path.getsize(args.autosave) > 0:  # Load and compare to current arguments
         autosave_file = open(args.autosave, "r+b", 0)
         savestate = cPickle.load(autosave_file)
         restored_argv = savestate["argv"]
@@ -440,7 +439,7 @@ if __name__ == '__main__':
         print("Using autosave file '"+args.autosave+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
         restored = True   # a global flag for future reference
-    #   
+    #
     else:
         restored = False  # a global flag for future reference
 
@@ -580,8 +579,9 @@ if __name__ == '__main__':
     if args.autosave and not restored:
         if args.listpass:
             print(parser.prog+": warning: --autosave is ignored with --listpass", file=sys.stderr)
-        
-        if os.path.exists(args.autosave):
+
+        # Don't overwrite nonzero files or nonfile objects (e.g. directories)
+        if os.path.exists(args.autosave) and (os.path.getsize(args.autosave) > 0 or not os.path.isfile(args.autosave)):
             print(parser.prog+": error: --autosave file '"+args.autosave+"' already exists, won't overwrite", file=sys.stderr)
             sys.exit(1)
         autosave_file = open(args.autosave, "wb", 0)  # (0 == buffering is disabled)
