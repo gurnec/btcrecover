@@ -25,13 +25,14 @@
 
 # TODO: Unicode support? just permit 8-bit characters?
 # TODO: convert to a proper importable module; clean up globals
+# TODO: unit tests
 # TODO: pythonize comments/documentation
 
 # (all futures as of 2.6 and 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.3.1"
+__version__ =  "0.3.2"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit
@@ -213,8 +214,9 @@ def return_armory_verified_password_or_false(p):
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
 def load_bitcoincore_wallet(wallet_filename):
-    global Crypto, wallet
-    import Crypto.Cipher.AES, bsddb.db
+    global wallet
+    load_aes256_library()
+    import bsddb.db
     db_env = bsddb.db.DBEnv()
     db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
     db = bsddb.db.DB(db_env)
@@ -228,7 +230,7 @@ def load_bitcoincore_wallet(wallet_filename):
     # This is a little fragile because it assumes the encrypted key and salt sizes are
     # 48 and 8 bytes long respectively, which although currently true may not always be:
     (encrypted_master_key, salt, method, iter_count) = struct.unpack_from("< 49p 9p I I", mkey)
-    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + method)
+    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
     wallet = (encrypted_master_key, salt, iter_count)
 
 # Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
@@ -245,7 +247,7 @@ def return_bitcoincore_verified_password_or_false(p):
     derived_key_iv = p + salt
     for i in xrange(iter_count):
         derived_key_iv = hashlib.sha512(derived_key_iv).digest()
-    master_key = Crypto.Cipher.AES.new(derived_key_iv[0:32], Crypto.Cipher.AES.MODE_CBC, derived_key_iv[32:48]).decrypt(encrypted_master_key)
+    master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
     # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
     if master_key.endswith("\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
     else: return False
@@ -253,8 +255,8 @@ def return_bitcoincore_verified_password_or_false(p):
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
 def load_multibit_privkey(privkey_file):
-    global Crypto, wallet
-    import Crypto.Cipher.AES
+    global wallet
+    load_aes256_library()
     privkey_file.seek(0)
     # Multibit privkey files contain base64 text split into multiple lines;
     # we need the first 80 bytes after decoding, which translates to 108 before
@@ -266,9 +268,9 @@ def load_multibit_privkey(privkey_file):
 # Estimate the time it takes to try a single password (on a single CPU) for Multibit
 def get_multibitpk_est_secs_per_password():
     start = time.clock()
-    for i in xrange(50000):  # takes about 0.5 seconds on my CPU, YMMV
+    for i in xrange(test_iterations):
         return_multibitpk_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / 50000.0
+    return (time.clock() - start) / test_iterations
 
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
@@ -277,19 +279,19 @@ def return_multibitpk_verified_password_or_false(p):
     key1   = hashlib.md5(salted).digest()
     key2   = hashlib.md5(key1 + salted).digest()
     iv     = hashlib.md5(key2 + salted).digest()
-    decrypted = Crypto.Cipher.AES.new(key1 + key2, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(wallet[16:80])
-    # If it looks base58-ish, we've found it
+    b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[16:80])
+    # If it looks like a base58 private key, we've found it
     # (a bit fragile in the interest of speed, e.g. what if comments or whitespace precede the first key?)
-    if (decrypted[0] == "L" or decrypted[0] == "K") and \
-       re.match("[LK][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{51}", decrypted):
+    if (b58_privkey[0] == "L" or b58_privkey[0] == "K") and \
+       re.match("[LK][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{51}", b58_privkey):
             return p
     return False
 
 
 # Load an Electrum wallet file (the part of it we need) given an opened file object
 def load_electrum_wallet(wallet_file):
-    global Crypto, wallet
-    import Crypto.Cipher.AES
+    global wallet
+    load_aes256_library()
     wallet_file.seek(0)
     wallet = ast.literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
     seed_version = wallet.get("seed_version")
@@ -301,22 +303,49 @@ def load_electrum_wallet(wallet_file):
 
 # Estimate the time it takes to try a single password (on a single CPU) for Electrum
 def get_electrum_est_secs_per_password():
+    global test_iterations
     start = time.clock()
-    for i in xrange(50000):  # takes about 0.5 seconds on my CPU, YMMV
+    for i in xrange(test_iterations):
         return_electrum_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / 50000.0
+    return (time.clock() - start) / test_iterations
 
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_electrum_verified_password_or_false(p):
-    seed = Crypto.Cipher.AES.new(
-        hashlib.sha256( hashlib.sha256( p ).digest() ).digest(),
-        Crypto.Cipher.AES.MODE_CBC,
-        wallet[:16]) \
-        .decrypt(wallet[16:])
+    key  = hashlib.sha256( hashlib.sha256( p ).digest() ).digest()
+    seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
     # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
     if seed.endswith("\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
     else: return False
+
+
+# Loads PyCrypto if available, else falls back to pure python version (30x slower)
+def load_aes256_library():
+    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, test_iterations
+    try:
+        import Crypto.Cipher.AES
+        aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
+        test_iterations = 50000  # takes about 0.5 seconds on my CPU, YMMV
+    except:
+        import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
+        aes256_cbc_decrypt = aes256_cbc_decrypt_pp
+        aes256_key_expander = aespython.key_expander.KeyExpander(256)
+        test_iterations =  2000  # takes about 0.5 seconds on my CPU, YMMV
+
+def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
+    return Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
+
+# Input must be a multiple of 16 bytes; does not strip any padding
+def aes256_cbc_decrypt_pp(key, iv, ciphertext):
+    block_cipher  = aespython.aes_cipher.AESCipher( aes256_key_expander.expand(bytearray(key)) )
+    stream_cipher = aespython.cbc_mode.CBCMode(block_cipher, 16)
+    stream_cipher.set_iv(bytearray(iv))
+    plaintext = bytearray()
+    i = 0
+    while i < len(ciphertext):
+        plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )
+        i += 16
+    return str(plaintext)
 
 
 ############################## Argument Parsing ##############################
@@ -419,7 +448,7 @@ if __name__ == '__main__':
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
         if tokenlist_file:
             if tokenlist_file.read(3) == "#--":
-                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'")
+                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
                 tokenlist_file.readline()
             else:
                 tokenlist_file.seek(0)
@@ -1062,10 +1091,10 @@ if __name__ == '__main__':
         print("\n", passwords_count, "password combinations", file=sys.stderr)
         sys.exit(0)
 
-    # If the time to check a password is short enough, the time to generate the passwords in this thread
+    # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
     est_secs_per_password = get_est_secs_per_password()
-    if est_secs_per_password < 1.0 / 10000.0:
+    if est_secs_per_password < 1.0 / 20000.0:
         main_thread_is_worker = True
         spawned_threads   = worker_threads - 1       # spawn 1 fewer than requested (might be 0)
         verifying_threads = spawned_threads or 1
@@ -1095,7 +1124,7 @@ if __name__ == '__main__':
             print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
                   .format(passwords_count, args.max_eta), file=sys.stderr)
             sys.exit(1)
-        if passwords_count == 5000000:
+        if passwords_count == 5000000:  # takes about 5 seconds on my CPU, YMMV
             print("Counting passwords ...")
     iterate_time = time.clock() - start
 

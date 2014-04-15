@@ -179,7 +179,7 @@ With this combination, you will also need to download and install:
 
  * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows), both available here: https://www.python.org/download/
 
- * The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: http://www.voidspace.org.uk/python/modules.shtml#pycrypto
+ * Optional, but highly recommended for MultiBit or Electrum: The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: http://www.voidspace.org.uk/python/modules.shtml#pycrypto
 
  * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: http://sourceforge.net/projects/pywin32/files/pywin32/
 
@@ -187,7 +187,7 @@ With this combination, you will also need to download and install:
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
- * PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
+ * Optional, but highly recommended for MultiBit or Electrum: PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
 
         sudo apt-get install python-pip
         sudo pip install pycrypto
@@ -259,11 +259,11 @@ In short, Unicode support is something I’d like to add if there’s a signific
 
 When *btcrecover* starts, it's first task is to count all the passwords it's about to try, looking for and recording duplicates for future reference (so that no password is tried twice). This duplicate checking can take **a lot** of memory, depending on how many passwords need to be counted. If *btcrecover* appears to hang after displaying the `Counting passwords ...` message, or if it outright crashes, try running it again with the `--no-dupchecks` option. After this initial counting phase, it doesn't use up much RAM as it searches through passwords.
 
-You may want to always use the `--no-dupchecks` option when working with MultiBit key files because the duplicate checking saves very little time with MultiBit in most cases.
+You may want to always use the `--no-dupchecks` option when working with MultiBit key files or Electrum wallets because the duplicate checking saves very little time with these in most cases.
 
 #### CPU ####
 
-By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of threads if you'd like to decrease CPU usage. Under some circumstances, increasing the `--threads` option a little may improve search performance (usually only with MultiBit).
+By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of threads if you'd like to decrease CPU usage. Under some circumstances, increasing the `--threads` option a little may improve search performance (usually only with MultiBit or Electrum).
 
 *btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
 
