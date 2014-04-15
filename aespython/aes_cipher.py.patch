@@ -1,0 +1,14 @@
+diff aes_cipher.py.orig aes_cipher.py
+--- aes_cipher.py.orig
++++ aes_cipher.py
+@@ -41,8 +41,8 @@ class AESCipher:
+     def __init__(self,expanded_key):
+         self._expanded_key=expanded_key
+         self._Nr=len(expanded_key)-16
+-    exec(ciph.replace("g2,g3","").replace("dec","c").replace("!","16,f._Nr,").replace("B",box).replace("M",mix)+xor)
+-    exec(ciph.replace("NI","I").replace(":16","f._Nr:").replace("f+16:",":16").replace("!","f._Nr-16,0,-").replace("sbox","i_sbox").replace("B",ibox).replace("M",imix)+ibox)
++    exec(ciph.replace("g2,g3","").replace("dec","c").replace("!","16,f._Nr,").replace("B",box).replace("M",mix)+"["+xor+"]")
++    exec(ciph.replace("NI","I").replace(":16","f._Nr:").replace("f+16:",":16").replace("!","f._Nr-16,0,-").replace("sbox","i_sbox").replace("B",ibox).replace("M",imix)+"["+ibox+"]")
+ import unittest
+ class TestCipher(unittest.TestCase):
+     def test_cipher(self):
