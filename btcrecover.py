@@ -214,23 +214,70 @@ def return_armory_verified_password_or_false(p):
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
 def load_bitcoincore_wallet(wallet_filename):
-    global wallet
+    global wallet, has_bsddb
     load_aes256_library()
-    import bsddb.db
-    db_env = bsddb.db.DBEnv()
-    db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
-    db = bsddb.db.DB(db_env)
-    db.open(wallet_filename, "main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
-    mkey = db.get("\x04mkey\x01\x00\x00\x00")
-    db.close()
-    db_env.close()
+
+    mkey = None
+    try:
+        import bsddb.db
+        has_bsddb = True
+    except: has_bsddb = False
+    if has_bsddb:
+        db_env = bsddb.db.DBEnv()
+        db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
+        db = bsddb.db.DB(db_env)
+        db.open(wallet_filename, "main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+        mkey = db.get("\x04mkey\x01\x00\x00\x00")
+        db.close()
+        db_env.close()
+
+    else:
+        def align_32bits(i):
+            m = i % 4
+            return i+4-m if m else i
+        with open(wallet_filename, "rb") as wallet_file:
+            wallet_file_size=os.path.getsize(wallet_filename)
+
+            wallet_file.seek(12)
+            assert wallet_file.read(8) == "\x62\x31\x05\x00\x09\x00\x00\x00", "is a Btree v9 file"
+            wallet_file.seek(20)
+            (page_size,) = struct.unpack("<I", wallet_file.read(4))
+
+            # Don't actually try walking the btree, just look through every btree leaf page
+            # for the value/key pair (yes they are in that order...) we're searching for
+            for page_base in xrange(page_size, wallet_file_size, page_size):  # skip the header page
+                wallet_file.seek(page_base+20)
+                (item_count, first_item_pos, btree_level, page_type) = struct.unpack("< H H B B", wallet_file.read(6))
+                if page_type != 5 or btree_level != 1: continue  # skip non-btree and non-leaf pages
+                pos = align_32bits(page_base + first_item_pos)
+                wallet_file.seek(pos)
+                for i in xrange(item_count):
+                    (item_len, item_type) = struct.unpack("< H B", wallet_file.read(3))
+                    if item_type & ~0x80 == 1:  # it's a variable-length key or value
+                        if item_type == 1:      # if it's not marked as deleted
+                            if i % 2 == 0:      # if it's a value, save it's position
+                                value_pos = pos+3
+                                value_len = item_len
+                            elif item_len == 9 and wallet_file.read(item_len) == "\x04mkey\x01\x00\x00\x00":
+                                wallet_file.seek(value_pos)
+                                mkey = wallet_file.read(value_len)  # found it!
+                                break
+                        pos = align_32bits(pos + 3 + item_len)  # calc the position of the next item
+                    else:
+                        pos += 12  # the two other item types have a fixed length
+                    if i+1 < item_count:  # don't need to seek if this is the last item in the page
+                        assert pos < page_base + page_size, "next item is located in current page"
+                        wallet_file.seek(pos)
+                else: continue  # if not found on this page, continue to next page
+                break           # if we broke out of inner loop, break out of this one
+
     if not mkey:
         raise Exception("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
                         "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
     # This is a little fragile because it assumes the encrypted key and salt sizes are
     # 48 and 8 bytes long respectively, which although currently true may not always be:
     (encrypted_master_key, salt, method, iter_count) = struct.unpack_from("< 49p 9p I I", mkey)
-    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + method)
+    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
     wallet = (encrypted_master_key, salt, iter_count)
 
 # Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
@@ -347,6 +394,7 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
         i += 16
     return str(plaintext)
 
+
 ############################## Argument Parsing ##############################
 
 
@@ -447,7 +495,7 @@ if __name__ == '__main__':
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
         if tokenlist_file:
             if tokenlist_file.read(3) == "#--":
-                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'")
+                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
                 tokenlist_file.readline()
             else:
                 tokenlist_file.seek(0)
@@ -601,6 +649,9 @@ if __name__ == '__main__':
     elif not args.listpass:
         print(parser.prog+": error: argument --wallet (or --listpass) is required", file=sys.stderr)
         sys.exit(2)
+
+    if not has_bsddb:
+        print(parser.prog+": warning: can't load bsddb, falling back to experimental Bitcoin Core wallet parsing mode", file=sys.stderr)
 
     # Open a new autosave file (if --restore was specified, the restore file
     # is still open and has already been assigned to autosave_file instead)
