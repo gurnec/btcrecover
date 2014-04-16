@@ -383,9 +383,9 @@ if __name__ == '__main__':
     parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
 
     # effective_argv is what we are effectively given, either via the command line, via embedded
-    # optinos in the tokenlist file, or as a result of restoring a session, before any argument
+    # options in the tokenlist file, or as a result of restoring a session, before any argument
     # processing or defaulting is done (unless it's is done by argparse). Each time effective_argv
-    # is changed (due to reading a tokenlist or restore file, we redo parser.parse_args() which
+    # is changed (due to reading a tokenlist or restore file), we redo parser.parse_args() which
     # overwrites args, so we only do this early on before any real args processing takes place.
     effective_argv = sys.argv[1:]
     args = parser.parse_args()
@@ -414,8 +414,8 @@ if __name__ == '__main__':
                 if arg.startswith("--to"):  # --tokenlist
                     print(parser.prog+": error: the --tokenlist option is not permitted inside a tokenlist file", file=sys.stderr)
                     sys.exit(2)
-            effective_argv = tokenlist_args + effective_argv
-            args = parser.parse_args(effective_argv)  # reparse the arguments
+            effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
+            args = parser.parse_args(effective_argv)          # reparse the arguments
             # Check this again as early as possible so user doesn't miss any error messages
             if not pause_registered and args.pause:
                 atexit.register(lambda: raw_input("Press Enter to exit ..."))
@@ -437,11 +437,11 @@ if __name__ == '__main__':
         print("Restoring session:", " ".join(effective_argv))
         print("Last session ended having finished password #", savestate["skip"])
         args = parser.parse_args(effective_argv)
-        assert args.autosave, "autosave option enabled in restored autosave file"
         # Check this again as early as possible so user doesn't miss any error messages
         if not pause_registered and args.pause:
             atexit.register(lambda: raw_input("Press Enter to exit ..."))
             pause_registered = True
+        assert args.autosave, "autosave option enabled in restored autosave file"
         #
         # We finally know the tokenlist filename; open it here
         if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
@@ -474,6 +474,9 @@ if __name__ == '__main__':
 
     argsdict = vars(args)  # only used to check for presence of typos_* arguments
 
+    # Do a bunch of argument sanity checking
+    
+    # tokenlist_file should have been opened by now (possibly during the a session restore)
     if not tokenlist_file:
         print(parser.prog+": error: argument --tokenlist is required (or file btcrecover-tokens-auto.txt must be present)", file=sys.stderr)
         sys.exit(2)
@@ -520,11 +523,12 @@ if __name__ == '__main__':
                 sys.exit(2)
         wildcard_sets["c"] = args.custom_wild
         wildcard_sets["C"] = args.custom_wild.upper()
+        # If there are any case-sensitive letters in the set, build the case-insensitive versions
         custom_wildset_caseswapped = "".join([c.swapcase() for c in args.custom_wild if c.swapcase() != c])
         if len(custom_wildset_caseswapped) > 0:
             wildcard_nocase_sets["c"] = wildcard_sets["c"] + custom_wildset_caseswapped
             wildcard_nocase_sets["C"] = wildcard_sets["C"] + custom_wildset_caseswapped.swapcase()
-        wildcard_keys += "cC"
+        wildcard_keys += "cC"  # keep track of available wildcard types (used in regex's)
 
     # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
     if args.typos_insert:

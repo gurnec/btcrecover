@@ -7,9 +7,22 @@ If you find *btcrecover* helpful, please consider a small donation:
 
 #### Thank You! ####
 
+## Quick Start ##
+
+This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
+
+ 1. Jump down to the *Installation* section to see what you need to download (which differs depending on your operating system and which Bitcoin wallet software you use).
+ 2. Once you've unzipped the *btcrecover* download, you'll want to place two (possibly three) other files into the directory that has the `btcrecover.py` script file:
+     * A copy of your wallet file, which you can rename to “wallet.dat”. You'll need to do a bit of searching online to discover where your wallet file is (but if you're using MultiBit, please read the *Finding MultiBit Wallet Files* section first).
+     * A text (Notepad) file named “tokens.txt” which you will create. It will contain a list of your password guesses (maybe just one).
+     * Optional, for more complicated typos, a text file named “typos.txt”.
+ 3. Next, take a look at *The Token File* section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it. 
+ 4. Next, take a look at the *Typos* section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
+ 5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the *Running btcrecover* section and follow the instructions to run *btcrecover* in a Command Prompt window.
+
 ## The Token File ##
 
-*btcrecover* accepts as input a file which has a list of what are called password “tokens”, which are parts of a password, and then it combines these tokens in different ways to create different passwords to try.
+*btcrecover* accepts as input a text file which has a list of what are called password “tokens”, which are parts of a password, and then it combines these tokens in different ways to create different passwords to try.
 
 ### Basics ###
 
@@ -107,7 +120,7 @@ Up until now, most of the features help by reducing the number of passwords that
 
 ## Typos ##
 
-This next feature also expands the number of passwords that need to be tried. It’s an attempt to guess possible typos you may have inadvertently made while first typing in the password, although it can be useful for other purposes too. It’s enabled with the `--typos #` command line option (with `#` replaced with a count of typos). With this option, you tell *btcrecover* up to how many typos you’d like it to add to each password (that’s generated from the rules above), along with a list of different types of typos you’d like it to test, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos:
+This next feature also expands the number of passwords that need to be tried. It’s an attempt to guess possible typos you may have inadvertently made while first typing in the password, although it can be useful for other purposes too. It’s enabled with the `--typos #` command line option (with `#` replaced with a count of typos). With this option, you tell *btcrecover* up to how many typos you’d like it to add to each password (that’s generated from the rules above), along with a list of different types of typos you’d like it to test, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos along with the command line options which enable each:
 
  * `--typos-capslock` - tries the whole password with caps lock turned on
  * `--typos-swap`     - swaps two adjacent characters
@@ -115,7 +128,7 @@ This next feature also expands the number of passwords that need to be tried. It
  * `--typos-delete`   - deletes a character
  * `--typos-case`     - changes the case (upper/lower) of a single letter
 
-For example, with `--typos 2 --typos-capslock --typos-repeat` specified on the command line, all combinations containing up to two typos will be tried, e.g. `Cairo` (no typos), `cAIRO` (one typo: caps lock), `CCairoo` (two typos: both repeats), and `cAIROO` (two typos: one of each type) will be tried. Adding lots of typo types to the command line can significantly increase the number of combinations, and increasing the `--typos` count can be even more dramatic, so it’s best to tread lightly when using this feature unless you have a small token file.
+For example, with `--typos 2 --typos-capslock --typos-repeat` options specified on the command line, all combinations containing up to two typos will be tried, e.g. `Cairo` (no typos), `cAIRO` (one typo: caps lock), `CCairoo` (two typos: both repeats), and `cAIROO` (two typos: one of each type) will be tried. Adding lots of typo types to the command line can significantly increase the number of combinations, and increasing the `--typos` count can be even more dramatic, so it’s best to tread lightly when using this feature unless you have a small token file.
 
 Here are some additional types of typos that require a bit more explanation:
 
@@ -127,7 +140,7 @@ Here are some additional types of typos that require a bit more explanation:
 
 #### Typos Map ####
 
- * `--typos-map file`   - This is a relatively complicated, but also flexible type of typo. It tries replacing certain specific characters with certain other specific characters, using a separate file to spell out the details. For example, if you know that you often make mistakes with punctuation, you could create a typos-map file which has these two lines in it:
+ * `--typos-map typos.txt`   - This is a relatively complicated, but also flexible type of typo. It tries replacing certain specific characters with certain other specific characters, using a separate file (in this example, named `typos.txt`) to spell out the details. For example, if you know that you often make mistakes with punctuation, you could create a typos-map file which has these two lines in it:
 
         .    ,/;
         ;    [‘/.
@@ -147,7 +160,7 @@ Depending on the number of passwords which need to be tried, running *btcrecover
 
     Interrupted after finishing password # 357449
 
-If you then restart it using the exact same options, and with the exact same token file (and typos-map file if you’re using one), you can add the `--skip 357449` option to the end and it will start up exactly where it had left off.
+If you then restart it using the exact same options, and with the exact same token file (and typos-map file if you’re using one), you can add the `--skip 357449` option to the end of the command line and it will start up exactly where it had left off.
 
 ### Autosave ###
 
@@ -161,7 +174,7 @@ If you'd just like to test your token file and chosen typos, you can use the `--
 
 ## Installation ##
 
-Just download the latest version from https://github.com/gurnec/btcrecover/archive/master.zip and unzip to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements depending on your operating system and the wallet type you’re trying to recover.
+Just download the latest version from <https://github.com/gurnec/btcrecover/archive/master.zip> and unzip to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements depending on your operating system and the wallet type you’re trying to recover.
 
 ### Armory (on any OS)###
 
@@ -171,19 +184,19 @@ You must have Armory installed if you’re trying to recover an Armory password.
 
 In addition to requiring Armory 0.91, you will also need to download and install:
 
- * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: https://www.python.org/download/
+ * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: <https://www.python.org/download/>
 
 ### Windows – Bitcoin Core, MultiBit Classic, or Electrum ###
 
 With this combination, you will also need to download and install:
 
- * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows), both available here: https://www.python.org/download/
+ * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows), both available here: <https://www.python.org/download/>
 
- * Optional, but highly recommended for MultiBit or Electrum: The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: http://www.voidspace.org.uk/python/modules.shtml#pycrypto
+ * Optional, but highly recommended for MultiBit or Electrum (for a 30x speed improvement): The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
 
- * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: http://sourceforge.net/projects/pywin32/files/pywin32/
+ * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
 
-### Linux or OS X – Bitcoin Core, MultiBit Classic, or Electrum###
+### Linux or OS X – Bitcoin Core, MultiBit Classic, or Electrum ###
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
@@ -194,14 +207,14 @@ With this combination, you will also need to download and install:
 
 ## Running *btcrecover* ##
 
-After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt and typing something like this:
+(Also see the *Quick Start* section.) After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt window and typing something like this:
 
     cd \Users\Chris\Downloads\btcrecover-master
     C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt
 
-Locating your wallet file is up to you... Google/Bing are your friends (but read below for a special note about MultiBit). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
+Locating your wallet file so that you can make a copy is up to you... Google/Bing are your friends (but read below for a special note about MultiBit). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
 
-Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the required `--wallet wallet.dat --tokenlist tokens.txt` options in the command line in any order.
+Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the required `--wallet wallet.dat --tokenlist tokens.txt` options on the command line in any order.
 
 ### Command Line Options inside the tokenlist file ###
 
@@ -218,7 +231,7 @@ Normally, when you run *btcrecover* it expects you to run it with at least a few
 
 *btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. Each time you change your wallet password (including the first time you add a password), plus on certain other occasions, MultiBit creates an encrypted private key backup file in a `key-backup` directory (see the link below for more details). These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. Unfortunately, it’s up to you to locate the correct private key backup file for the wallet whose password you need to recover. If you only have one MultiBit wallet, you can just choose the most recent private key backup file. Otherwise, you need to locate a private key backup file that has a date of when you either changed the password of, or added new addresses to the wallet you’d like to recover.
 
-For more details on locating your MultiBit private key backup files, see: https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html
+For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
 
 # Limitations / Caveats #
 
@@ -226,7 +239,7 @@ For more details on locating your MultiBit private key backup files, see: https:
 
 Although this software is unlikely to harm any wallet files, **you are strongly encouraged to only run it with copies of your wallets**. In particular, this software is distributed **WITHOUT ANY WARRANTY**; please see the accompanying GPLv2 licensing terms for more details.
 
-Because this software is beta software, and also because it interacts with other beta software, it’s entirely possible that it may fail to find a password which it’s been correctly configure to find.
+Because this software is beta software, and also because it interacts with other beta software, it’s entirely possible that it may fail to find a password which it’s been correctly configure by you to find.
 
 #### OS X ####
 Mac OS X support is completely untested.
@@ -237,12 +250,12 @@ By default, *btcrecover* uses one or more whitespace to separate tokens in the t
 
 The `--delimiter` option allows you to change this behavior. If used, whitespace is no longer ignored, nor is extra whitespace stripped. Instead, the new `--delimiter` string must be used *exactly as specified* to separate tokens. Any whitespace becomes a part of a token, so you must take care not to add any inadvertent whitespace to these files.
 
-Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file. A special symbol is part of the tokenlist syntax, and not part of a password.
+Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file (and for the `#` symbol, also in the typos-map file). A special symbol is part of the syntax, and not part of a password.
 
  * `%` - always considered special; `%%` in a token will be replaced by `%` during searches    
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the file, then the first line is parsed as additional command line options
+ * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
  * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the *Mutual Exclusion* section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
 
 ### Unicode Support ###
@@ -251,7 +264,7 @@ This one’s easy... there is none.
 
 All input to *btcrecover* must be 7-bit ASCII. The current version of Armory (which is what *btcrecover* was originally developed for) has this same limitation, so there should be no problems with Armory wallets. Bitcoin Core, MultBit Classic, and Electrum support Unicode passwords. It would be theoretically possible to add Unicode support (at least for the Basic Multilingual Plane, which is what Python supports decently; the SMP would be harder, especially with support for the typos feature), however none of the software wallets normalize their Unicode strings before passing them along to their key derivation functions, and this could cause issues.
 
-In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect.
+In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect. In the mean time, as long as your password consists only of ASCII characters, it should work without any issues. 
 
 ### Resource Usage ###
 
@@ -273,13 +286,13 @@ As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are a
 
 ### Security Issues ###
 
-Most Bitcoin wallet software goes to great lengths to protect your wallet password. *btcrecover* does practically nothing. This includes, but is not limited to:
+Most Bitcoin wallet software goes to great lengths to protect your wallet password while it's stored unencrypted. *btcrecover* does not. This includes, but is not limited to:
 
- * you must create the tokenlist file which probably will have lots of sensitive password information in it, and save it to a file unencrypted;
+ * you must create the tokenlist file which will probably have lots of sensitive password information in it, and save it to an unencrypted file;
  * no attempt is made to overwrite sensitive password information in RAM during or after running;
- * unless you use the `--no-dupchecks` option, a large amount of sensitive password information is stored in RAM temporarily, is not overwritten, and is very likely swapped out to the paging file where it could remain for a long time even after *btcrecover* has exited.
+ * unless you use the `--no-dupchecks` option, a large amount of sensitive password information is stored in RAM temporarily, is not securely overwritten, and is very likely swapped out to the paging file where it could remain for a long time even after *btcrecover* has exited.
 
-There are no fixes to any of these issues, short of only running *btcrecover* inside a VM on a hard disk drive (not a solid-state drive) and securely deleting the VM once finished, all of which is far beyond the scope of this tutorial... 
+None of these issues are intentionally malicious, they should be considered security bugs. There are no workarounds for them, short of only running *btcrecover* inside a VM on a hard disk drive (not a solid-state drive) and securely deleting the VM once finished, all of which is far beyond the scope of this tutorial... 
 
 ### Typos Gory Details ###
 
