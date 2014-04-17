@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.0"
+__version__ =  "0.4.1"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit
@@ -152,7 +152,7 @@ def load_wallet(wallet_filename):
             return_verified_password_or_false = return_bitcoincore_verified_password_or_false
             return
 
-        # Multibit private key backup file (not the wallet file)
+        # MultiBit private key backup file (not the wallet file)
         wallet_file.seek(0)
         try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith("Salted__")
         except: is_multibitpk = False
@@ -174,7 +174,7 @@ def load_wallet(wallet_filename):
             except: raise
 
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(1)
 
 
 # Load the Armory library and a wallet file given the filename
@@ -225,8 +225,8 @@ def load_bitcoincore_wallet(wallet_filename):
     db.close()
     db_env.close()
     if not mkey:
-        raise Exception("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
-                        "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
+        raise ValueError("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
+                         "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
     # This is a little fragile because it assumes the encrypted key and salt sizes are
     # 48 and 8 bytes long respectively, which although currently true may not always be:
     (encrypted_master_key, salt, method, iter_count) = struct.unpack_from("< 49p 9p I I", mkey)
@@ -649,13 +649,14 @@ if __name__ == '__main__':
 #     #
 #     ^if_present_this_is_at_the_beginning  if_present_this_is_at_the_end$
 #     #
-#     #   These are positional tokens; they are never tried at the beginning or end:
+#     ^2$if_present_this_is_second ^5$if_present_this_is_fifth
 #     #
-#     ^2$if_present_this_is_second  ^2,4$if_present_its_second_third_or_fourth
+#     ^2,4$if_present_its_second_third_or_fourth_(but_never_last)
 #     ^2,$if_present_this_is_second_or_greater_(but_never_last)
 #     ^,$exactly_the_same_as_above
 #     ^,3$if_present_this_is_third_or_less_(but_never_first_or_last)
-# RESULTANT token_lists
+#
+# RESULTANT token_lists ==
 # [
 #     [ None,  'an_optional_token_exactly_one_per_line...' ],
 #     [ None,  '...may_or_may_not_be_tried_per_guess' ],
@@ -663,7 +664,8 @@ if __name__ == '__main__':
 #     [ 'this_required_token_was_preceded_by_a_plus_in_the_file' ],
 #     [ 'exactly_one_of_these',  'tokens_are_required',  'and_were_preceded_by_a_plus' ],
 #     [  ['if_present_this_is_at_the_beginning', 0],  ['if_present_this_is_at_the_end', '$']  ],
-#     [  ['if_present_this_is_second', 1]  ['if_present_its_second_third_or_fourth', 1, 3]  ],
+#     [  ['if_present_this_is_second', 1],  ['if_present_this_is_fifth', 4]  ],
+#     [  ['if_present_its_second_third_or_fourth_(but_never_last)', 1, 3]  ],
 #     [  ['if_present_this_is_second_or_greater_(but_never_last)', 1, sys.maxint]  ],
 #     [  ['exactly_the_same_as_above', 1, sys.maxint]  ],
 #     [  ['if_present_this_is_third_or_less_(but_never_first_or_last)', 1, 2]  ],
@@ -704,34 +706,53 @@ if __name__ == '__main__':
                     sys.exit(1)
 
             # Anchored tokens are parsed into sublists which then replace the token string
-            # in new_list. Positional anchors and begin anchors are parsed into this:
+            # in new_list. Positional and begin anchors are parsed into this:
             #   [ 'token_string', position_integer ]
             # End anchors are parsed into this:
             #   [ 'token_string', '$' ]
-            # Positional range anchors are parsed into this:
+            # Range anchors are parsed into this:
             #   [ 'token_string', beginning_position, ending_position ]
 
-            # Parse anchor if present; either a begin anchor or a positional anchor (possibly ranged)
+            # Parse begin, positional, or range anchor if present
             if token[0] == "^":
                 if token[-1] == "$":
                     print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
                     sys.exit(1)
-                if token[1] in "0123456789," or "$" in token:  # if it looks like it might be a positional anchor
+                #
+                # If it looks like it might be a positional or range anchor
+                if token[1] in "0123456789," or "$" in token:
+                    #
+                    # If it actually is a syntactically correct positional or range anchor
                     match = re.match(r"\^(?:(?P<begin>\d+)?(?P<range>,)(?P<end>\d+)?|(?P<pos>\d+))\$(?=.)", token)
-                    if match:  # if it actually is a syntactically correct positional anchor
+                    if match:
+                        # If it's a range anchor
                         if match.group("range"):
                             begin = match.group("begin")
                             end   = match.group("end")
                             begin = 1          if begin is None else int(begin) - 1
                             end   = sys.maxint if end   is None else int(end)   - 1
-                            new_list[i] = [ token[match.end():], begin, end ]  # new sublist for the positional range anchor
+                            if begin > end:
+                                print(parser.prog+": error: anchor range of token on line", line_num, "is invalid (begin > end)", file=sys.stderr)
+                                sys.exit(1)
+                            if begin < 1:
+                                print(parser.prog+": error: anchor range of token on line", line_num, "must begin with 2 or greater", file=sys.stderr)
+                                sys.exit(1)
+                            new_list[i] = [ token[match.end():], begin, end ]  # new sublist for the range anchor
+                        # Else it's a positional anchor
                         else:
-                            new_list[i] = [ token[match.end():], int(match.group("pos")) - 1 ]  # new sublist for the positional anchor
+                            pos = int(match.group("pos")) - 1
+                            if pos < 0:
+                                print(parser.prog+": error: anchor position of token on line", line_num, "must be 1 or greater", file=sys.stderr)
+                                sys.exit(1)
+                            new_list[i] = [ token[match.end():], pos ]  # new sublist for the positional anchor
+                    #
+                    # If it's a begin anchor that looks a bit like some other type
                     else:
                         print(parser.prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
                               "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                         new_list[i] = [ token[1:], 0 ]  # new sublist for the begin anchor
-                else:  # it doesn't look at all like a positional anchor
+                # Else it's just a normal begin anchor
+                else:
                     new_list[i] = [ token[1:], 0 ]      # new sublist for the begin anchor
 
             # Parse end anchor if present
@@ -809,28 +830,33 @@ def password_generator():
         # position. This type is searched for below and removed from tokens_combination,
         # and will be inserted back into the correct position later. Also search for
         # invalid anchors of the second type: a range anchor whose minimum allowed
-        # position would place it at or past the end of the tokens.
+        # position would always place it at or past the end of the tokens (note that
+        # single-position anchors may be at the end, but range anchors may not).
         positional_anchors     = None
         new_tokens_combination = []
         invalid_anchors        = False
         for token in tokens_combination:
             if isinstance(token, list):         # an anchored token
                 pos = token[1]
-                if isinstance(pos, int) and pos+1 >= len(tokens_combination):
-                    invalid_anchors = True      # anchored at or past the end
-                    break
                 if len(token) == 2:             # a single-position anchor
+                    if pos == "$":
+                        pos = len(tokens_combination) - 1
+                    elif pos >= len(tokens_combination):
+                        invalid_anchors = True  # anchored past the end
+                        break
                     if not positional_anchors:  # initialize it to a list of None's
                         positional_anchors = list(itertools.repeat(None, len(tokens_combination)))
-                    if pos == "$": pos = len(tokens_combination) - 1
                     if positional_anchors[pos]:
                         invalid_anchors = True  # two tokens anchored to the same place
                         break
-                    positional_anchors[pos] = token[0]
-                else:                           # positional range anchors are handled later
-                    new_tokens_combination.append(token)
+                    positional_anchors[pos] = token[0]  # save valid single-position anchor
+                else:
+                    if pos+1 >= len(tokens_combination):
+                        invalid_anchors = True  # anchored past or at the end
+                        break
+                    new_tokens_combination.append(token)  # keep this token as-is
             else:                               # not an anchor token, just a string
-                new_tokens_combination.append(token)
+                new_tokens_combination.append(token)  # keep this token as-is
         if invalid_anchors: continue
         #
         if len(new_tokens_combination) > 0:

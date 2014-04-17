@@ -62,19 +62,61 @@ In this example above, passwords will be constructed by taking at most one token
 
 ### Anchors ###
 
+#### Beginning and Ending Anchors ####
+
 Another way to save time is to use “anchors”. You can tell *btcrecover* that certain tokens, if they are present at all, are definitely at the beginning or end of the password:
 
     ^Cairo
     Beetlejuice beetlejuice Betelgeuse betelgeuse
     Hotel_california$
 
-In this example above, the `^` symbol is considered special if it appears at the beginning of any token (it’s not actually a part of the password), and the `$` symbol is special if it appears at the end of any token. `Cairo`, if it is present, is only tried at the beginning of a password, and `Hotel_california`, if it is present, is only tried at the end. As before, all of these can be combined:
+In this example above, the `^` symbol is considered special if it appears at the beginning of any token (it’s not actually a part of the password), and the `$` symbol is special if it appears at the end of any token. `Cairo`, if it is tried, is only tried at the beginning of a password, and `Hotel_california`, if it is tried, is only tried at the end. Note that neither is required to be tried in password guesses with the example above. As before, all of these options can be combined:
 
     Cairo
-    Beetlejuice
+    Beetlejuice beetlejuice Betelgeuse betelgeuse
     + ^Hotel_california ^hotel_california
 
-In this example above, either `Hotel_california` or `hotel_california` is required at the beginning of every password that is tried (and the other two tokens are tried normally after that).
+In this example above, either `Hotel_california` or `hotel_california` is *required* at the beginning of every password that is tried (and the other tokens are tried normally after that).
+
+#### Positional Anchors ####
+
+Tokens with positional anchors may only appear at one specific position in the password -- there are always a specific number of other tokens which precede the anchored one. In the example below you'll notice a number in between `^` and `$` symbols added to the very beginning to create positionally anchored tokens (with no spaces):
+
+    ^2$Second_or_bust
+    ^3$Third_or_bust
+    Cairo
+    Beetlejuice
+    Hotel_california
+
+As you can guess, `Second_or_bust`, if it is tried, is only tried as the second token in a password, and `Third_or_bust`, if it is tried, is only tried as the third.
+
+#### Middle Anchors ####
+
+Middle anchors are a bit like positional anchors, only more flexible: the anchored tokens may appear once throughout a specific *range* of positions in the password.
+
+**Note:** Placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.  
+
+You specify a middle anchor by adding a comma between two numbers (between the `^` and `$` symbols) at the very beginning of a token (all with no spaces):
+
+    ^2,3$Second_third_or_bust
+    ^2,4$Second_to_fourth_or_bust
+    Cairo
+    Beetlejuice
+    Hotel_california
+
+ As mentioned above, neither of those middle-anchored tokens will ever be tried as the last token in a password, so something (one or more of the non-anchored tokens) will appear after the middle-anchored ones in every guess in which they appear. Since tokens with middle anchors never appear at the beginning, the smallest value you can use for that first number is 2. Finally, when you specify the range, you can leave out one (or even both) of the numbers, like this:
+
+    ^3,$Third_or_after_or_bust
+    ^,3$Second_or_third_or_bust
+    ^,$Anywhere_in_the_middle
+    Cairo
+    Beetlejuice
+    Hotel_california
+
+You can't leave out the comma (that's what makes it a middle anchor instead of a positional anchor). Leaving out a number doesn't change the “never at the beginning or the end” rule which always applies to middle anchors. If you do need a token with a middle anchor to also possibly appear at the beginning or end of a password, you can add second copy to the same line with a beginning or end anchor:
+
+    ^,$Anywhere_but_the_beginning Anywhere_but_the_beginning$
+    ^,$Anywhere_but_the_end ^Anywhere_but_the_end    
 
 ### Token Counts ###
 
