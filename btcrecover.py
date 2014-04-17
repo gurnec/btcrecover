@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.3.2"
+__version__ =  "0.4.0"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit
@@ -360,16 +360,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (required unless using --listpass)")
     parser.add_argument("--tokenlist",   metavar="FILE", help="the list of tokens/partial passwords (required)")
-    parser.add_argument("--max-tokens",  type=int, default=9999, metavar="COUNT", help="enforce a max # of tokens included per guess")
-    parser.add_argument("--min-tokens",  type=int, default=1,    metavar="COUNT", help="enforce a min # of tokens included per guess")
-    parser.add_argument("--typos",       type=int, default=0,    metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
-    parser.add_argument("--min-typos",   type=int, default=0,    metavar="COUNT", help="enforce a min # of typos included per guess")
+    parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
+    parser.add_argument("--min-tokens",  type=int, default=1, metavar="COUNT", help="enforce a min # of tokens included per guess")
+    parser.add_argument("--typos",       type=int, default=0, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
+    parser.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
     typo_types_group = parser.add_argument_group("typo types")
     typo_types_group.add_argument("--typos-capslock", action="store_true", help="tries the password with caps lock turned on")
     typo_types_group.add_argument("--typos-swap",     action="store_true", help="swaps two adjacent characters")
     for typo_name, typo_args in simple_typo_args.items():
         typo_types_group.add_argument("--typos-"+typo_name, **typo_args)
     parser.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
+    parser.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
+    parser.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
     parser.add_argument("--delimiter",   metavar="STRING", help="the delimiter for multiple alternative tokens on each line of the tokenlist (default: whitespace)")
     parser.add_argument("--skip",        type=int, default=0, metavar="COUNT", help="skip this many initial passwords for continuing an interupted search")
     parser.add_argument("--autosave",    metavar="FILE",   help="autosaves (5 min) progress to/ restores it from a file")
@@ -475,7 +477,7 @@ if __name__ == '__main__':
     argsdict = vars(args)  # only used to check for presence of typos_* arguments
 
     # Do a bunch of argument sanity checking
-    
+
     # tokenlist_file should have been opened by now (possibly during the a session restore)
     if not tokenlist_file:
         print(parser.prog+": error: argument --tokenlist is required (or file btcrecover-tokens-auto.txt must be present)", file=sys.stderr)
@@ -529,6 +531,9 @@ if __name__ == '__main__':
             wildcard_nocase_sets["c"] = wildcard_sets["c"] + custom_wildset_caseswapped
             wildcard_nocase_sets["C"] = wildcard_sets["C"] + custom_wildset_caseswapped.swapcase()
         wildcard_keys += "cC"  # keep track of available wildcard types (used in regex's)
+
+    regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
+    regex_never = re.compile(args.regex_never) if args.regex_never else None
 
     # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
     if args.typos_insert:
@@ -627,21 +632,41 @@ if __name__ == '__main__':
 # Build up the token_lists structure, a list of lists, reflecting the tokenlist file.
 # Each list in the token_lists list is preceded with a None element unless the
 # corresponding line in the tokenlist file begins with a "+" (see example below).
+# Each token is represented by a string if that token is not anchored, by a list of
+# length 2 if that token is anchored to a single position, or by a list of length
+# 3 if that token is anchored to a range of positions.
 #
 # EXAMPLE FILE:
-#     # lines that begin with # are ignored comments
+#     #   Lines that begin with # are ignored comments
+#     #
 #     an_optional_token_exactly_one_per_line...
 #     ...may_or_may_not_be_tried_per_guess
+#     #
 #     mutually_exclusive  token_list  on_one_line  at_most_one_is_tried
+#     #
 #     +  this_required_token_was_preceded_by_a_plus_in_the_file
 #     +  exactly_one_of_these  tokens_are_required  and_were_preceded_by_a_plus
+#     #
+#     ^if_present_this_is_at_the_beginning  if_present_this_is_at_the_end$
+#     #
+#     #   These are positional tokens; they are never tried at the beginning or end:
+#     #
+#     ^2$if_present_this_is_second  ^2,4$if_present_its_second_third_or_fourth
+#     ^2,$if_present_this_is_second_or_greater_(but_never_last)
+#     ^,$exactly_the_same_as_above
+#     ^,3$if_present_this_is_third_or_less_(but_never_first_or_last)
 # RESULTANT token_lists
 # [
-#     [ None, 'an_optional_token_exactly_one_per_line...' ],
-#     [ None, '...may_or_may_not_be_tried_per_guess' ],
-#     [ None, 'mutually_exclusive', 'token_list', 'on_one_line', 'at_most_one_is_tried' ],
+#     [ None,  'an_optional_token_exactly_one_per_line...' ],
+#     [ None,  '...may_or_may_not_be_tried_per_guess' ],
+#     [ None,  'mutually_exclusive',  'token_list',  'on_one_line',  'at_most_one_is_tried' ],
 #     [ 'this_required_token_was_preceded_by_a_plus_in_the_file' ],
-#     [ 'exactly_one_of_these', 'tokens_are_required', 'and_were_preceded_by_a_plus' ]
+#     [ 'exactly_one_of_these',  'tokens_are_required',  'and_were_preceded_by_a_plus' ],
+#     [  ['if_present_this_is_at_the_beginning', 0],  ['if_present_this_is_at_the_end', '$']  ],
+#     [  ['if_present_this_is_second', 1]  ['if_present_its_second_third_or_fourth', 1, 3]  ],
+#     [  ['if_present_this_is_second_or_greater_(but_never_last)', 1, sys.maxint]  ],
+#     [  ['exactly_the_same_as_above', 1, sys.maxint]  ],
+#     [  ['if_present_this_is_third_or_less_(but_never_first_or_last)', 1, 2]  ],
 # ]
 #
 has_any_wildcards = False
@@ -669,8 +694,8 @@ if __name__ == '__main__':
         if new_list[1] == "+" and len(new_list) > 2:
             del new_list[0:2]\
 
-        # Syntax checks
-        for token in new_list:
+        # Parse anchored tokens into sublists, and check other token syntax
+        for i, token in enumerate(new_list):
             if token is None: continue
 
             for c in token:
@@ -678,12 +703,42 @@ if __name__ == '__main__':
                     print(parser.prog+": error: token on line", line_num, "has non-ASCII character '"+c+"'", file=sys.stderr)
                     sys.exit(1)
 
-            # A token anchored at both beginning and end is probably a mistake
-            if token[0] == "^" and token[-1] == "$":
-                print(parser.prog+": error: token on line", line_num, "is anchored with both ^ (begins with) and $ (ends with)", file=sys.stderr)
-                sys.exit(1)
+            # Anchored tokens are parsed into sublists which then replace the token string
+            # in new_list. Positional anchors and begin anchors are parsed into this:
+            #   [ 'token_string', position_integer ]
+            # End anchors are parsed into this:
+            #   [ 'token_string', '$' ]
+            # Positional range anchors are parsed into this:
+            #   [ 'token_string', beginning_position, ending_position ]
 
-            # Remove all valid wildcard specs; if any %'s are left they are invalid
+            # Parse anchor if present; either a begin anchor or a positional anchor (possibly ranged)
+            if token[0] == "^":
+                if token[-1] == "$":
+                    print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
+                    sys.exit(1)
+                if token[1] in "0123456789," or "$" in token:  # if it looks like it might be a positional anchor
+                    match = re.match(r"\^(?:(?P<begin>\d+)?(?P<range>,)(?P<end>\d+)?|(?P<pos>\d+))\$(?=.)", token)
+                    if match:  # if it actually is a syntactically correct positional anchor
+                        if match.group("range"):
+                            begin = match.group("begin")
+                            end   = match.group("end")
+                            begin = 1          if begin is None else int(begin) - 1
+                            end   = sys.maxint if end   is None else int(end)   - 1
+                            new_list[i] = [ token[match.end():], begin, end ]  # new sublist for the positional range anchor
+                        else:
+                            new_list[i] = [ token[match.end():], int(match.group("pos")) - 1 ]  # new sublist for the positional anchor
+                    else:
+                        print(parser.prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
+                              "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
+                        new_list[i] = [ token[1:], 0 ]  # new sublist for the begin anchor
+                else:  # it doesn't look at all like a positional anchor
+                    new_list[i] = [ token[1:], 0 ]      # new sublist for the begin anchor
+
+            # Parse end anchor if present
+            elif token[-1] == "$":
+                new_list[i] = [ token[:-1], "$" ]  # new sublist for the end anchor
+
+            # Syntax check wildcards: remove all valid wildcard specs; if any %'s are left they are invalid
             valid_wildcards_removed = re.sub(r"%(?:(?:\d+,)?\d+)?(?:i)?["+wildcard_keys+"]", "", token)
             if "%" in valid_wildcards_removed:
                 print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
@@ -720,7 +775,8 @@ if __name__ == '__main__':
 typos_sofar = 0
 
 # The main generator function produces all possible requested password permutations with
-# no duplicates from the token_lists global as constructed above plus any requested typos
+# no duplicates from the token_lists global as constructed above plus wildcard expansion
+# and up to a certain number of requested typos
 #
 # Caches duplicate passwords for reducing memory usage during additional (identical) runs
 duplicate_passwords = dict()
@@ -740,39 +796,76 @@ def password_generator():
     # The outer loop iterates through all possible (unordered) combinations of tokens
     # taking into account the at-most-one-token-per-line rule. Note that lines which
     # were not required (no "+") have a None in their corresponding list; if this
-    # None item is chosen for a tokens_combination we simply remove it below.
+    # None item is chosen for a tokens_combination, then this tokens_combination
+    # corresponds to one without any token from that line, and we we simply remove
+    # the None from this tokens_combination below.
     for tokens_combination in itertools.product(*token_lists):
 
         # Remove any None's, then check against token length constraints:
-        collapsed_tokens_combination = filter( lambda t: t is not None , tokens_combination)
-        if len(collapsed_tokens_combination) not in xrange(args.min_tokens, args.max_tokens+1): continue
+        tokens_combination = filter( lambda t: t is not None , tokens_combination)
+        if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
 
-        # Look for anchors (^ or $) in each token to force the tokens into the specified position
-        begin_anchor = ""
-        end_anchor = ""
-        duplicate_anchors = False
-        unanchored_tokens_combination = []
-        for token in collapsed_tokens_combination:
-            if token[0] == "^":
-                if begin_anchor: duplicate_anchors = True; break
-                begin_anchor = token[1:]
-            elif token[-1] == "$":
-                if end_anchor:   duplicate_anchors = True; break
-                end_anchor = token[0:-1]
-            else:
-                unanchored_tokens_combination.append(token)
+        # There are two types of anchors- the first type has only a single possible
+        # position. This type is searched for below and removed from tokens_combination,
+        # and will be inserted back into the correct position later. Also search for
+        # invalid anchors of the second type: a range anchor whose minimum allowed
+        # position would place it at or past the end of the tokens.
+        positional_anchors     = None
+        new_tokens_combination = []
+        invalid_anchors        = False
+        for token in tokens_combination:
+            if isinstance(token, list):         # an anchored token
+                pos = token[1]
+                if isinstance(pos, int) and pos+1 >= len(tokens_combination):
+                    invalid_anchors = True      # anchored at or past the end
+                    break
+                if len(token) == 2:             # a single-position anchor
+                    if not positional_anchors:  # initialize it to a list of None's
+                        positional_anchors = list(itertools.repeat(None, len(tokens_combination)))
+                    if pos == "$": pos = len(tokens_combination) - 1
+                    if positional_anchors[pos]:
+                        invalid_anchors = True  # two tokens anchored to the same place
+                        break
+                    positional_anchors[pos] = token[0]
+                else:                           # positional range anchors are handled later
+                    new_tokens_combination.append(token)
+            else:                               # not an anchor token, just a string
+                new_tokens_combination.append(token)
+        if invalid_anchors: continue
         #
-        # A combination that includes two tokens anchored to the same place is skipped
-        if duplicate_anchors: continue
-        #
-        # Handle the case where all tokens in this combination are anchored ones
-        if len(unanchored_tokens_combination) == 0:
-            unanchored_tokens_combination = [ "" ]
+        if len(new_tokens_combination) > 0:
+            tokens_combination = new_tokens_combination
+        else:
+            tokens_combination = [ "" ]
 
-        # The middle loop iterates through all possible permutations (orderings) of one
+        # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string
-        for ordered_token_guess in itertools.permutations(unanchored_tokens_combination):
-            password_base = begin_anchor + "".join(ordered_token_guess) + end_anchor
+        for ordered_token_guess in itertools.permutations(tokens_combination):
+
+            # Insert the positional anchors we removed above back into the guess
+            if positional_anchors:
+                ordered_token_guess = list(ordered_token_guess)
+                for i, token in enumerate(positional_anchors):
+                    if token: ordered_token_guess.insert(i, token)  # (token here is just a string)
+
+            # The second type of anchor has a range of possible positions for the anchored
+            # token. If any anchored token is outside of its permissible range, we continue
+            # on to the next guess. Otherwise, we remove the anchor information leaving
+            # only the string behind.
+            if isinstance(ordered_token_guess[0], list) or isinstance(ordered_token_guess[-1], list):
+                continue  # range anchors are never permitted at the beginning or end
+            invalid_anchors = False
+            for i, token in enumerate(ordered_token_guess[1:-1], 1):
+                if isinstance(token, list):
+                    assert len(token) == 3, "only range-type anchors left"
+                    if token[1] <= i <= token[2]:
+                        ordered_token_guess[i] = token[0]  # now it's just a string
+                    else:
+                        invalid_anchors = True
+                        break
+            if invalid_anchors: continue
+
+            password_base = "".join(ordered_token_guess)
 
             # The inner loop takes the password_base and applies zero or more modifications
             # to it to produce a number of different possible variations of password_base
@@ -800,6 +893,9 @@ def password_generator():
             for password in modification_iterator:
 
                 if typos_sofar < args.min_typos: continue
+
+                if regex_only  and not regex_only .search(password): continue
+                if regex_never and     regex_never.search(password): continue
 
                 # Skip producing this password if it's already been produced (unless dupchecks are disabled)
                 if not args.no_dupchecks:
