@@ -395,7 +395,7 @@ if __name__ == '__main__':
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
-    parser.add_argument("--no-progress", action="store_true", help="disable the progress bar")
+    parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
     parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
     parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
     parser.add_argument("--pause",       action="store_true", help="pause before exiting")
@@ -638,7 +638,11 @@ if __name__ == '__main__':
     if args.mkey:
         assert "readline" not in sys.modules, "readline not loaded during sensitive input"
         # Need to save mkey_data (in a global) for reinitializing worker processes on windows
-        mkey_data = raw_input("Please enter the Bitcoin Core encrypted master key from extract-mkey.py\n> ")
+        if sys.stdin.isatty():
+            prompt = "Please enter the Bitcoin Core encrypted master key from extract-mkey.py\n> "
+        else:
+            prompt = "Reading Bitcoin Core encrypted master key from stdin\n"
+        mkey_data = raw_input(prompt)
         # Emulates load_wallet, but using mkey_data instead; returns the crc (required by do_autosave() )
         mkey_crc = load_bitcoincore_from_mkey(mkey_data)
         if restored and mkey_crc != savestate["mkey_crc"]:

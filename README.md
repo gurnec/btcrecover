@@ -17,6 +17,7 @@
  * Progress bar and ETA display (at the command line)
  * Interrupt and Continue searches without losing progress
  * Optional autosave - continue searches even after inadvertent interruptions or crashes
+ * “Offline” mode for Bitcoin Core wallets - use [extract-mkey.py](extract-mkey/README.md) to extract just enough information to attempt password recovery, without giving *btcrecover* or whoever runs it access to any of your addresses or private keys in your Bitcoin wallet.
 
 ----------
 
