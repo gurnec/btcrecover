@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.2"
+__version__ =  "0.4.3"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -374,7 +374,7 @@ if __name__ == '__main__':
     except: cpus = 1
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (required unless using --listpass)")
+    parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (this or --mkey or --listpass req'd)")
     parser.add_argument("--tokenlist",   metavar="FILE", help="the list of tokens/partial passwords (required)")
     parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
     parser.add_argument("--min-tokens",  type=int, default=1, metavar="COUNT", help="enforce a min # of tokens included per guess")
@@ -393,6 +393,7 @@ if __name__ == '__main__':
     parser.add_argument("--autosave",    metavar="FILE",   help="autosaves (5 min) progress to/ restores it from a file")
     parser.add_argument("--restore",     type=argparse.FileType("r+b", 0), metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
+    parser.add_argument("--worker",      metavar="ID#/TOTAL#", help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
     parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
@@ -613,6 +614,23 @@ if __name__ == '__main__':
                 sys.exit(1)
 
     worker_threads = max(args.threads, 1)
+
+    if args.worker:
+        match = re.match(r"(\d+)/(\d+)$", args.worker)
+        if not match:
+            print(parser.prog+": error: --worker ID#/TOTAL# must be have the format uint/uint", file=sys.stderr)
+            sys.exit(2)
+        worker_id     = int(match.group(1))
+        workers_total = int(match.group(2))
+        if workers_total < 2:
+            print(parser.prog+": error: in --worker ID#/TOTAL#, TOTAL# must be >= 2", file=sys.stderr)
+            sys.exit(2)
+        if worker_id < 1:
+            print(parser.prog+": error: in --worker ID#/TOTAL#, ID# must be >= 1", file=sys.stderr)
+            sys.exit(2)
+        if worker_id > workers_total:
+            print(parser.prog+": error: in --worker ID#/TOTAL#, ID# must be <= TOTAL#", file=sys.stderr)
+            sys.exit(2)
 
     if args.no_progress: have_progress = False
     else:
@@ -845,6 +863,7 @@ run_number = 0
 def password_generator():
     global typos_sofar, duplicate_passwords, run_number
     passwords_seen_once = set()
+    worker_count = 0  # only used if --worker is specified
 
     # Build up the modification_generators list; see the inner loop below for more details
     modification_generators = []
@@ -982,6 +1001,13 @@ def password_generator():
                             if dup <= run_number:
                                 duplicate_passwords[password] = run_number + 1  # first time we've seen it
                             else: continue                                      # second+ time we've seen it
+
+                # Workers in a server pool ignore passwords not assinged to them
+                if args.worker:
+                    if worker_count % workers_total != worker_id-1:
+                        worker_count += 1
+                        continue
+                    worker_count += 1
 
                 yield password
 
