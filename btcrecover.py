@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.1"
+__version__ =  "0.4.2"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -234,16 +234,22 @@ def load_bitcoincore_wallet(wallet_filename):
     if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
     wallet = (encrypted_master_key, salt, iter_count)
 
+# Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
+# and also do the work normally performed by load_wallet() to configure the
+# get_est_secs_per_password and return_verified_password_or_false globals to call
+# the correct Bitcoin Core versions (this can be called instead of load_wallet() )
 def load_bitcoincore_from_mkey(mkey_data):
     global wallet, get_est_secs_per_password, return_verified_password_or_false
-    crc_checked_bytes, crc = struct.unpack("< 60s I", base64.b64decode(mkey_data))
-    if zlib.crc32(crc_checked_bytes) & 0xffffffff != crc:
-        print(parser.prog+": error: --mkey data corrupted (failed CRC)", file=sys.stderr)
-        sys.exit(2)
-    wallet = struct.unpack("< 48s 8s I", crc_checked_bytes)
     load_aes256_library()
+    crc_checked_bytes, mkey_crc = struct.unpack("< 60s I", base64.b64decode(mkey_data))
+    if zlib.crc32(crc_checked_bytes) & 0xffffffff != mkey_crc:
+        print(parser.prog+": error: --mkey encrypted master key corrupted (failed CRC check)", file=sys.stderr)
+        sys.exit(2)
+    # These are the same (encrypted_master_key, salt, iter_count) retrieved by load_bitcoincore_wallet()
+    wallet = struct.unpack("< 48s 8s I", crc_checked_bytes)
     get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
     return_verified_password_or_false = return_bitcoincore_verified_password_or_false
+    return mkey_crc
 
 # Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
 def get_bitcoincore_est_secs_per_password():
@@ -280,9 +286,9 @@ def load_multibit_privkey(privkey_file):
 # Estimate the time it takes to try a single password (on a single CPU) for Multibit
 def get_multibitpk_est_secs_per_password():
     start = time.clock()
-    for i in xrange(test_iterations):
+    for i in xrange(test_aes_iterations):
         return_multibitpk_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / test_iterations
+    return (time.clock() - start) / test_aes_iterations
 
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
@@ -315,11 +321,10 @@ def load_electrum_wallet(wallet_file):
 
 # Estimate the time it takes to try a single password (on a single CPU) for Electrum
 def get_electrum_est_secs_per_password():
-    global test_iterations
     start = time.clock()
-    for i in xrange(test_iterations):
+    for i in xrange(test_aes_iterations):
         return_electrum_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / test_iterations
+    return (time.clock() - start) / test_aes_iterations
 
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
@@ -331,18 +336,18 @@ def return_electrum_verified_password_or_false(p):
     else: return False
 
 
-# Loads PyCrypto if available, else falls back to pure python version (30x slower)
+# Loads PyCrypto if available, else falls back to the pure python version (30x slower)
 def load_aes256_library():
-    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, test_iterations
+    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, test_aes_iterations
     try:
         import Crypto.Cipher.AES
         aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
-        test_iterations = 50000  # takes about 0.5 seconds on my CPU, YMMV
+        test_aes_iterations = 50000  # takes about 0.5 seconds on my CPU, YMMV
     except:
         import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
         aes256_cbc_decrypt = aes256_cbc_decrypt_pp
         aes256_key_expander = aespython.key_expander.KeyExpander(256)
-        test_iterations =  2000  # takes about 0.5 seconds on my CPU, YMMV
+        test_aes_iterations =  2000  # takes about 0.5 seconds on my CPU, YMMV
 
 def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
     return Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
@@ -354,9 +359,8 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
     stream_cipher.set_iv(bytearray(iv))
     plaintext = bytearray()
     i = 0
-    while i < len(ciphertext):
-        plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )
-        i += 16
+    for i in xrange(0, len(ciphertext), 16):
+        plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )  # input must be a list
     return str(plaintext)
 
 
@@ -392,7 +396,7 @@ if __name__ == '__main__':
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
     parser.add_argument("--no-progress", action="store_true", help="disable the progress bar")
-    parser.add_argument("--mkey",        metavar="BASE64-STRING", help="operate on a Bitcoin Core encrypted master key instead of a wallet file (generated by extract-mkey.py)")
+    parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
     parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
     parser.add_argument("--pause",       action="store_true", help="pause before exiting")
     parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
@@ -479,7 +483,7 @@ if __name__ == '__main__':
         print("Last session ended having finished password #", savestate["skip"])
         if restored_argv != effective_argv:  # TODO: be more lenient than an exact match?
             print(parser.prog+": error: can't restore previous session: the command line options have changed", file=sys.stderr)
-            sys.exit(2)
+            sys.exit(1)
         print("Using autosave file '"+args.autosave+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
         restored = True   # a global flag for future reference
@@ -623,17 +627,25 @@ if __name__ == '__main__':
     if args.mkey:     required_args += 1
     if args.listpass: required_args += 1
     if required_args != 1:
-        print(parser.prog+": error: argument --wallet (or --listpass or --mkey) is required", file=sys.stderr)
+        print(parser.prog+": error: argument --wallet (or --listpass or --mkey, exactly one) is required", file=sys.stderr)
         sys.exit(2)
-            
-    # Load the wallet file (unless only --listpass has been requested)
+
+    # Load the wallet file
     if args.wallet:
         load_wallet(args.wallet)
 
-    # Use an mkey specified at the command line instead of a wallet file
-    # N.B.: if autosave is enabled the mkey will be saved to it
-    elif args.mkey:
-        load_bitcoincore_from_mkey(args.mkey)
+    # Use a Bitcoin Core encrypted master key specified at the command line instead of a wallet file
+    if args.mkey:
+        assert "readline" not in sys.modules, "readline not loaded during sensitive input"
+        # Need to save mkey_data (in a global) for reinitializing worker processes on windows
+        mkey_data = raw_input("Please enter the Bitcoin Core encrypted master key from extract-mkey.py\n> ")
+        # Emulates load_wallet, but using mkey_data instead; returns the crc (required by do_autosave() )
+        mkey_crc = load_bitcoincore_from_mkey(mkey_data)
+        if restored and mkey_crc != savestate["mkey_crc"]:
+            print(parser.prog+": error: can't restore previous session: the encrypted master key entered is not the same", file=sys.stderr)
+            sys.exit(1)
+    else:
+        mkey_data = mkey_crc = None
 
     # Open a new autosave file (if --restore was specified, the restore file
     # is still open and has already been assigned to autosave_file instead)
@@ -1199,11 +1211,11 @@ def simple_typos_generator(password_base):
 #   (re-)loads the wallet file (should only be necessary on Windows),
 #   tries to set the process priority to minimum, and
 #   begins ignoring SIGINTs for a more graceful exit on Ctrl-C
-def init_worker(wallet_filename, mkey):
-    if not wallet: 
+def init_worker(wallet_filename, mkey_data):
+    if not wallet:
         if wallet_filename: load_wallet(wallet_filename)
-        elif mkey:          load_bitcoincore_from_mkey(mkey)
-        else: assert 0, "wallet filename or mkey passed to init_worker"
+        elif mkey_data:     load_bitcoincore_from_mkey(mkey_data)
+        else: assert False, "wallet filename or mkey data passed to init_worker"
     set_process_priority_idle()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 #
@@ -1223,11 +1235,12 @@ def do_autosave(skip):
     orig_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)  # ignore Ctrl-C while saving
     autosave_file.truncate()
     cPickle.dump(dict(
-            argv=effective_argv,
-            skip=skip,
-            token_lists_hash=token_lists_hash,
-            typos_map_hash=typos_map_hash),
-        autosave_file, cPickle.HIGHEST_PROTOCOL)
+            argv             = effective_argv,   # combined options from command line and tokenlists file
+            skip             = skip,             # passwords completed so far
+            token_lists_hash = token_lists_hash, #\
+            typos_map_hash   = typos_map_hash,   # > inputs which aren't permitted to change between runs
+            mkey_crc         = mkey_crc          #/
+        ), autosave_file, cPickle.HIGHEST_PROTOCOL)
     autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
     signal.signal(signal.SIGINT, orig_handler)
 
@@ -1335,7 +1348,7 @@ if __name__ == '__main__':
         password_found_iterator = itertools.imap(return_verified_password_or_false, password_iterator)
         set_process_priority_idle()  # this, the only thread, should be nice
     else:
-        pool = multiprocessing.Pool(spawned_threads, init_worker, [args.wallet, args.mkey])
+        pool = multiprocessing.Pool(spawned_threads, init_worker, [args.wallet, mkey_data])
         password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator, imap_chunksize)
         if main_thread_is_worker: set_process_priority_idle()  # if this thread is cpu-intensive, be nice
 
