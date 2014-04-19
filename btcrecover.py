@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.4"
+__version__ =  "0.4.5"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -158,7 +158,7 @@ def load_wallet(wallet_filename):
         try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith("Salted__")
         except: is_multibitpk = False
         if is_multibitpk:
-            load_multibit_privkey(wallet_file)  # passing in a file object
+            load_multibit_privkey_file(wallet_file)  # passing in a file object
             get_est_secs_per_password         = get_multibitpk_est_secs_per_password
             return_verified_password_or_false = return_multibitpk_verified_password_or_false
             return
@@ -190,6 +190,12 @@ def load_from_key(key_data):
         load_bitcoincore_from_mkey(key_data[3:])
         get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
         return_verified_password_or_false = return_bitcoincore_verified_password_or_false
+        return
+
+    if key_type == "mb:":
+        load_multibit_from_privkey(key_data[3:])
+        get_est_secs_per_password         = get_multibitpk_est_secs_per_password
+        return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
     print(parser.prog+": error: unrecognized encrypted key type", file=sys.stderr)
@@ -280,7 +286,7 @@ def return_bitcoincore_verified_password_or_false(p):
 
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
-def load_multibit_privkey(privkey_file):
+def load_multibit_privkey_file(privkey_file):
     global wallet
     load_aes256_library()
     privkey_file.seek(0)
@@ -290,6 +296,17 @@ def load_multibit_privkey(privkey_file):
     if len(wallet) < 108: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
     wallet = base64.b64decode(wallet[:108])
     assert wallet.startswith("Salted__"), "loaded a Multibit privkey file"
+    if len(wallet) < 80:  raise EOFError("Expected at least 80 bytes of decoded data in the MultiBit private key file")
+    wallet = wallet[8:80]
+    # wallet now consists of:
+    #   8 bytes of salt, followed by
+    #   4 16-byte aes blocks containing a 52-byte base58 encoded private key
+
+# Import a MultiBit private key that was extracted by extract-multibit-privkey.py
+def load_multibit_from_privkey(privkey_data):
+    global wallet
+    load_aes256_library()
+    wallet = privkey_data
 
 # Estimate the time it takes to try a single password (on a single CPU) for Multibit
 def get_multibitpk_est_secs_per_password():
@@ -301,15 +318,15 @@ def get_multibitpk_est_secs_per_password():
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_multibitpk_verified_password_or_false(p):
-    salted = p + wallet[8:16]
+    salted = p + wallet[:8]
     key1   = hashlib.md5(salted).digest()
     key2   = hashlib.md5(key1 + salted).digest()
     iv     = hashlib.md5(key2 + salted).digest()
-    b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[16:80])
+    b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
     # If it looks like a base58 private key, we've found it
     # (a bit fragile in the interest of speed, e.g. what if comments or whitespace precede the first key?)
     if (b58_privkey[0] == "L" or b58_privkey[0] == "K") and \
-       re.match("[LK][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{51}", b58_privkey):
+        re.match(r"[LK][1-9A-HJ-NP-Za-km-z]{51}", b58_privkey):
             return p
     return False
 
