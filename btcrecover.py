@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.3"
+__version__ =  "0.4.4"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -177,6 +177,24 @@ def load_wallet(wallet_filename):
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
         sys.exit(1)
 
+# Given a key_data blob that was extracted by one of the extract-* scripts,
+# determines the key type and calls a function to load a wallet library and
+# create a wallet based on the key blob. Also configures the get_est_secs_per_password
+# and return_verified_password_or_false globals to call the correct functions
+# for the discovered key type.
+def load_from_key(key_data):
+    global get_est_secs_per_password, return_verified_password_or_false
+    key_type = key_data[:3]
+
+    if key_type == "bc:":
+        load_bitcoincore_from_mkey(key_data[3:])
+        get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
+        return_verified_password_or_false = return_bitcoincore_verified_password_or_false
+        return
+
+    print(parser.prog+": error: unrecognized encrypted key type", file=sys.stderr)
+    sys.exit(1)
+
 
 # Load the Armory library and a wallet file given the filename
 def load_armory_wallet(wallet_filename):
@@ -235,21 +253,11 @@ def load_bitcoincore_wallet(wallet_filename):
     wallet = (encrypted_master_key, salt, iter_count)
 
 # Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
-# and also do the work normally performed by load_wallet() to configure the
-# get_est_secs_per_password and return_verified_password_or_false globals to call
-# the correct Bitcoin Core versions (this can be called instead of load_wallet() )
 def load_bitcoincore_from_mkey(mkey_data):
-    global wallet, get_est_secs_per_password, return_verified_password_or_false
+    global wallet
     load_aes256_library()
-    crc_checked_bytes, mkey_crc = struct.unpack("< 60s I", base64.b64decode(mkey_data))
-    if zlib.crc32(crc_checked_bytes) & 0xffffffff != mkey_crc:
-        print(parser.prog+": error: --mkey encrypted master key corrupted (failed CRC check)", file=sys.stderr)
-        sys.exit(2)
     # These are the same (encrypted_master_key, salt, iter_count) retrieved by load_bitcoincore_wallet()
-    wallet = struct.unpack("< 48s 8s I", crc_checked_bytes)
-    get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
-    return_verified_password_or_false = return_bitcoincore_verified_password_or_false
-    return mkey_crc
+    wallet = struct.unpack("< 48s 8s I", mkey_data)
 
 # Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
 def get_bitcoincore_est_secs_per_password():
@@ -398,6 +406,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
     parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
     parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
+    parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
     parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
     parser.add_argument("--pause",       action="store_true", help="pause before exiting")
     parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
@@ -640,34 +649,55 @@ if __name__ == '__main__':
         except:
             have_progress = False
 
+    # (move this into an argparse group?)
     required_args = 0
     if args.wallet:   required_args += 1
     if args.mkey:     required_args += 1
+    if args.privkey:  required_args += 1
     if args.listpass: required_args += 1
     if required_args != 1:
-        print(parser.prog+": error: argument --wallet (or --listpass or --mkey, exactly one) is required", file=sys.stderr)
+        print(parser.prog+": error: argument --wallet (--listpass, --mkey, or --privkey, exactly one) is required", file=sys.stderr)
         sys.exit(2)
 
     # Load the wallet file
     if args.wallet:
         load_wallet(args.wallet)
 
-    # Use a Bitcoin Core encrypted master key specified at the command line instead of a wallet file
-    if args.mkey:
+    # Prompt for a Bitcoin Core encrypted master key or a private key instead of requiring
+    # a wallet file (the only reason to treat these two differently is to emphasize that
+    # privkeys once decrypted can "leak" Bitcoin, whereas mkeys without the wallet are safe)
+    if args.mkey or args.privkey:
+        # Make sure we don't have readline support (which could save keys in a history file)
         assert "readline" not in sys.modules, "readline not loaded during sensitive input"
-        # Need to save mkey_data (in a global) for reinitializing worker processes on windows
+        if args.privkey:
+            # We could warn about wallet files too, but hopefully that's already obvious...
+            print("WARNING: private keys, once decrypted, provide access to that key's Bitcoin", file=sys.stderr)
         if sys.stdin.isatty():
-            prompt = "Please enter the Bitcoin Core encrypted master key from extract-mkey.py\n> "
+            prompt = "Please enter the encrypted key data from the extract script\n> "
         else:
-            prompt = "Reading Bitcoin Core encrypted master key from stdin\n"
-        mkey_data = raw_input(prompt)
-        # Emulates load_wallet, but using mkey_data instead; returns the crc (required by do_autosave() )
-        mkey_crc = load_bitcoincore_from_mkey(mkey_data)
-        if restored and mkey_crc != savestate["mkey_crc"]:
+            prompt = "Reading encrypted key data from stdin\n"
+        key_crc_data = base64.b64decode(raw_input(prompt))
+        # Need to save key_data (in a global) for reinitializing worker
+        # processes on windows, and key_crc (another global) for do_autosave()
+        key_data   = key_crc_data[:-4]
+        (key_crc,) = struct.unpack("<I", key_crc_data[-4:])
+        if zlib.crc32(key_data) & 0xffffffff != key_crc:
+            print(parser.prog+": error: encrypted key data is corrupted (failed CRC check)", file=sys.stderr)
+            sys.exit(1)
+        is_mkey = key_data.startswith("bc:")  # Bitcoin Core
+        if args.mkey and not is_mkey:
+            print(parser.prog+": error: the --mkey data is not a Bitcoin Core encrypted master key (might be a privkey?)", file=sys.stderr)
+            sys.exit(1)
+        if args.privkey and is_mkey:
+            print(parser.prog+": error: the --privkey data is a Bitcoin Core encrypted mkey, not a privkey", file=sys.stderr)
+            sys.exit(1)
+        # Emulates load_wallet, but using key_data instead
+        load_from_key(key_data)
+        if restored and key_crc != savestate["key_crc"]:
             print(parser.prog+": error: can't restore previous session: the encrypted master key entered is not the same", file=sys.stderr)
             sys.exit(1)
     else:
-        mkey_data = mkey_crc = None
+        key_data = key_crc = None
 
     # Open a new autosave file (if --restore was specified, the restore file
     # is still open and has already been assigned to autosave_file instead)
@@ -1238,14 +1268,14 @@ def simple_typos_generator(password_base):
 
 
 # Init function for the password verifying worker threads:
-#   (re-)loads the wallet file (should only be necessary on Windows),
+#   (re-)loads the wallet or key (should only be necessary on Windows),
 #   tries to set the process priority to minimum, and
 #   begins ignoring SIGINTs for a more graceful exit on Ctrl-C
-def init_worker(wallet_filename, mkey_data):
+def init_worker(wallet_filename, key_data):
     if not wallet:
         if wallet_filename: load_wallet(wallet_filename)
-        elif mkey_data:     load_bitcoincore_from_mkey(mkey_data)
-        else: assert False, "wallet filename or mkey data passed to init_worker"
+        elif key_data:      load_from_key(key_data)
+        else: assert False, "wallet filename or key data passed to init_worker"
     set_process_priority_idle()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 #
@@ -1269,7 +1299,7 @@ def do_autosave(skip):
             skip             = skip,             # passwords completed so far
             token_lists_hash = token_lists_hash, #\
             typos_map_hash   = typos_map_hash,   # > inputs which aren't permitted to change between runs
-            mkey_crc         = mkey_crc          #/
+            key_crc          = key_crc           #/
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
     autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
     signal.signal(signal.SIGINT, orig_handler)
@@ -1378,7 +1408,7 @@ if __name__ == '__main__':
         password_found_iterator = itertools.imap(return_verified_password_or_false, password_iterator)
         set_process_priority_idle()  # this, the only thread, should be nice
     else:
-        pool = multiprocessing.Pool(spawned_threads, init_worker, [args.wallet, mkey_data])
+        pool = multiprocessing.Pool(spawned_threads, init_worker, [args.wallet, key_data])
         password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator, imap_chunksize)
         if main_thread_is_worker: set_process_priority_idle()  # if this thread is cpu-intensive, be nice
 
