@@ -2,7 +2,7 @@
 
 ## *extract-mkey.py* ##
 
-Sometimes, it is not desireable to run *btcrecover* directly on the computer which stores the target wallet file. For example:
+Sometimes, it is not desirable to run *btcrecover* directly on the computer which stores the target wallet file. For example:
 
  * A computer or a cloud-based virtual machine with faster CPUs might be a better place to run *btcrecover*.
  * Configuring *btcrecover* to search for your password correctly can be tricky; you might be interested in finding someone who can configure and run *btcrecover* for you on their computer.

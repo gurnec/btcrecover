@@ -1,11 +1,13 @@
 # *btcrecover* Tutorial #
 
-*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-QT), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), and Electrum. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+
+*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), and Electrum. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
 
 #### Thank You! ####
+
 
 ## Quick Start ##
 
@@ -19,6 +21,7 @@ This tutorial is pretty long... you don't have to read the whole thing. Here are
  3. Next, take a look at *The Token File* section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it. 
  4. Next, take a look at the *Typos* section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
  5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the *Running btcrecover* section and follow the instructions to run *btcrecover* in a Command Prompt window.
+
 
 ## The Token File ##
 
@@ -153,9 +156,13 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
  * `%C`    - an uppercase version of `%c` (might be the same as `%c`, depending on how you set it)
  * `%ic`   - a case-insensitive version of `%c`
+ * `%[chars]` - exactly 1 of the characters between `[` and `]` (e.g. either a `c`, `h`, `a`, `r`, or `s`)
+ * `%1,3[chars]` - between 1 and 3 of the characters between `[` and `]`
+ * `%[0-9a-f]` - exactly 1 of these characters: `0123456789abcdef`
+ * `%2i[0-9a-f]` - exactly 2 of these characters: `0123456789abcdefABCDEF`
  * `%%`    - exactly one “%” (so that %’s in your password aren’t confused as wildcards)
  * `%^`    - exactly one “^” (so it’s not confused with an anchor if it’s at the beginning of a token)
- * `%S`    - exactly one “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if	that’s confusing)
+ * `%S`    - exactly one “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if that’s confusing)
 
 Up until now, most of the features help by reducing the number of passwords that need to be tried by exploiting your knowledge of what’s probably in the password. Wildcards significantly expand the number of passwords that need to be tried, so they’re best used in moderation.
 
@@ -196,6 +203,7 @@ Here are some additional types of typos that require a bit more explanation:
     
     This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$$word5` would both be tried because they each have three typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
 
+
 ## Interrupt and Continue ##
 
 Depending on the number of passwords which need to be tried, running *btcrecover* might take a very long time. If you need to cancel it in the middle of testing, you can do so with Ctrl-C (hold down the Ctrl key and press C) and it will respond with a message such as:
@@ -210,9 +218,11 @@ To make it even safer, you can add the `--autosave savefile` option when you fir
 
 If you cancel in the middle of testing (with Ctrl-C, or due to a reboot, or for any other reason), you can restart testing by either running the exact same command with the exact same options, or by providing this option and nothing else: `--restore savefile`. *btcrecover* will check that the token file hasn’t changed, and it will begin testing with the same set of options exactly where it left off. (Note that the token file, as well as the typos-map file, if used, must still be present and must be unmodified for this to work. If they are not present or if they’ve been changed, *btcrecover* will refuse to start.)
 
+
 ## Testing your config ##
 
 If you'd just like to test your token file and chosen typos, you can use the `--listpass` option (in which case you don't need to supply a wallet file). *btcrecover* will then list out all the passwords to the screen instead of actually testing them against a wallet file. This can also be useful if you have another tool which can test some other type of wallet, and is capable of taking a list of passwords to test from *btcrecover*.
+
 
 ## Installation ##
 
@@ -247,6 +257,7 @@ With this combination, you will also need to download and install:
         sudo apt-get install python-pip
         sudo pip install pycrypto
 
+
 ## Running *btcrecover* ##
 
 (Also see the *Quick Start* section.) After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt window and typing something like this:
@@ -274,6 +285,7 @@ Normally, when you run *btcrecover* it expects you to run it with at least a few
 *btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. Each time you change your wallet password (including the first time you add a password), plus on certain other occasions, MultiBit creates an encrypted private key backup file in a `key-backup` directory (see the link below for more details). These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. Unfortunately, it’s up to you to locate the correct private key backup file for the wallet whose password you need to recover. If you only have one MultiBit wallet, you can just choose the most recent private key backup file. Otherwise, you need to locate a private key backup file that has a date of when you either changed the password of, or added new addresses to the wallet you’d like to recover.
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
+
 
 # Limitations / Caveats #
 
@@ -339,6 +351,7 @@ None of these issues are intentionally malicious, they should be considered secu
 ### Typos Gory Details ###
 
 TODO
+
 
 # Copyright and License #
 
