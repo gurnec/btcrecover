@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.6"
+__version__ =  "0.5.0"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -46,7 +46,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 
 
 ############################## Configurables/Plugins ##############################
-# wildcard sets, simply typo generators, and wallet support functions
+# wildcard sets, simple typo generators, and wallet support functions
 
 
 # Recognized wildcard (e.g. %d, %a) types mapped to their associated sets
@@ -173,7 +173,7 @@ def load_wallet(wallet_filename):
             except: raise
 
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(2)
 
 
 # Given a key_data blob that was extracted by one of the extract-* scripts,
@@ -181,7 +181,7 @@ def load_wallet(wallet_filename):
 # the wallet, and set the measure_performance_iterations global to result in
 # about 0.5 seconds worth of iterations. Also sets the
 # return_verified_password_or_false global to point to the correct function
-# for the discovered key type.
+# for the discovered key type. (This can be called instead of load_wallet() )
 def load_from_key(key_data):
     global return_verified_password_or_false
     key_type = key_data[:3]
@@ -201,8 +201,10 @@ def load_from_key(key_data):
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
+    # TODO: Electrum support
+
     print(parser.prog+": error: unrecognized encrypted key type", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(2)
 
 
 def load_armory_library():
@@ -231,7 +233,7 @@ def load_armory_library():
         else: break  # when it succeeds
     from CppBlockUtils import SecureBinaryData, KdfRomix  # (also a part of Armory)
 
-    sys.argv[1:] = old_argv  # restore the path
+    sys.argv[1:] = old_argv  # restore the command line
 
 # Load the Armory wallet file given the filename
 def load_armory_wallet(wallet_filename):
@@ -252,11 +254,11 @@ def load_armory_from_privkey(privkey_data):
     address = armoryengine.PyBtcAddress.PyBtcAddress().createFromEncryptedKeyData(
         privkey_data[:20],                      # address (160 bit hash)
         SecureBinaryData(privkey_data[20:52]),  # encrypted private key
-        SecureBinaryData(privkey_data[52:68])   # iv
+        SecureBinaryData(privkey_data[52:68])   # initialization vector
     )
     bytes_reqd, iter_count = struct.unpack("< I I", privkey_data[68:76])
     kdf = KdfRomix(bytes_reqd, iter_count, SecureBinaryData(privkey_data[76:]))  # kdf args and seed
-    wallet = (address, kdf)
+    wallet = address, kdf
 
 # This is the time-consuming function executed by worker thread(s):
 # if a password is correct, return it, else return false
@@ -288,14 +290,14 @@ def load_bitcoincore_wallet(wallet_filename):
     # 48 and 8 bytes long respectively, which although currently true may not always be:
     encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I I", mkey)
     if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
-    wallet = (encrypted_master_key, salt, iter_count)
+    wallet = encrypted_master_key, salt, iter_count
 
 # Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
 def load_bitcoincore_from_mkey(mkey_data):
     global measure_performance_iterations, wallet
     load_aes256_library()
-    measure_performance_iterations = 5  # load_aes256_library sets this, but it's changed here
-    # These are the same (encrypted_master_key, salt, iter_count) retrieved by load_bitcoincore_wallet()
+    measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
+    # These are the same encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
     wallet = struct.unpack("< 48s 8s I", mkey_data)
 
 # This is the time-consuming function executed by worker thread(s):
@@ -405,6 +407,46 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
 ############################## Argument Parsing ##############################
 
 
+# Returns an (order preserved) list or string with duplicate elements removed
+# (if input is a string, returns a string, otherwise returns a list)
+# (N.B. not a generator function, so faster for small inputs, not for large)
+def remove_duplicates(iterable):
+    seen = set()
+    unique = []
+    for x in iterable:
+        if x not in seen:
+            unique.append(x)
+            seen.add(x)
+    if isinstance(iterable, str):
+        return "".join(unique) if len(unique) < len(iterable) else iterable
+    return unique
+
+# Converts a wildcard set into a string, expanding ranges and removing duplicates,
+# e.g.: "hexa-fA-F" -> "hexabcdfABCDEF"
+def build_wildcard_set(set_string):
+    return remove_duplicates(re.sub(r"(.)-(.)", expand_single_range, set_string))
+#
+def expand_single_range(m):
+    char_first, char_last = map(ord, m.groups())
+    if char_first > char_last: raise ValueError("first char > last char in wildcard range")
+    return "".join(map(chr, xrange(char_first, char_last+1)))
+
+# Returns a count of valid wildcards in the string, or -1 if any invalid wildcards are present
+# (see expand_wildcards_generator() for more details on wildcards)
+def count_valid_wildcards(str_with_wildcards):
+    # Remove all valid wildcards; if any %'s are left they are invalid
+    valid_wildcards_removed, count = re.subn(r"%(?:(?:\d+,)?\d+)?(?:i)?(?:["+wildcard_keys+"]|\[.+?\])", "", str_with_wildcards)
+    if "%" in valid_wildcards_removed: return -1
+    if count == 0:                     return  0
+    try:
+        # Expand any custom wildcard sets, ignoring the results (but not ignoring any exceptions)
+        for wildcard_set in re.findall(r"%.*?\[(.+?)\]", str_with_wildcards):
+            re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
+        return count
+    except ValueError: return -1
+    except: raise
+
+
 if __name__ == '__main__':
 
     # can raise exceptions on some platforms
@@ -479,8 +521,7 @@ if __name__ == '__main__':
             if not pause_registered and args.pause:
                 atexit.register(lambda: raw_input("Press Enter to exit ..."))
                 pause_registered = True
-        else:
-            tokenlist_file.seek(0)  # reset to beginning of file
+        tokenlist_file.seek(0)  # reset to beginning of file
 
     # There are two ways to restore from an autosave file: either specify --restore (alone)
     # on the command line in which case the saved arguments completely replace everything else,
@@ -508,9 +549,7 @@ if __name__ == '__main__':
         if tokenlist_file:
             if tokenlist_file.read(3) == "#--":
                 print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
-                tokenlist_file.readline()
-            else:
-                tokenlist_file.seek(0)
+            tokenlist_file.seek(0)
         print("Using autosave file '"+autosave_file.name+"'")
         args.skip = savestate["skip"]       # override this with the most recent value
         restored = True   # a global flag for future reference
@@ -523,7 +562,7 @@ if __name__ == '__main__':
         print("Last session ended having finished password #", savestate["skip"])
         if restored_argv != effective_argv:  # TODO: be more lenient than an exact match?
             print(parser.prog+": error: can't restore previous session: the command line options have changed", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         print("Using autosave file '"+args.autosave+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
         restored = True   # a global flag for future reference
@@ -580,13 +619,14 @@ if __name__ == '__main__':
             if ord(c) > 127:
                 print(parser.prog+": error: --custom_wild has non-ASCII character '"+c+"'", file=sys.stderr)
                 sys.exit(2)
-        wildcard_sets["c"] = args.custom_wild
-        wildcard_sets["C"] = args.custom_wild.upper()
+        custom_set_built   = build_wildcard_set(args.custom_wild)
+        wildcard_sets["c"] = custom_set_built
+        wildcard_sets["C"] = remove_duplicates(custom_set_built.upper())
         # If there are any case-sensitive letters in the set, build the case-insensitive versions
-        custom_wildset_caseswapped = "".join([c.swapcase() for c in args.custom_wild if c.swapcase() != c])
-        if len(custom_wildset_caseswapped) > 0:
-            wildcard_nocase_sets["c"] = wildcard_sets["c"] + custom_wildset_caseswapped
-            wildcard_nocase_sets["C"] = wildcard_sets["C"] + custom_wildset_caseswapped.swapcase()
+        custom_set_caseswapped = custom_set_built.swapcase()
+        if custom_set_caseswapped != custom_set_built:
+            wildcard_nocase_sets["c"] = remove_duplicates(custom_set_built + custom_set_caseswapped)
+            wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
         wildcard_keys += "cC"  # keep track of available wildcard types (used in regex's)
 
     regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
@@ -594,17 +634,12 @@ if __name__ == '__main__':
 
     # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
     if args.typos_insert:
-        # Remove all valid wildcard specs; if any %'s are left they are invalid
-        valid_wildcards_removed = re.sub(r"%(?:(?:\d+,)?\d+)?(?:i)?["+wildcard_keys+"]", "", args.typos_insert)
-        if "%" in valid_wildcards_removed:
+        if count_valid_wildcards(args.typos_insert) == -1:
             print(parser.prog+": error: --typos-insert", args.typos_insert, "has an invalid wildcard (%) spec", file=sys.stderr)
             sys.exit(2)
-    #
     # Syntax check any --typos-replace wildcard (it's expanded later in the Password Generation section)
     if args.typos_replace:
-        # Remove all valid wildcard specs; if any %'s are left they are invalid
-        valid_wildcards_removed = re.sub(r"%(?:(?:\d+,)?\d+)?(?:i)?["+wildcard_keys+"]", "", args.typos_replace)
-        if "%" in valid_wildcards_removed:
+        if count_valid_wildcards(args.typos_replace) == -1:
             print(parser.prog+": error: --typos-replace", args.typos_replace, "has an invalid wildcard (%) spec", file=sys.stderr)
             sys.exit(2)
 
@@ -627,15 +662,12 @@ if __name__ == '__main__':
                 if ord(c) > 127:
                     print(parser.prog+": error: --typos-map file has non-ASCII character '"+c+"' on line", line_num, file=sys.stderr)
                     sys.exit(2)
-            #
-            replacement_set = frozenset(split_line[1])  # removes duplicate replacements if any
-            replacement_sorted_list = list(replacement_set)
-            replacement_sorted_list.sort()  # otherwise the order could change between runs, which'd BREAK --skip and --restore
+            replacements = remove_duplicates(split_line[1])
             for c in split_line[0]:
-                if c in replacement_set:
-                    typos_map[c] = [r for r in replacement_sorted_list if r != c]
+                if c in replacements:
+                    typos_map[c] = filter(lambda r: r != c, replacements)
                 else:
-                    typos_map[c] = replacement_sorted_list
+                    typos_map[c] = replacements
         #
         # Take a hash of the typos_map and check it during a session restore
         # to make sure we're actually restoring the exact same session
@@ -650,7 +682,7 @@ if __name__ == '__main__':
         if restored:
             if typos_map_hash != savestate["typos_map_hash"]:
                 print(parser.prog+": error: can't restore previous session: the typos_map file has changed", file=sys.stderr)
-                sys.exit(1)
+                sys.exit(2)
 
     worker_threads = max(args.threads, 1)
 
@@ -713,19 +745,19 @@ if __name__ == '__main__':
         (key_crc,) = struct.unpack("<I", key_crc_data[-4:])
         if zlib.crc32(key_data) & 0xffffffff != key_crc:
             print(parser.prog+": error: encrypted key data is corrupted (failed CRC check)", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         is_mkey = key_data.startswith("bc:")  # Bitcoin Core
         if args.mkey and not is_mkey:
             print(parser.prog+": error: the --mkey data is not a Bitcoin Core encrypted master key (might be a privkey?)", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         if args.privkey and is_mkey:
             print(parser.prog+": error: the --privkey data is a Bitcoin Core encrypted mkey, not a privkey", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         # Emulates load_wallet, but using key_data instead
         load_from_key(key_data)
         if restored and key_crc != savestate["key_crc"]:
             print(parser.prog+": error: can't restore previous session: the encrypted master key entered is not the same", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
     else:
         key_data = key_crc = None
 
@@ -738,7 +770,7 @@ if __name__ == '__main__':
         # Don't overwrite nonzero files or nonfile objects (e.g. directories)
         if os.path.exists(args.autosave) and (os.path.getsize(args.autosave) > 0 or not os.path.isfile(args.autosave)):
             print(parser.prog+": error: --autosave file '"+args.autosave+"' already exists, won't overwrite", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         autosave_file = open(args.autosave, "wb", 0)  # (0 == buffering is disabled)
         print("Using autosave file '"+args.autosave+"'")
 
@@ -820,7 +852,7 @@ if __name__ == '__main__':
             for c in token:
                 if ord(c) > 127:
                     print(parser.prog+": error: token on line", line_num, "has non-ASCII character '"+c+"'", file=sys.stderr)
-                    sys.exit(1)
+                    sys.exit(2)
 
             # Anchored tokens are parsed into sublists which then replace the token string
             # in new_list. Positional and begin anchors are parsed into this:
@@ -834,7 +866,7 @@ if __name__ == '__main__':
             if token[0] == "^":
                 if token[-1] == "$":
                     print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
-                    sys.exit(1)
+                    sys.exit(2)
                 #
                 # If it looks like it might be a positional or range anchor
                 if token[1] in "0123456789," or "$" in token:
@@ -850,17 +882,17 @@ if __name__ == '__main__':
                             end   = sys.maxint if end   is None else int(end)   - 1
                             if begin > end:
                                 print(parser.prog+": error: anchor range of token on line", line_num, "is invalid (begin > end)", file=sys.stderr)
-                                sys.exit(1)
+                                sys.exit(2)
                             if begin < 1:
                                 print(parser.prog+": error: anchor range of token on line", line_num, "must begin with 2 or greater", file=sys.stderr)
-                                sys.exit(1)
+                                sys.exit(2)
                             new_list[i] = [ token[match.end():], begin, end ]  # new sublist for the range anchor
                         # Else it's a positional anchor
                         else:
                             pos = int(match.group("pos")) - 1
                             if pos < 0:
                                 print(parser.prog+": error: anchor position of token on line", line_num, "must be 1 or greater", file=sys.stderr)
-                                sys.exit(1)
+                                sys.exit(2)
                             new_list[i] = [ token[match.end():], pos ]  # new sublist for the positional anchor
                     #
                     # If it's a begin anchor that looks a bit like some other type
@@ -876,15 +908,15 @@ if __name__ == '__main__':
             elif token[-1] == "$":
                 new_list[i] = [ token[:-1], "$" ]  # new sublist for the end anchor
 
-            # Syntax check wildcards: remove all valid wildcard specs; if any %'s are left they are invalid
-            valid_wildcards_removed = re.sub(r"%(?:(?:\d+,)?\d+)?(?:i)?["+wildcard_keys+"]", "", token)
-            if "%" in valid_wildcards_removed:
-                print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
-                sys.exit(1)
-            if len(valid_wildcards_removed) != len(token):
-                has_any_wildcards = True
+            # Syntax check any wildcards
+            wildcard_count = count_valid_wildcards(token)
+            if wildcard_count:
+                if wildcard_count == -1:
+                    print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
+                    sys.exit(2)
+                has_any_wildcards = True  # (a global)
 
-        # Add the completed list to the token_lists list of lists
+        # Add the completed list for this one line to the token_lists list of lists
         token_lists.append(new_list)
 
     tokenlist_file.close()
@@ -901,7 +933,7 @@ if __name__ == '__main__':
     if restored:
         if token_lists_hash != savestate["token_lists_hash"]:
             print(parser.prog+": error: can't restore previous session: the tokenlist file has changed", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
 
 
 ############################## Password Generation ##############################
@@ -941,7 +973,7 @@ def password_generator():
     for tokens_combination in itertools.product(*token_lists):
 
         # Remove any None's, then check against token length constraints:
-        tokens_combination = filter( lambda t: t is not None , tokens_combination)
+        tokens_combination = filter(lambda t: t is not None, tokens_combination)
         if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
 
         # There are two types of anchors- the first type has only a single possible
@@ -1096,9 +1128,9 @@ def generator_product(initial_value, generator, *other_generators):
             for final_value in generator_product(intermediate_value, *other_generators):
                 yield final_value
 
-
 # This generator function that expands all wildcards in the string passed to it,
 # or if there are no wildcards it simply produces that single string
+custom_wildcard_cache = dict()
 def expand_wildcards_generator(password_with_wildcards):
 
     # Quick check to see if any wildcards are present
@@ -1108,18 +1140,32 @@ def expand_wildcards_generator(password_with_wildcards):
         return
 
     # Find the first wildcard parameter in the format %[[min,]max][caseflag]type
-    # where caseflag=="i" if present and type is one of the wildcard_keys (e.g. "%d", "%2n", "%1,3ia", etc.)
-    match = re.search(r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?P<type>["+wildcard_keys+"])", password_with_wildcards)
+    # where caseflag=="i" if present and type is one of the wildcard_keys
+    # (e.g. "%d", "%2n", "%1,3ia", etc.) or type is of the form "[custom-wildcard-set]"
+    match = re.search(r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>["+wildcard_keys+"])|\[(?P<custom>.+?)\])", password_with_wildcards)
     assert match, "parsed valid wildcard spec"
 
     password_prefix = password_with_wildcards[0:match.start()]               # no wildcards present here;
     password_postfix_with_wildcards = password_with_wildcards[match.end():]  # might be other wildcards in here
 
     # Build the set of possible characters based on the wildcard type and caseflag
-    if match.group("nocase") and match.group("type") in wildcard_nocase_sets:
-        wildcard_set = wildcard_nocase_sets[match.group("type")]
+    m_custom, m_nocase = match.group("custom", "nocase")
+    if m_custom:
+        wildcard_set = custom_wildcard_cache.get(m_custom)
+        if wildcard_set is None:
+            wildcard_set = build_wildcard_set(m_custom)
+            if m_nocase:
+                # Build a case-insensitive version
+                wildcard_set_caseswapped = wildcard_set.swapcase()
+                if wildcard_set_caseswapped != wildcard_set:
+                    wildcard_set = remove_duplicates(wildcard_set + wildcard_set_caseswapped)
+            custom_wildcard_cache[m_custom] = wildcard_set
     else:
-        wildcard_set = wildcard_sets[match.group("type")]
+        m_type = match.group("type")
+        if m_nocase and m_type in wildcard_nocase_sets:
+            wildcard_set = wildcard_nocase_sets[m_type]
+        else:
+            wildcard_set = wildcard_sets[m_type]
     assert wildcard_set, "found wildcard type"
 
     # Extract or default the wildcard min and max length
@@ -1237,9 +1283,9 @@ def case_id_changed(case_id1, case_id2):
 if __name__ == '__main__':
     # Req'd by the typo_append_wildcard and typo_replace_wildcard simple generator functions:
     if args.typos_insert:
-        typos_insert_expanded  = [s for s in expand_wildcards_generator(args.typos_insert)]
+        typos_insert_expanded  = list(expand_wildcards_generator(args.typos_insert))
     if args.typos_replace:
-        typos_replace_expanded = [s for s in expand_wildcards_generator(args.typos_replace)]
+        typos_replace_expanded = list(expand_wildcards_generator(args.typos_replace))
     #
     # A list of simple typo generator functions enabled via the command line:
     typo_generators = [generator for name,generator in simple_typos.items() if argsdict.get("typos_"+name)]
@@ -1385,7 +1431,7 @@ if __name__ == '__main__':
         if passwords_count * est_secs_per_password > max_seconds:
             print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
                   .format(passwords_count, args.max_eta), file=sys.stderr)
-            sys.exit(1)
+            sys.exit(2)
         if passwords_count == 5000000:  # takes about 5 seconds on my CPU, YMMV
             print("Counting passwords ...")
     iterate_time = time.clock() - start
