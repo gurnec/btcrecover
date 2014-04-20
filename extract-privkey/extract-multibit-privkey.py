@@ -45,7 +45,7 @@ with open(privkey_filename, "rb") as privkey_file:
     except:
         print(prog+": error: file is not a MultiBit private key file (not base64 encoded)")
         sys.exit(1)
-    if not salt_privkey.startswith("Salted__"):
+    if not salt_privkey.startswith(b"Salted__"):
         print(prog+": error: file is not a MultiBit private key file")
         sys.exit(1)
     if len(salt_privkey) < 80:
@@ -54,15 +54,15 @@ with open(privkey_filename, "rb") as privkey_file:
 
 
 print("\n" +
-      "WARNING: once decrypted, this will provide access to all Bitcoin\n"    +
-      "         funds currently available in your first MultiBit address\n\n" +
+      "WARNING: once decrypted, this will provide access to all Bitcoin funds\n"    +
+      "         available now and in the future of your first MultiBit address\n\n" +
       "MultiBit first encrypted private key, salt, and crc in base64:")
 
 # salt_privkey[8:80] now consists of:
 #   8 bytes of salt, followed by
 #   4 16-byte encrypted aes blocks containing a 52-byte base58 encoded private key
 
-bytes = "mb:" + salt_privkey[8:80]
+bytes = b"mb:" + salt_privkey[8:80]
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))

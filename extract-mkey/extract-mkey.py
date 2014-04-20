@@ -35,7 +35,7 @@ wallet_filename = sys.argv[1]
 
 with open(wallet_filename, "rb") as wallet_file:
     wallet_file.seek(12)
-    if wallet_file.read(8) != "\x62\x31\x05\x00\x09\x00\x00\x00":  # BDB magic, Btree v9
+    if wallet_file.read(8) != b"\x62\x31\x05\x00\x09\x00\x00\x00":  # BDB magic, Btree v9
         print(prog+": error: file is not a Bitcoin Core wallet")
         sys.exit(1)
 
@@ -43,7 +43,7 @@ db_env = bsddb.db.DBEnv()
 db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
 db = bsddb.db.DB(db_env)
 db.open(wallet_filename, "main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
-mkey = db.get("\x04mkey\x01\x00\x00\x00")
+mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
 db.close()
 db_env.close()
 
@@ -59,7 +59,7 @@ if method != 0:
 
 print("Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:")
 
-bytes = "bc:" + encrypted_master_key + salt + struct.pack("<I", iter_count)
+bytes = b"bc:" + encrypted_master_key + salt + struct.pack("<I", iter_count)
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))

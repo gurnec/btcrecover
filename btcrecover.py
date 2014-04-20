@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.4.5"
+__version__ =  "0.4.6"
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -127,12 +127,14 @@ simple_typo_args["map"]       = dict( metavar="FILE", type=argparse.FileType('r'
 
 # TODO: work on wallet "plugin" interface; via subclassing?
 wallet = None
-# Given a filename, determines the wallet type and calls a function to load a
-# wallet library and the wallet. Also configures the get_est_secs_per_password
-# and return_verified_password_or_false globals to call the correct functions
+
+# Given a filename, determines the wallet type and calls a function to load
+# a wallet library, the wallet, and set the measure_performance_iterations
+# global to result in about 0.5 seconds worth of iterations. Also sets the
+# return_verified_password_or_false global to point to the correct function
 # for the discovered wallet type.
 def load_wallet(wallet_filename):
-    global get_est_secs_per_password, return_verified_password_or_false
+    global return_verified_password_or_false
 
     with open(wallet_filename, "rb") as wallet_file:
 
@@ -140,35 +142,31 @@ def load_wallet(wallet_filename):
         if wallet_file.read(8) == b"\xbaWALLET\x00":  # Armory magic
             wallet_file.close()
             load_armory_wallet(wallet_filename)  # passing in a filename
-            get_est_secs_per_password         = get_armory_est_secs_per_password
             return_verified_password_or_false = return_armory_verified_password_or_false
             return
 
         # Bitcoin Core
         wallet_file.seek(12)
-        if wallet_file.read(8) == "\x62\x31\x05\x00\x09\x00\x00\x00":  # BDB magic, Btree v9
+        if wallet_file.read(8) == b"\x62\x31\x05\x00\x09\x00\x00\x00":  # BDB magic, Btree v9
             wallet_file.close()
             load_bitcoincore_wallet(wallet_filename)  # passing in a filename
-            get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
             return_verified_password_or_false = return_bitcoincore_verified_password_or_false
             return
 
         # MultiBit private key backup file (not the wallet file)
         wallet_file.seek(0)
-        try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith("Salted__")
+        try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith(b"Salted__")
         except: is_multibitpk = False
         if is_multibitpk:
             load_multibit_privkey_file(wallet_file)  # passing in a file object
-            get_est_secs_per_password         = get_multibitpk_est_secs_per_password
             return_verified_password_or_false = return_multibitpk_verified_password_or_false
             return
 
         # Electrum
         wallet_file.seek(0)
-        if wallet_file.read(2) == "{'":  # best we can easily do short of just trying to load it
+        if wallet_file.read(2) == b"{'":  # best we can easily do short of just trying to load it
             try:
                 load_electrum_wallet(wallet_file)  # passing in a file object
-                get_est_secs_per_password         = get_electrum_est_secs_per_password
                 return_verified_password_or_false = return_electrum_verified_password_or_false
                 return
             except SyntaxError: pass     # probably wasn't an electrum wallet
@@ -177,24 +175,29 @@ def load_wallet(wallet_filename):
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
         sys.exit(1)
 
+
 # Given a key_data blob that was extracted by one of the extract-* scripts,
-# determines the key type and calls a function to load a wallet library and
-# create a wallet based on the key blob. Also configures the get_est_secs_per_password
-# and return_verified_password_or_false globals to call the correct functions
+# determines the wallet type and calls a function to load a wallet library,
+# the wallet, and set the measure_performance_iterations global to result in
+# about 0.5 seconds worth of iterations. Also sets the
+# return_verified_password_or_false global to point to the correct function
 # for the discovered key type.
 def load_from_key(key_data):
-    global get_est_secs_per_password, return_verified_password_or_false
+    global return_verified_password_or_false
     key_type = key_data[:3]
 
-    if key_type == "bc:":
+    if key_type == b"ar:":
+        load_armory_from_privkey(key_data[3:])
+        return_verified_password_or_false = return_armorypk_verified_password_or_false
+        return
+
+    if key_type == b"bc:":
         load_bitcoincore_from_mkey(key_data[3:])
-        get_est_secs_per_password         = get_bitcoincore_est_secs_per_password
         return_verified_password_or_false = return_bitcoincore_verified_password_or_false
         return
 
-    if key_type == "mb:":
+    if key_type == b"mb:":
         load_multibit_from_privkey(key_data[3:])
-        get_est_secs_per_password         = get_multibitpk_est_secs_per_password
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
@@ -202,10 +205,11 @@ def load_from_key(key_data):
     sys.exit(1)
 
 
-# Load the Armory library and a wallet file given the filename
-def load_armory_wallet(wallet_filename):
-    global armoryengine, CppBlockUtils, wallet
-    # Try to add the Armory libraries to the path on various platforms
+def load_armory_library():
+    global measure_performance_iterations, armoryengine, SecureBinaryData, KdfRomix
+    measure_performance_iterations = 2
+
+    # Try to add the Armory libraries to the path for various platforms
     if sys.platform == "win32":
         win32_path = os.environ.get("ProgramFiles",  r"C:\Program Files (x86)") + r"\Armory"
         sys.path.extend((win32_path, win32_path + r"\library.zip"))
@@ -213,40 +217,68 @@ def load_armory_wallet(wallet_filename):
         sys.path.append("/usr/lib/armory")
     elif sys.platform == "darwin":
         sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
+
     # Temporarily blank out argv before importing the armoryengine, otherwise it attempts to process argv
     old_argv = sys.argv[1:]
     del sys.argv[1:]
+
     # Try up to 10 times to load Armory (there's a race condition on opening the log file in Windows multiprocessing)
     for i in xrange(10):
-        try: import armoryengine.PyBtcWallet, CppBlockUtils
+        try: import armoryengine.PyBtcWallet, armoryengine.PyBtcAddress
         except IOError as e:
             if i<9 and e.filename.endswith(r"\armorylog.txt"): time.sleep(0.1)
-            else: raise
-        else: break
-    wallet = armoryengine.PyBtcWallet.PyBtcWallet().readWalletFile(wallet_filename)
-    sys.argv[1:] = old_argv
+            else: raise  # unexpected failure
+        else: break  # when it succeeds
+    from CppBlockUtils import SecureBinaryData, KdfRomix  # (also a part of Armory)
 
-# Estimate the time it takes to try a single password (on a single CPU) for Armory
-def get_armory_est_secs_per_password():
-    return ( wallet.testKdfComputeTime() + wallet.testKdfComputeTime() ) / 2.0  # about 0.5s by design
+    sys.argv[1:] = old_argv  # restore the path
+
+# Load the Armory wallet file given the filename
+def load_armory_wallet(wallet_filename):
+    global wallet
+    load_armory_library()
+    wallet = armoryengine.PyBtcWallet.PyBtcWallet().readWalletFile(wallet_filename)
 
 # This is the time-consuming function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_armory_verified_password_or_false(p):
-    if wallet.verifyPassphrase(CppBlockUtils.SecureBinaryData(p)): return p
+    if wallet.verifyPassphrase(SecureBinaryData(p)): return p
     else: return False
+
+# Import an Armory private key that was extracted by extract-armory-privkey.py
+def load_armory_from_privkey(privkey_data):
+    global wallet
+    load_armory_library()
+    address = armoryengine.PyBtcAddress.PyBtcAddress().createFromEncryptedKeyData(
+        privkey_data[:20],                      # address (160 bit hash)
+        SecureBinaryData(privkey_data[20:52]),  # encrypted private key
+        SecureBinaryData(privkey_data[52:68])   # iv
+    )
+    bytes_reqd, iter_count = struct.unpack("< I I", privkey_data[68:76])
+    kdf = KdfRomix(bytes_reqd, iter_count, SecureBinaryData(privkey_data[76:]))  # kdf args and seed
+    wallet = (address, kdf)
+
+# This is the time-consuming function executed by worker thread(s):
+# if a password is correct, return it, else return false
+def return_armorypk_verified_password_or_false(p):
+    address, kdf = wallet
+    if address.verifyEncryptionKey(kdf.DeriveKey(SecureBinaryData(p))): return p
+    else:
+        address.binPublicKey65 = SecureBinaryData()  # work around bug in verifyEncryptionKey in Armory 0.91
+        return False
 
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
 def load_bitcoincore_wallet(wallet_filename):
-    global wallet
+    global measure_performance_iterations, wallet
     load_aes256_library()
+    measure_performance_iterations = 5  # load_aes256_library sets this, but it's changed here
     import bsddb.db
     db_env = bsddb.db.DBEnv()
     db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
     db = bsddb.db.DB(db_env)
-    db.open(wallet_filename, "main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
-    mkey = db.get("\x04mkey\x01\x00\x00\x00")
+    db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+    mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
     db.close()
     db_env.close()
     if not mkey:
@@ -260,17 +292,11 @@ def load_bitcoincore_wallet(wallet_filename):
 
 # Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
 def load_bitcoincore_from_mkey(mkey_data):
-    global wallet
+    global measure_performance_iterations, wallet
     load_aes256_library()
+    measure_performance_iterations = 5  # load_aes256_library sets this, but it's changed here
     # These are the same (encrypted_master_key, salt, iter_count) retrieved by load_bitcoincore_wallet()
     wallet = struct.unpack("< 48s 8s I", mkey_data)
-
-# Estimate the time it takes to try a single password (on a single CPU) for Bitcoin Core
-def get_bitcoincore_est_secs_per_password():
-    start = time.clock()
-    for i in xrange(5):  # about 0.5s by design
-        return_bitcoincore_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / 5.0
 
 # This is the time-consuming function executed by worker thread(s):
 # if a password is correct, return it, else return false
@@ -281,7 +307,7 @@ def return_bitcoincore_verified_password_or_false(p):
         derived_key_iv = hashlib.sha512(derived_key_iv).digest()
     master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
     # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-    if master_key.endswith("\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
+    if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
     else: return False
 
 
@@ -295,7 +321,7 @@ def load_multibit_privkey_file(privkey_file):
     wallet = "".join(privkey_file.read(120).split())  # should only be one crlf, but allow more
     if len(wallet) < 108: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
     wallet = base64.b64decode(wallet[:108])
-    assert wallet.startswith("Salted__"), "loaded a Multibit privkey file"
+    assert wallet.startswith(b"Salted__"), "loaded a Multibit privkey file"
     if len(wallet) < 80:  raise EOFError("Expected at least 80 bytes of decoded data in the MultiBit private key file")
     wallet = wallet[8:80]
     # wallet now consists of:
@@ -308,13 +334,6 @@ def load_multibit_from_privkey(privkey_data):
     load_aes256_library()
     wallet = privkey_data
 
-# Estimate the time it takes to try a single password (on a single CPU) for Multibit
-def get_multibitpk_est_secs_per_password():
-    start = time.clock()
-    for i in xrange(test_aes_iterations):
-        return_multibitpk_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / test_aes_iterations
-
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_multibitpk_verified_password_or_false(p):
@@ -325,7 +344,7 @@ def return_multibitpk_verified_password_or_false(p):
     b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
     # If it looks like a base58 private key, we've found it
     # (a bit fragile in the interest of speed, e.g. what if comments or whitespace precede the first key?)
-    if (b58_privkey[0] == "L" or b58_privkey[0] == "K") and \
+    if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
         re.match(r"[LK][1-9A-HJ-NP-Za-km-z]{51}", b58_privkey):
             return p
     return False
@@ -344,36 +363,30 @@ def load_electrum_wallet(wallet_file):
     wallet = base64.b64decode(wallet["seed"])
     if len(wallet) != 64:                raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
 
-# Estimate the time it takes to try a single password (on a single CPU) for Electrum
-def get_electrum_est_secs_per_password():
-    start = time.clock()
-    for i in xrange(test_aes_iterations):
-        return_electrum_verified_password_or_false("timing test passphrase")
-    return (time.clock() - start) / test_aes_iterations
-
 # This is the function executed by worker thread(s):
 # if a password is correct, return it, else return false
 def return_electrum_verified_password_or_false(p):
     key  = hashlib.sha256( hashlib.sha256( p ).digest() ).digest()
     seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
     # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-    if seed.endswith("\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
+    if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
     else: return False
 
 
 # Loads PyCrypto if available, else falls back to the pure python version (30x slower)
 def load_aes256_library():
-    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, test_aes_iterations
+    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, measure_performance_iterations
     try:
         import Crypto.Cipher.AES
         aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
-        test_aes_iterations = 50000  # takes about 0.5 seconds on my CPU, YMMV
+        measure_performance_iterations = 50000
     except:
         import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
         aes256_cbc_decrypt = aes256_cbc_decrypt_pp
         aes256_key_expander = aespython.key_expander.KeyExpander(256)
-        test_aes_iterations =  2000  # takes about 0.5 seconds on my CPU, YMMV
+        measure_performance_iterations = 2000
 
+# Input must be a multiple of 16 bytes; does not strip any padding
 def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
     return Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
 
@@ -1333,9 +1346,16 @@ if __name__ == '__main__':
         print("\n", passwords_count, "password combinations", file=sys.stderr)
         sys.exit(0)
 
+    # Measure the performance of the verification function
+    # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
+    assert measure_performance_iterations, "measure_performance_iterations has been set"
+    start = time.clock()
+    for i in xrange(measure_performance_iterations):
+        return_verified_password_or_false("measure performance passphrase "+str(i))
+    est_secs_per_password = (time.clock() - start) / float(measure_performance_iterations)
+
     # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
-    est_secs_per_password = get_est_secs_per_password()
     if est_secs_per_password < 1.0 / 20000.0:
         main_thread_is_worker = True
         spawned_threads   = worker_threads - 1       # spawn 1 fewer than requested (might be 0)
