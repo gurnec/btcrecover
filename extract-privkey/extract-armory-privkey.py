@@ -63,12 +63,16 @@ wallet = armoryengine.PyBtcWallet.PyBtcWallet().readWalletFile(wallet_filename)
 def print_address(address):
     # The public address string
     desc = address.getAddrStr()
+    desc += " " * (34 - len(desc))  # line them up nicely
     # The first date this address was used, if available
     if address.timeRange[0] != 2**32-1:
         desc += time.strftime(" First:%x", time.localtime(address.timeRange[0]))
     # The last date this address was used, if available
     if address.timeRange[1] != 0:
         desc += time.strftime(" Last:%x", time.localtime(address.timeRange[1]))
+    # Was this address imported into Armory?
+    if address.chainIndex == -2:
+        desc += " [IMPORTED]"
     # The address comments, if any
     comment = wallet.commentsMap.get(address.addrStr20)
     if comment:
