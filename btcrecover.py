@@ -320,16 +320,16 @@ def load_multibit_privkey_file(privkey_file):
     load_aes256_library()
     privkey_file.seek(0)
     # Multibit privkey files contain base64 text split into multiple lines;
-    # we need the first 80 bytes after decoding, which translates to 108 before
-    wallet = "".join(privkey_file.read(120).split())  # should only be one crlf, but allow more
-    if len(wallet) < 108: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
-    wallet = base64.b64decode(wallet[:108])
+    # we need the first 32 bytes after decoding, which translates to 44 before.
+    wallet = "".join(privkey_file.read(50).split())  # join multiple lines into one
+    if len(wallet) < 44: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
+    wallet = base64.b64decode(wallet[:44])
     assert wallet.startswith(b"Salted__"), "loaded a Multibit privkey file"
-    if len(wallet) < 80:  raise EOFError("Expected at least 80 bytes of decoded data in the MultiBit private key file")
-    wallet = wallet[8:80]
+    if len(wallet) < 32:  raise EOFError("Expected at least 80 bytes of decoded data in the MultiBit private key file")
+    wallet = wallet[8:32]
     # wallet now consists of:
     #   8 bytes of salt, followed by
-    #   4 16-byte aes blocks containing a 52-byte base58 encoded private key
+    #   1 16-byte encrypted aes block containing the first 16 base58 chars of a 52-char encoded private key
 
 # Import a MultiBit private key that was extracted by extract-multibit-privkey.py
 def load_multibit_from_privkey(privkey_data):
@@ -346,9 +346,10 @@ def return_multibitpk_verified_password_or_false(p):
     iv     = hashlib.md5(key2 + salted).digest()
     b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
     # If it looks like a base58 private key, we've found it
-    # (a bit fragile in the interest of speed, e.g. what if comments or whitespace precede the first key?)
+    # (there's a 1 in 600 billion chance this hits but the password is wrong)
+    # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
     if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
-        re.match(r"[LK][1-9A-HJ-NP-Za-km-z]{51}", b58_privkey):
+        re.match(r"[LK][1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
             return p
     return False
 
@@ -396,7 +397,7 @@ def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
 # Input must be a multiple of 16 bytes; does not strip any padding.
 # This version is attributed to GitHub user serprex; please see the aespython
 # README.txt for more information. It measures over 30x faster than the more
-# common "slowaes" package (although it's still 30x slower than the PyCrypto) 
+# common "slowaes" package (although it's still 30x slower than the PyCrypto)
 def aes256_cbc_decrypt_pp(key, iv, ciphertext):
     block_cipher  = aespython.aes_cipher.AESCipher( aes256_key_expander.expand(map(ord, key)) )
     stream_cipher = aespython.cbc_mode.CBCMode(block_cipher, 16)
@@ -745,7 +746,7 @@ if __name__ == '__main__':
         assert "readline" not in sys.modules, "readline not loaded during sensitive input"
         if args.privkey:
             # We could warn about wallet files too, but hopefully that's already obvious...
-            print("WARNING: private keys, once decrypted, provide access to that key's Bitcoin", file=sys.stderr)
+            print("WARNING: a complete private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
         if sys.stdin.isatty():
             prompt = "Please enter the encrypted key data from the extract script\n> "
         else:

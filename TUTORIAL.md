@@ -18,7 +18,7 @@ This tutorial is pretty long... you don't have to read the whole thing. Here are
      * A copy of your wallet file, which you can rename to “wallet.dat”. You'll need to do a bit of searching online to discover where your wallet file is (but if you're using MultiBit, please read the *Finding MultiBit Wallet Files* section first).
      * A text (Notepad) file named “tokens.txt” which you will create. It will contain a list of your password guesses (maybe just one).
      * Optional, for more complicated typos, a text file named “typos.txt”.
- 3. Next, take a look at *The Token File* section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it. 
+ 3. Next, take a look at *The Token File* section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it.
  4. Next, take a look at the *Typos* section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
  5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the *Running btcrecover* section and follow the instructions to run *btcrecover* in a Command Prompt window.
 
@@ -97,7 +97,7 @@ As you can guess, `Second_or_bust`, if it is tried, is only tried as the second 
 
 Middle anchors are a bit like positional anchors, only more flexible: the anchored tokens may appear once throughout a specific *range* of positions in the password.
 
-**Note:** Placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.  
+**Note:** Placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.
 
 You specify a middle anchor by adding a comma between two numbers (between the `^` and `$` symbols) at the very beginning of a token (all with no spaces):
 
@@ -119,7 +119,7 @@ You specify a middle anchor by adding a comma between two numbers (between the `
 You can't leave out the comma (that's what makes it a middle anchor instead of a positional anchor). Leaving out a number doesn't change the “never at the beginning or the end” rule which always applies to middle anchors. If you do need a token with a middle anchor to also possibly appear at the beginning or end of a password, you can add second copy to the same line with a beginning or end anchor:
 
     ^,$Anywhere_but_the_beginning Anywhere_but_the_beginning$
-    ^,$Anywhere_but_the_end ^Anywhere_but_the_end    
+    ^,$Anywhere_but_the_end ^Anywhere_but_the_end
 
 ### Token Counts ###
 
@@ -200,7 +200,7 @@ Here are some additional types of typos that require a bit more explanation:
         aA    @
         sS    $5
         oO    0
-    
+
     This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$$word5` would both be tried because they each have three typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
 
 
@@ -306,7 +306,7 @@ The `--delimiter` option allows you to change this behavior. If used, whitespace
 
 Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file (and for the `#` symbol, also in the typos-map file). A special symbol is part of the syntax, and not part of a password.
 
- * `%` - always considered special; `%%` in a token will be replaced by `%` during searches    
+ * `%` - always considered special; `%%` in a token will be replaced by `%` during searches
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
  * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
@@ -318,7 +318,7 @@ This one’s easy... there is none.
 
 All input to *btcrecover* must be 7-bit ASCII. The current version of Armory (which is what *btcrecover* was originally developed for) has this same limitation, so there should be no problems with Armory wallets. Bitcoin Core, MultBit Classic, and Electrum support Unicode passwords. It would be theoretically possible to add Unicode support (at least for the Basic Multilingual Plane, which is what Python supports decently; the SMP would be harder, especially with support for the typos feature), however none of the software wallets normalize their Unicode strings before passing them along to their key derivation functions, and this could cause issues.
 
-In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect. In the mean time, as long as your password consists only of ASCII characters, it should work without any issues. 
+In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect. In the mean time, as long as your password consists only of ASCII characters, it should work without any issues.
 
 ### Resource Usage ###
 
@@ -346,7 +346,7 @@ Most Bitcoin wallet software goes to great lengths to protect your wallet passwo
  * no attempt is made to overwrite sensitive password information in RAM during or after running;
  * unless you use the `--no-dupchecks` option, a large amount of sensitive password information is stored in RAM temporarily, is not securely overwritten, and is very likely swapped out to the paging file where it could remain for a long time even after *btcrecover* has exited.
 
-None of these issues are intentionally malicious, they should be considered security bugs. There are no workarounds for them, short of only running *btcrecover* inside a VM on a hard disk drive (not a solid-state drive) and securely deleting the VM once finished, all of which is far beyond the scope of this tutorial... 
+None of these issues are intentionally malicious, they should be considered security bugs. There are no workarounds for them, short of only running *btcrecover* inside a VM on a hard disk drive (not a solid-state drive) and securely deleting the VM once finished, all of which is far beyond the scope of this tutorial...
 
 ### Typos Gory Details ###
 
