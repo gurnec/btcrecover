@@ -393,9 +393,12 @@ def load_aes256_library():
 def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
     return Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
 
-# Input must be a multiple of 16 bytes; does not strip any padding
+# Input must be a multiple of 16 bytes; does not strip any padding.
+# This version is attributed to GitHub user serprex; please see the aespython
+# README.txt for more information. It measures over 30x faster than the more
+# common "slowaes" package (although it's still 30x slower than the PyCrypto) 
 def aes256_cbc_decrypt_pp(key, iv, ciphertext):
-    block_cipher  = aespython.aes_cipher.AESCipher( aes256_key_expander.expand(bytearray(key)) )
+    block_cipher  = aespython.aes_cipher.AESCipher( aes256_key_expander.expand(map(ord, key)) )
     stream_cipher = aespython.cbc_mode.CBCMode(block_cipher, 16)
     stream_cipher.set_iv(bytearray(iv))
     plaintext = bytearray()
