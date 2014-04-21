@@ -82,9 +82,12 @@ def print_address(address):
 # "list" mode- just list out all addresses that have an encrypted private key
 # except the ROOT address
 if base58_bitcoin_address is None:
+    address_count = 0
     for i, address_hash, address in wallet.getAddrListSortedByChainIndex():
         if address.binPrivKey32_Encr.getSize() != 0 and not address.isAddrChainRoot():
             print_address(address)
+            address_count += 1
+    print("\n Found "+str(address_count)+" addresses with encrypted private keys")
 
 # "extract" mode
 else:

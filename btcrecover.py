@@ -32,7 +32,8 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ =  "0.5.0"
+__version__          = "0.5.1"
+__ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -541,6 +542,10 @@ if __name__ == '__main__':
         if not pause_registered and args.pause:
             atexit.register(lambda: raw_input("Press Enter to exit ..."))
             pause_registered = True
+        # If the order of passwords generated has changed since the last version, don't permit a restore
+        if __ordering_version__ != savestate.get("ordering_version"):
+            print(parser.prog+": error: autosave was created with an incompatible version of "+parser.prog, file=sys.stderr)
+            sys.exit(2)
         assert args.autosave, "autosave option enabled in restored autosave file"
         #
         # We finally know the tokenlist filename; open it here
@@ -562,6 +567,10 @@ if __name__ == '__main__':
         print("Last session ended having finished password #", savestate["skip"])
         if restored_argv != effective_argv:  # TODO: be more lenient than an exact match?
             print(parser.prog+": error: can't restore previous session: the command line options have changed", file=sys.stderr)
+            sys.exit(2)
+        # If the order of passwords generated has changed since the last version, don't permit a restore
+        if __ordering_version__ != savestate.get("ordering_version"):
+            print(parser.prog+": error: autosave was created with an incompatible version of "+parser.prog, file=sys.stderr)
             sys.exit(2)
         print("Using autosave file '"+args.autosave+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
@@ -1375,7 +1384,8 @@ def do_autosave(skip):
             skip             = skip,             # passwords completed so far
             token_lists_hash = token_lists_hash, #\
             typos_map_hash   = typos_map_hash,   # > inputs which aren't permitted to change between runs
-            key_crc          = key_crc           #/
+            key_crc          = key_crc,          #/
+            ordering_version = __ordering_version__ # password ordering can't change between runs
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
     autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
     signal.signal(signal.SIGINT, orig_handler)
