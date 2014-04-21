@@ -8,7 +8,7 @@ Sometimes, it is not desirable to run *btcrecover* directly on the computer whic
  * Configuring *btcrecover* to search for your password correctly can be tricky; you might be interested in finding someone who can configure and run *btcrecover* for you on their computer.
  * You may not trust that *btcrecover* is free from harmful bugs or other malicious behavior. *btcrecover* is open source, and requires no untrustworthy binaries be installed. However it's also a fairly long and complicated Python script, which makes it difficult even for other Python programmers to be certain that it doesn't contain any harmful code (either intentionally malicious or just by accident).
 
-*extract-mkey.py* is a relatively short and simple script which extracts just enough information from a Bitcoin Core wallet file to be useful to *btcrecover* in a password search, but it doesn't extract enough information to put any of your Bitcoin fortune at risk.
+*extract-mkey.py* is a relatively short and simple script which extracts just enough information from a Bitcoin Core wallet file to be useful to *btcrecover* in a password search, but it doesn't extract enough information to put any of your Bitcoin funds at risk.
 
 ### Download ###
 
@@ -20,7 +20,7 @@ If you're on Windows, you will also need to install the latest version of Python
 
 ### Usage ###
 
-After downloading the script, **make a copy of your wallet.dat file into a different folder** (to make it easy, into the same folder as *extract-mkey.py*). As a example for Windows, click on the Start Menu, then click “Run...”, and then type this to open your Bitcoin folder which contains your wallet.dat file: `%appdata%\Bitcoin`. From here you can copy and paste your wallet.dat file into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming you've made a copy of your wallet.dat into the same folder):
+After downloading the script, **make a copy of your wallet.dat file into a different folder** (to make it easy, into the same folder as *extract-mkey.py*). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open your Bitcoin folder which contains your wallet.dat file: `%appdata%\Bitcoin`. From here you can copy and paste your wallet.dat file into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming you've made a copy of your wallet.dat into the same folder):
 
     cd \Users\Chris\Downloads\btcrecover-master\extract-mkey
     C:\python27\python extract-mkey.py wallet.dat
