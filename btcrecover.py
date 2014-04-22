@@ -32,11 +32,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.1"
+__version__          = "0.5.2"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
-       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
+       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib, functools
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -203,7 +203,7 @@ def load_from_key(key_data):
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
-    # TODO: Electrum support
+    # TODO: Electrum support (not sure if it's even possible?)
 
     print(parser.prog+": error: unrecognized encrypted key type", file=sys.stderr)
     sys.exit(2)
@@ -839,9 +839,9 @@ if __name__ == '__main__':
 #     [ AnchoredToken(begin=1, end=2) ]
 # ]
 
+@functools.total_ordering
 class AnchoredToken:
     def __init__(self, token, line_num = "?"):
-        self.orig_token = token
         if token[0] == "^":
             if token[-1] == "$":
                 print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
@@ -896,12 +896,17 @@ class AnchoredToken:
         #
         else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
 
-    def is_positional(self): return True if self.end is     None else False
-    def is_middle(self):     return True if self.end is not None else False
-    def __eq__(self, other): return self.text == other.text and self.begin == other.begin and self.end == other.end
-    def __hash__(self):      return hash(self.orig_token)
+    def is_positional(self):  return True if self.end is     None else False
+    def is_middle(self):      return True if self.end is not None else False
+    # For sets
+    def __hash__(self):       return hash(self.text) ^ hash(self.begin) ^ hash(self.end)
+    def __eq__(self, other):  return self.text == other.text and self.begin == other.begin and self.end == other.end if isinstance(other, AnchoredToken) else False
+    # For sort
+    def __lt__(self, other):  return self.text <  other.text or  self.begin <  other.begin or  self.end <  other.end if isinstance(other, AnchoredToken) else False
 
-has_any_wildcards = False
+has_any_wildcards        = False
+token_set_for_dupchecks  = set()
+has_any_duplicate_tokens = False
 token_lists = []
 if __name__ == '__main__':
     for line_num, line in enumerate(tokenlist_file, 1):
@@ -942,6 +947,13 @@ if __name__ == '__main__':
                     print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
                     sys.exit(2)
                 has_any_wildcards = True  # (a global)
+
+            # Keep track of the existence of any duplicate tokens for future optimization
+            if not has_any_duplicate_tokens:
+                if token in token_set_for_dupchecks:
+                    has_any_duplicate_tokens = True
+                else:
+                    token_set_for_dupchecks.add(token)
 
             # Parse anchor if present
             if token[0] == "^" or token[-1] == "$":
@@ -985,8 +997,14 @@ run_number = 0
 #
 def password_generator():
     global typos_sofar, duplicate_passwords, run_number
-    passwords_seen_once = set()
+    token_combination_seen = set()
+    passwords_seen_once    = set()
     worker_count = 0  # only used if --worker is specified
+
+    if has_any_duplicate_tokens:
+        permutations_function = permutations_nodups
+    else:
+        permutations_function = itertools.permutations
 
     # Build up the modification_generators list; see the inner loop below for more details
     modification_generators = []
@@ -1006,6 +1024,17 @@ def password_generator():
         # Remove any None's, then check against token length constraints:
         tokens_combination = filter(lambda t: t is not None, tokens_combination)
         if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
+
+        # An early layer of duplicate checking that can run regardless of --no-dupchecks
+        # TODO: build a duplicates cache like we do for the final password?
+        # TODO: allow --no-dupchecks to disable this?
+        # TODO: instead of dup checking, write a smarter product (seems hard)?
+        if has_any_duplicate_tokens:
+            tokens_combination_sorted = list(tokens_combination)
+            tokens_combination_sorted.sort()
+            tokens_combination_sorted = tuple(tokens_combination_sorted)
+            if tokens_combination_sorted in token_combination_seen: continue
+            token_combination_seen.add(tokens_combination_sorted)
 
         # There are two types of anchors- the first type has only a single possible
         # position. This type is searched for below and removed from tokens_combination,
@@ -1047,7 +1076,7 @@ def password_generator():
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string
-        for ordered_token_guess in itertools.permutations(tokens_combination):
+        for ordered_token_guess in permutations_function(tokens_combination):
 
             # Insert the positional anchors we removed above back into the guess
             if positional_anchors:
@@ -1066,6 +1095,8 @@ def password_generator():
                 if isinstance(token, AnchoredToken):
                     assert token.is_middle(), "only middle/range anchors left"
                     if token.begin <= i <= token.end:
+                        if (isinstance(ordered_token_guess, tuple)):
+                            ordered_token_guess = list(ordered_token_guess)
                         ordered_token_guess[i] = token.text  # now it's just a string
                     else:
                         invalid_anchors = True
@@ -1135,6 +1166,39 @@ def password_generator():
                 yield password
 
     run_number += 1
+
+# Like itertools.permutations, but avoids duplicates even if input contains some
+# TODO: implement without recursion?
+def permutations_nodups(sequence):
+    if len(sequence) == 2:
+        # Only two permutations to try:
+        yield tuple(sequence)
+        if sequence[0] != sequence[1]:
+            yield (sequence[1], sequence[0])
+
+    elif len(sequence) <= 1:
+        # Only one permutation to try:
+        yield tuple(sequence)
+
+    else:
+        # If the sequence contains no duplicates, use the faster itertools version
+        seen = set()
+        for i, x in enumerate(sequence):
+            if i > 0 and x in seen: break        # don't need to check the first one
+            if i+1 < len(sequence): seen.add(x)  # don't need to add the last one
+        else:  # if we didn't break, there were no duplicates
+            for permutation in itertools.permutations(sequence):
+                yield permutation
+            return
+
+        # Else there's at least one duplicate, use our version
+        seen = set()
+        for i, choice in enumerate(sequence):
+            if i > 0 and choice in seen: continue         # don't need to check the first one
+            if i+1 < len(sequence):     seen.add(choice)  # don't need to add the last one
+            for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
+                yield (choice,) + rest
+        return
 
 # This generator utility is a bit like itertools.product. It takes a list of iterators
 # and invokes them in (the equivalent of) a nested for loop, except instead of a list
