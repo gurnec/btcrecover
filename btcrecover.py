@@ -796,9 +796,8 @@ if __name__ == '__main__':
 # Build up the token_lists structure, a list of lists, reflecting the tokenlist file.
 # Each list in the token_lists list is preceded with a None element unless the
 # corresponding line in the tokenlist file begins with a "+" (see example below).
-# Each token is represented by a string if that token is not anchored, by a list of
-# length 2 if that token is anchored to a single position, or by a list of length
-# 3 if that token is anchored to a range of positions.
+# Each token is represented by a string if that token is not anchored, or by an
+# AnchoredToken object used to store the begin and end fields
 #
 # EXAMPLE FILE:
 #     #   Lines that begin with # are ignored comments
@@ -824,17 +823,84 @@ if __name__ == '__main__':
 # [
 #     [ None,  'an_optional_token_exactly_one_per_line...' ],
 #     [ None,  '...may_or_may_not_be_tried_per_guess' ],
+#
 #     [ None,  'mutually_exclusive',  'token_list',  'on_one_line',  'at_most_one_is_tried' ],
+#
 #     [ 'this_required_token_was_preceded_by_a_plus_in_the_file' ],
 #     [ 'exactly_one_of_these',  'tokens_are_required',  'and_were_preceded_by_a_plus' ],
-#     [  ['if_present_this_is_at_the_beginning', 0],  ['if_present_this_is_at_the_end', '$']  ],
-#     [  ['if_present_this_is_second', 1],  ['if_present_this_is_fifth', 4]  ],
-#     [  ['if_present_its_second_third_or_fourth_(but_never_last)', 1, 3]  ],
-#     [  ['if_present_this_is_second_or_greater_(but_never_last)', 1, sys.maxint]  ],
-#     [  ['exactly_the_same_as_above', 1, sys.maxint]  ],
-#     [  ['if_present_this_is_third_or_less_(but_never_first_or_last)', 1, 2]  ],
-# ]
 #
+#     [ AnchoredToken(begin=0), AnchoredToken(begin="$") ],
+#
+#     [ AnchoredToken(begin=1), AnchoredToken(begin=4) ],
+#
+#     [ AnchoredToken(begin=1, end=3) ],
+#     [ AnchoredToken(begin=1, end=sys.maxint) ],
+#     [ AnchoredToken(begin=1, end=sys.maxint) ],
+#     [ AnchoredToken(begin=1, end=2) ]
+# ]
+
+class AnchoredToken:
+    def __init__(self, token, line_num = "?"):
+        self.orig_token = token
+        if token[0] == "^":
+            if token[-1] == "$":
+                print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
+                sys.exit(2)
+            #
+            # If it looks like it might be a positional or middle anchor
+            if token[1] in "0123456789," or "$" in token:
+                #
+                # If it actually is a syntactically correct positional or middle anchor
+                match = re.match(r"\^(?:(?P<begin>\d+)?(?P<range>,)(?P<end>\d+)?|(?P<pos>\d+))\$(?=.)", token)
+                if match:
+                    # If it's a middle (range) anchor
+                    if match.group("range"):
+                        self.begin = match.group("begin")
+                        self.end   = match.group("end")
+                        self.begin = 1          if self.begin is None else int(self.begin) - 1
+                        self.end   = sys.maxint if self.end   is None else int(self.end)   - 1
+                        if self.begin > self.end:
+                            print(parser.prog+": error: anchor range of token on line", line_num, "is invalid (begin > end)", file=sys.stderr)
+                            sys.exit(2)
+                        if self.begin < 1:
+                            print(parser.prog+": error: anchor range of token on line", line_num, "must begin with 2 or greater", file=sys.stderr)
+                            sys.exit(2)
+                        self.text = token[match.end():]
+                    # Else it's a positional anchor
+                    else:
+                        self.begin = int(match.group("pos")) - 1
+                        self.end   = None
+                        if self.begin < 0:
+                            print(parser.prog+": error: anchor position of token on line", line_num, "must be 1 or greater", file=sys.stderr)
+                            sys.exit(2)
+                        self.text = token[match.end():]
+                #
+                # If it's a begin anchor that looks a bit like some other type
+                else:
+                    print(parser.prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
+                          "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
+                    self.begin = 0
+                    self.end   = None
+                    self.text  = token[1:]
+            # Else it's just a normal begin anchor
+            else:
+                self.begin = 0
+                self.end   = None
+                self.text  = token[1:]
+        #
+        # Parse end anchor if present
+        elif token[-1] == "$":
+            self.begin = "$"
+            self.end   = None
+            self.text  = token[:-1]
+        #
+        else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
+
+    def is_positional(self): return True if self.end is     None else False
+    def is_middle(self):     return True if self.end is not None else False
+    def __eq__(self, other): return self.text == other.text and self.begin == other.begin and self.end == other.end
+    def __hash__(self):      return hash(self.orig_token)
+
 has_any_wildcards = False
 token_lists = []
 if __name__ == '__main__':
@@ -860,7 +926,7 @@ if __name__ == '__main__':
         if new_list[1] == "+" and len(new_list) > 2:
             del new_list[0:2]\
 
-        # Parse anchored tokens into sublists, and check other token syntax
+        # Check token syntax and convert any anchored tokens to an AnchoredToken object
         for i, token in enumerate(new_list):
             if token is None: continue
 
@@ -869,60 +935,6 @@ if __name__ == '__main__':
                     print(parser.prog+": error: token on line", line_num, "has non-ASCII character '"+c+"'", file=sys.stderr)
                     sys.exit(2)
 
-            # Anchored tokens are parsed into sublists which then replace the token string
-            # in new_list. Positional and begin anchors are parsed into this:
-            #   [ 'token_string', position_integer ]
-            # End anchors are parsed into this:
-            #   [ 'token_string', '$' ]
-            # Range anchors are parsed into this:
-            #   [ 'token_string', beginning_position, ending_position ]
-
-            # Parse begin, positional, or range anchor if present
-            if token[0] == "^":
-                if token[-1] == "$":
-                    print(parser.prog+": error: token on line", line_num, "is anchored with both ^ at the beginning and $ at the end", file=sys.stderr)
-                    sys.exit(2)
-                #
-                # If it looks like it might be a positional or range anchor
-                if token[1] in "0123456789," or "$" in token:
-                    #
-                    # If it actually is a syntactically correct positional or range anchor
-                    match = re.match(r"\^(?:(?P<begin>\d+)?(?P<range>,)(?P<end>\d+)?|(?P<pos>\d+))\$(?=.)", token)
-                    if match:
-                        # If it's a range anchor
-                        if match.group("range"):
-                            begin = match.group("begin")
-                            end   = match.group("end")
-                            begin = 1          if begin is None else int(begin) - 1
-                            end   = sys.maxint if end   is None else int(end)   - 1
-                            if begin > end:
-                                print(parser.prog+": error: anchor range of token on line", line_num, "is invalid (begin > end)", file=sys.stderr)
-                                sys.exit(2)
-                            if begin < 1:
-                                print(parser.prog+": error: anchor range of token on line", line_num, "must begin with 2 or greater", file=sys.stderr)
-                                sys.exit(2)
-                            new_list[i] = [ token[match.end():], begin, end ]  # new sublist for the range anchor
-                        # Else it's a positional anchor
-                        else:
-                            pos = int(match.group("pos")) - 1
-                            if pos < 0:
-                                print(parser.prog+": error: anchor position of token on line", line_num, "must be 1 or greater", file=sys.stderr)
-                                sys.exit(2)
-                            new_list[i] = [ token[match.end():], pos ]  # new sublist for the positional anchor
-                    #
-                    # If it's a begin anchor that looks a bit like some other type
-                    else:
-                        print(parser.prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
-                              "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
-                        new_list[i] = [ token[1:], 0 ]  # new sublist for the begin anchor
-                # Else it's just a normal begin anchor
-                else:
-                    new_list[i] = [ token[1:], 0 ]      # new sublist for the begin anchor
-
-            # Parse end anchor if present
-            elif token[-1] == "$":
-                new_list[i] = [ token[:-1], "$" ]  # new sublist for the end anchor
-
             # Syntax check any wildcards
             wildcard_count = count_valid_wildcards(token)
             if wildcard_count:
@@ -930,6 +942,10 @@ if __name__ == '__main__':
                     print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
                     sys.exit(2)
                 has_any_wildcards = True  # (a global)
+
+            # Parse anchor if present
+            if token[0] == "^" or token[-1] == "$":
+                new_list[i] = AnchoredToken(token, line_num)
 
         # Add the completed list for this one line to the token_lists list of lists
         token_lists.append(new_list)
@@ -996,14 +1012,14 @@ def password_generator():
         # and will be inserted back into the correct position later. Also search for
         # invalid anchors of the second type: a range anchor whose minimum allowed
         # position would always place it at or past the end of the tokens (note that
-        # single-position anchors may be at the end, but range anchors may not).
-        positional_anchors     = None
+        # single-position anchors may be at the end, but middle/range anchors may not).
+        positional_anchors     = None  # (will contain strings, not AnchoredToken's)
         new_tokens_combination = []
         invalid_anchors        = False
         for token in tokens_combination:
-            if isinstance(token, list):         # an anchored token
-                pos = token[1]
-                if len(token) == 2:             # a single-position anchor
+            if isinstance(token, AnchoredToken):
+                pos = token.begin
+                if token.is_positional():       # a single-position anchor
                     if pos == "$":
                         pos = len(tokens_combination) - 1
                     elif pos >= len(tokens_combination):
@@ -1014,7 +1030,7 @@ def password_generator():
                     if positional_anchors[pos]:
                         invalid_anchors = True  # two tokens anchored to the same place
                         break
-                    positional_anchors[pos] = token[0]  # save valid single-position anchor
+                    positional_anchors[pos] = token.text  # save valid single-position anchor
                 else:
                     if pos+1 >= len(tokens_combination):
                         invalid_anchors = True  # anchored past or at the end
@@ -1043,14 +1059,14 @@ def password_generator():
             # token. If any anchored token is outside of its permissible range, we continue
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
-            if isinstance(ordered_token_guess[0], list) or isinstance(ordered_token_guess[-1], list):
+            if isinstance(ordered_token_guess[0], AnchoredToken) or isinstance(ordered_token_guess[-1], AnchoredToken):
                 continue  # range anchors are never permitted at the beginning or end
             invalid_anchors = False
             for i, token in enumerate(ordered_token_guess[1:-1], 1):
-                if isinstance(token, list):
-                    assert len(token) == 3, "only range-type anchors left"
-                    if token[1] <= i <= token[2]:
-                        ordered_token_guess[i] = token[0]  # now it's just a string
+                if isinstance(token, AnchoredToken):
+                    assert token.is_middle(), "only middle/range anchors left"
+                    if token.begin <= i <= token.end:
+                        ordered_token_guess[i] = token.text  # now it's just a string
                     else:
                         invalid_anchors = True
                         break
