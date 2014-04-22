@@ -52,6 +52,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 
 # Recognized wildcard (e.g. %d, %a) types mapped to their associated sets
 # of characters; used in expand_wildcards_generator()
+# warning: don't use digits, 'i', '[', or ',' as the key for a wildcard set
 wildcard_sets = {
     "d" : string.digits,
     "a" : string.lowercase,
@@ -445,8 +446,9 @@ def count_valid_wildcards(str_with_wildcards):
     if count == 0:                     return  0
     try:
         # Expand any custom wildcard sets, ignoring the results (but not ignoring any exceptions)
-        for wildcard_set in re.findall(r"%.*?\[(.+?)\]", str_with_wildcards):
-            re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
+        for wildcard_set in re.findall(r"%[\d,i]*?\[(.+?)\]|%%", str_with_wildcards):
+            if wildcard_set:
+                re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
         return count
     except ValueError: return -1
     except: raise
