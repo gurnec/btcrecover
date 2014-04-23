@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.2"
+__version__          = "0.5.3"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -83,8 +83,8 @@ wildcard_nocase_sets = {
 # They are called with the full password and an index into that password of the
 # character which will be replaced.
 #
-def typo_repeat(p, i): return (2 * p[i],)
-def typo_delete(p, i): return ("",)
+def typo_repeat(p, i): return (2 * p[i],)  # a single replacement of len 2
+def typo_delete(p, i): return ("",)        # s single replacement of len 0
 def typo_case(p, i):
     swapped = p[i].swapcase()
     return (swapped,) if swapped != p[i] else ()
@@ -180,7 +180,7 @@ def load_wallet(wallet_filename):
 
 # Given a key_data blob that was extracted by one of the extract-* scripts,
 # determines the wallet type and calls a function to load a wallet library,
-# the wallet, and set the measure_performance_iterations global to result in
+# the key, and set the measure_performance_iterations global to result in
 # about 0.5 seconds worth of iterations. Also sets the
 # return_verified_password_or_false global to point to the correct function
 # for the discovered key type. (This can be called instead of load_wallet() )
@@ -219,7 +219,7 @@ def load_armory_library():
         sys.path.extend((win32_path, win32_path + r"\library.zip"))
     elif sys.platform.startswith("linux"):
         sys.path.append("/usr/lib/armory")
-    elif sys.platform == "darwin":
+    elif sys.platform == "darwin":  # untested
         sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
 
     # Temporarily blank out argv before importing the armoryengine, otherwise it attempts to process argv
@@ -289,7 +289,8 @@ def load_bitcoincore_wallet(wallet_filename):
         raise ValueError("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
                          "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
     # This is a little fragile because it assumes the encrypted key and salt sizes are
-    # 48 and 8 bytes long respectively, which although currently true may not always be:
+    # 48 and 8 bytes long respectively, which although currently true may not always be
+    # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
     encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I I", mkey)
     if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
     wallet = encrypted_master_key, salt, iter_count
@@ -323,10 +324,10 @@ def load_multibit_privkey_file(privkey_file):
     # Multibit privkey files contain base64 text split into multiple lines;
     # we need the first 32 bytes after decoding, which translates to 44 before.
     wallet = "".join(privkey_file.read(50).split())  # join multiple lines into one
-    if len(wallet) < 44: raise EOFError("Expected at least 108 bytes of text in the MultiBit private key file")
+    if len(wallet) < 44: raise EOFError("Expected at least 44 bytes of text in the MultiBit private key file")
     wallet = base64.b64decode(wallet[:44])
     assert wallet.startswith(b"Salted__"), "loaded a Multibit privkey file"
-    if len(wallet) < 32:  raise EOFError("Expected at least 80 bytes of decoded data in the MultiBit private key file")
+    if len(wallet) < 32:  raise EOFError("Expected at least 32 bytes of decoded data in the MultiBit private key file")
     wallet = wallet[8:32]
     # wallet now consists of:
     #   8 bytes of salt, followed by
@@ -385,7 +386,7 @@ def load_aes256_library():
         import Crypto.Cipher.AES
         aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
         measure_performance_iterations = 50000
-    except:
+    except ImportError:
         import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
         aes256_cbc_decrypt = aes256_cbc_decrypt_pp
         aes256_key_expander = aespython.key_expander.KeyExpander(256)
@@ -404,7 +405,6 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
     stream_cipher = aespython.cbc_mode.CBCMode(block_cipher, 16)
     stream_cipher.set_iv(bytearray(iv))
     plaintext = bytearray()
-    i = 0
     for i in xrange(0, len(ciphertext), 16):
         plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )  # input must be a list
     return str(plaintext)
@@ -688,9 +688,7 @@ if __name__ == '__main__':
         # to make sure we're actually restoring the exact same session
         if args.autosave:
             sha1 = hashlib.sha1()
-            sorted_keys = typos_map.keys()
-            sorted_keys.sort()
-            for k in sorted_keys:  # must take the hash in a deterministic order (not in typos_map order)
+            for k in sorted(typos_map.keys()):  # must take the hash in a deterministic order (not in typos_map order)
                 sha1.update(k + str(typos_map[k]))
             typos_map_hash = sha1.digest()
             sha1 = None
@@ -723,7 +721,7 @@ if __name__ == '__main__':
         try:
             from progressbar import *
             have_progress = True
-        except:
+        except ImportError:
             have_progress = False
 
     # (move this into an argparse group?)
@@ -929,7 +927,7 @@ if __name__ == '__main__':
         # then exactly one of the token(s) is required. This is noted in the structure
         # by removing the preceding None we added above (and also delete the "+")
         if new_list[1] == "+" and len(new_list) > 2:
-            del new_list[0:2]\
+            del new_list[0:2]
 
         # Check token syntax and convert any anchored tokens to an AnchoredToken object
         for i, token in enumerate(new_list):
@@ -1030,9 +1028,7 @@ def password_generator():
         # TODO: allow --no-dupchecks to disable this?
         # TODO: instead of dup checking, write a smarter product (seems hard)?
         if has_any_duplicate_tokens:
-            tokens_combination_sorted = list(tokens_combination)
-            tokens_combination_sorted.sort()
-            tokens_combination_sorted = tuple(tokens_combination_sorted)
+            tokens_combination_sorted = tuple(sorted(tokens_combination))
             if tokens_combination_sorted in token_combination_seen: continue
             token_combination_seen.add(tokens_combination_sorted)
 
@@ -1095,7 +1091,7 @@ def password_generator():
                 if isinstance(token, AnchoredToken):
                     assert token.is_middle(), "only middle/range anchors left"
                     if token.begin <= i <= token.end:
-                        if (isinstance(ordered_token_guess, tuple)):
+                        if (not isinstance(ordered_token_guess, list)):
                             ordered_token_guess = list(ordered_token_guess)
                         ordered_token_guess[i] = token.text  # now it's just a string
                     else:
@@ -1156,7 +1152,7 @@ def password_generator():
                                 duplicate_passwords[password] = run_number + 1  # first time we've seen it
                             else: continue                                      # second+ time we've seen it
 
-                # Workers in a server pool ignore passwords not assinged to them
+                # Workers in a server pool ignore passwords not assigned to them
                 if args.worker:
                     if worker_count % workers_total != worker_id-1:
                         worker_count += 1
@@ -1194,8 +1190,8 @@ def permutations_nodups(sequence):
         # Else there's at least one duplicate, use our version
         seen = set()
         for i, choice in enumerate(sequence):
-            if i > 0 and choice in seen: continue         # don't need to check the first one
-            if i+1 < len(sequence):     seen.add(choice)  # don't need to add the last one
+            if i > 0 and choice in seen: continue          # don't need to check the first one
+            if i+1 < len(sequence):      seen.add(choice)  # don't need to add the last one
             for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
                 yield (choice,) + rest
         return
@@ -1317,8 +1313,8 @@ def swap_typos_generator(password_base):
     if max_swaps <= 0 or len(password_base) < 2: return
 
     # First swap one pair of characters, then all combinations of 2 pairs, then of 3,
-    # up to the max requested or up to the max number swappable (whichever's less).
-    # The max number swappable is len // 2 because we never any single character twice.
+    # up to the max requested or up to the max number swappable (whichever's less). The
+    # max number swappable is len // 2 because we never swap any single character twice.
     max_swaps = min(max_swaps, len(password_base) // 2)
     for swap_count in xrange(1, max_swaps + 1):
         typos_sofar += swap_count
@@ -1339,7 +1335,7 @@ def swap_typos_generator(password_base):
                 # Perform and the actual swaps
                 password = password_base
                 for i in swap_indexes:
-                    if password[i] == password[i+1]:
+                    if password[i] == password[i+1]:  # "swapping" these would result in generating a duplicate guess
                         break
                     password = password[:i] + password[i+1] + password[i] + password[i+2:]
                 else:  # if we left the loop normally (didn't break)
@@ -1405,7 +1401,7 @@ def simple_typos_generator(password_base):
             # typo_generators being applied to the selected typo targets
             for typo_generators_per_target in itertools.product(typo_generators, repeat=typos_count):
 
-                # For each of the selected typo targets, call the selected generator to
+                # For each of the selected typo targets, call the generator selected above to
                 # get the replacement(s) of said to-be-replaced typo targets. Each item in
                 # typo_replacements is an iterable (tuple, list, generator, etc.) producing
                 # zero or more replacements for a single target. If there are zero replacements
@@ -1424,7 +1420,7 @@ def simple_typos_generator(password_base):
 
                     # Construct a new password, left-to-right, from password_base and the
                     # one_replacement_set.
-                    # typo_indexes_ has a sentinal at the end; it's the index of
+                    # typo_indexes_ has a added sentinal at the end; it's the index of
                     # one-past-the-end of password_base.
                     typo_indexes_ = typo_indexes + (len(password_base),)
                     password = password_base[0:typo_indexes_[0]]
@@ -1438,7 +1434,7 @@ def simple_typos_generator(password_base):
 ############################## Main ##############################
 
 
-# Init function for the password verifying worker threads:
+# Init function for the password verifying worker processes:
 #   (re-)loads the wallet or key (should only be necessary on Windows),
 #   tries to set the process priority to minimum, and
 #   begins ignoring SIGINTs for a more graceful exit on Ctrl-C
@@ -1459,11 +1455,28 @@ def set_process_priority_idle():
             os.nice(19)
     except: pass
 
+# Once installed, performs cleanup prior to a requested process shutdown on Windows
+def windows_ctrl_handler(signal):
+    if signal == 0:   # if it's a Ctrl-C,
+       return False   # defer to the native Python handler which works just fine
+    #
+    # Python on Windows is a bit touchy with signal handlers; it's safest to just
+    # do all the cleanup code here (even though it's cleaner to throw an exception)
+    if args.autosave:
+        do_autosave(args.skip + passwords_tried, True)  # do this first, it's most important
+        autosave_file.close()
+    print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
+    if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
+        print("\nInterrupted after finishing password #", args.skip + passwords_tried)
+    sys.exit
+
 # TODO: implement a safer atomic autosave? fsync? (buffering is already disabled at file open)
-def do_autosave(skip):
+def do_autosave(skip, inside_interrupt_handler = False):
     assert autosave_file and not autosave_file.closed,  "autosave_file is open"
     autosave_file.seek(0)
-    orig_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)  # ignore Ctrl-C while saving
+    if not inside_interrupt_handler:
+        sigint_handler  = signal.signal(signal.SIGINT,  signal.SIG_IGN)  # ignore Ctrl-C and
+        sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)  # SIGTERM while saving
     autosave_file.truncate()
     cPickle.dump(dict(
             argv             = effective_argv,   # combined options from command line and tokenlists file
@@ -1474,7 +1487,9 @@ def do_autosave(skip):
             ordering_version = __ordering_version__ # password ordering can't change between runs
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
     autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
-    signal.signal(signal.SIGINT, orig_handler)
+    if not inside_interrupt_handler:
+        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
 
 if __name__ == '__main__':
@@ -1591,6 +1606,15 @@ if __name__ == '__main__':
         password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator, imap_chunksize)
         if main_thread_is_worker: set_process_priority_idle()  # if this thread is cpu-intensive, be nice
 
+    # Try to catch all types of intentional program shutdowns so we can
+    # display password progress information and do a final autosave
+    try:
+        signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
+        if sys.platform == "win32":
+            import win32api
+            win32api.SetConsoleCtrlHandler(windows_ctrl_handler, True)
+    except: pass
+
     # Iterate through password_found_iterator looking for a successful guess
     passwords_tried = 0
     if have_progress: progress.start()
@@ -1608,12 +1632,23 @@ if __name__ == '__main__':
             if have_progress: progress.finish()
             print("Password search exhausted")
 
-    # Gracefully handle Ctrl-C, printing the count completed so far
-    # so that it can be skipped if the user restarts the same run
+    # Gracefully handle Ctrl-C (and other intentional program shutdowns), printing the
+    # count completed so far so that it can be skipped if the user restarts the same run
     except KeyboardInterrupt:
-        print("\nInterrupted after finishing password #", args.skip + passwords_tried)
+        print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
+        if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
+            print("\nInterrupted after finishing password #", args.skip + passwords_tried)
+        # (falls through to the autosave next)
 
-    # Autosave the final state (for all cases-- we were interrupted, password was found, or search exhausted)
+    # For unexpected exceptions, still print the count, but re-raise (w/o a final autosave)
+    except:
+        print("\nUnexpected error after finishing password #", args.skip + passwords_tried, file=sys.stderr)
+        if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
+            print("\nUnexpected error after finishing password #", args.skip + passwords_tried)
+        raise
+
+    # Autosave the final state (for all non-error cases-- we're shutting down
+    # (e.g. Ctrl-C or a reboot), the password was found, or the search was exhausted)
     if args.autosave:
         do_autosave(args.skip + passwords_tried)
         autosave_file.close()

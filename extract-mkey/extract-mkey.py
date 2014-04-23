@@ -53,6 +53,7 @@ if not mkey:
 
 # This is a little fragile because it assumes the encrypted key and salt sizes are
 # 48 and 8 bytes long respectively, which although currently true may not always be:
+# (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
 encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I I", mkey)
 if method != 0:
     print(prog+": warning: unexpected Bitcoin Core key derivation method " + str(method))
