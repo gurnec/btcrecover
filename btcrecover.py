@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.3"
+__version__          = "0.5.4"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -98,7 +98,7 @@ def typo_closecase(p, i):  # (case_id functions defined in the Password Generati
 def typo_append_wildcard(p, i):  return [p[i]+e for e in typos_insert_expanded]
 def typo_replace_wildcard(p, i): return [e      for e in typos_replace_expanded if e != p[i]]
 def typo_map(p, i):              return typos_map.get(p[i], ())
-# (typos_insert_expanded and typos_replace_expanded are initalized from
+# (typos_insert_expanded and typos_replace_expanded are initialized from
 # args.typos_insert and args.typos_replace respectively in the Password
 # Generation section. typos_map is initialized in the Argument Parsing section)
 #
@@ -476,7 +476,7 @@ if __name__ == '__main__':
     parser.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
     parser.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
     parser.add_argument("--delimiter",   metavar="STRING", help="the delimiter for multiple alternative tokens on each line of the tokenlist (default: whitespace)")
-    parser.add_argument("--skip",        type=int, default=0, metavar="COUNT", help="skip this many initial passwords for continuing an interupted search")
+    parser.add_argument("--skip",        type=int, default=0, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
     parser.add_argument("--autosave",    metavar="FILE",   help="autosaves (5 min) progress to/ restores it from a file")
     parser.add_argument("--restore",     type=argparse.FileType("r+b", 0), metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
@@ -897,16 +897,21 @@ class AnchoredToken:
     def is_positional(self):  return True if self.end is     None else False
     def is_middle(self):      return True if self.end is not None else False
     # For sets
-    def __hash__(self):       return hash(self.text) ^ hash(self.begin) ^ hash(self.end)
-    def __eq__(self, other):  return self.text == other.text and self.begin == other.begin and self.end == other.end if isinstance(other, AnchoredToken) else False
+    def __hash__(self):
+        return hash(self.text) ^ hash(self.begin) ^ hash(self.end)
+    def __eq__(self, other):
+        return self.text == other.text and self.begin == other.begin and self.end == other.end if isinstance(other, AnchoredToken) else False
     # For sort
-    def __lt__(self, other):  return self.text <  other.text or  self.begin <  other.begin or  self.end <  other.end if isinstance(other, AnchoredToken) else False
+    def __lt__(self, other):
+        return self.text <  other.text or  self.begin <  other.begin or  self.end <  other.end if isinstance(other, AnchoredToken) else False
 
-has_any_wildcards        = False
-token_set_for_dupchecks  = set()
-has_any_duplicate_tokens = False
-token_lists = []
 if __name__ == '__main__':
+
+    has_any_wildcards        = False
+    has_any_duplicate_tokens = False
+    token_set_for_dupchecks  = set()
+    token_lists = []
+
     for line_num, line in enumerate(tokenlist_file, 1):
 
         # Ignore comments
@@ -980,6 +985,43 @@ if __name__ == '__main__':
 ############################## Password Generation ##############################
 
 
+# Checks for duplicate hashable items in multiple identical runs
+# (builds a cache in the first run to be memory efficient in future runs)
+class DuplicateChecker:
+    def __init__(self):
+        self.seen_once  = set()
+        self.duplicates = dict()
+        self.run_number = 0
+
+    def is_duplicate(self, x):
+        # The duplicates cache is built during the first run
+        if self.run_number == 0:
+            if x in self.seen_once:       # If it's the second time we've seen it:
+                self.seen_once.remove(x)      # it's been seen *more* than once
+                self.duplicates[x] = 1        # mark it as having duplicates
+                return True
+            elif x in self.duplicates:    # If it's the third+ time we've seen it
+                return True
+            else:                         # If it's the first time we've seen it
+                self.seen_once.add(x)
+                return False
+
+        # The duplicates cache is available for lookup on second+ runs
+        duplicate = self.duplicates.get(x)
+        if duplicate:
+            if duplicate <= self.run_number:          # First time we've seen it this run:
+                self.duplicates[x] = self.run_number + 1  # mark it as having been seen this run
+                return False
+            else:                                     # Second+ time we've seen it this run
+                return True
+        else:   return False                          # Else it isn't a recorded duplicate
+
+    def run_finished(self):
+        if self.run_number == 0:
+            self.seen_once = None  # No longer need this for second+ runs
+        self.run_number += 1
+
+
 # Used to communicate between typo generators the number of typos that have been
 # created so far during each password generated so that later generators know how
 # many additional typos, at most, they are permitted to add
@@ -989,14 +1031,11 @@ typos_sofar = 0
 # no duplicates from the token_lists global as constructed above plus wildcard expansion
 # and up to a certain number of requested typos
 #
-# Caches duplicate passwords for reducing memory usage during additional (identical) runs
-duplicate_passwords = dict()
-run_number = 0
+token_combination_dups = DuplicateChecker()
+password_dups          = DuplicateChecker()
 #
 def password_generator():
-    global typos_sofar, duplicate_passwords, run_number
-    token_combination_seen = set()
-    passwords_seen_once    = set()
+    global typos_sofar, token_combination_dups, password_dups
     worker_count = 0  # only used if --worker is specified
 
     if has_any_duplicate_tokens:
@@ -1024,13 +1063,12 @@ def password_generator():
         if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
 
         # An early layer of duplicate checking that can run regardless of --no-dupchecks
-        # TODO: build a duplicates cache like we do for the final password?
-        # TODO: allow --no-dupchecks to disable this?
-        # TODO: instead of dup checking, write a smarter product (seems hard)?
-        if has_any_duplicate_tokens:
-            tokens_combination_sorted = tuple(sorted(tokens_combination))
-            if tokens_combination_sorted in token_combination_seen: continue
-            token_combination_seen.add(tokens_combination_sorted)
+        # TODO:
+        #   Allow --no-dupchecks to disable this?
+        #   Be smarter in deciding when to turn this on?
+        #   Instead of dup checking, write a smarter product (seems hard)?
+        if has_any_duplicate_tokens and \
+           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # There are two types of anchors- the first type has only a single possible
         # position. This type is searched for below and removed from tokens_combination,
@@ -1131,52 +1169,29 @@ def password_generator():
                 if regex_only  and not regex_only .search(password): continue
                 if regex_never and     regex_never.search(password): continue
 
-                # Skip producing this password if it's already been produced (unless dupchecks are disabled)
-                if not args.no_dupchecks:
-
-                    # duplicate_passwords cache is built during the first run
-                    if run_number == 0:
-                        if password in passwords_seen_once:               # second time we've seen it;
-                            duplicate_passwords[password] = 1             # this passwords has dup(s)
-                            passwords_seen_once.remove(password)          # (seen more than once - remove it)
-                            continue
-                        else:
-                            if password in duplicate_passwords: continue  # third+ time we've seen it
-                            else: passwords_seen_once.add(password)       # first time we've seen it
-
-                    # duplicate_passwords cache is available for lookup on second+ runs
-                    else:
-                        dup = duplicate_passwords.get(password)
-                        if dup:
-                            if dup <= run_number:
-                                duplicate_passwords[password] = run_number + 1  # first time we've seen it
-                            else: continue                                      # second+ time we've seen it
-
-                # Workers in a server pool ignore passwords not assigned to them
-                if args.worker:
-                    if worker_count % workers_total != worker_id-1:
-                        worker_count += 1
-                        continue
-                    worker_count += 1
+                if not args.no_dupchecks and password_dups.is_duplicate(password): continue
 
                 yield password
 
-    run_number += 1
+    token_combination_dups.run_finished()
+    password_dups.run_finished()
 
-# Like itertools.permutations, but avoids duplicates even if input contains some
+
+# Like itertools.permutations, but avoids duplicates even if input contains some.
+# Input must be a sequence of hashable elements.
 # TODO: implement without recursion?
 def permutations_nodups(sequence):
     if len(sequence) == 2:
         # Only two permutations to try:
-        yield tuple(sequence)
+        yield sequence if isinstance(sequence, tuple) else tuple(sequence)
         if sequence[0] != sequence[1]:
             yield (sequence[1], sequence[0])
 
     elif len(sequence) <= 1:
         # Only one permutation to try:
-        yield tuple(sequence)
-
+        yield sequence if isinstance(sequence, tuple) else tuple(sequence)
     else:
+
         # If the sequence contains no duplicates, use the faster itertools version
         seen = set()
         for i, x in enumerate(sequence):
@@ -1187,7 +1202,12 @@ def permutations_nodups(sequence):
                 yield permutation
             return
 
-        # Else there's at least one duplicate, use our version
+        # If they're all the same, there's only one permutation:
+        if len(seen) == 1:
+            yield sequence if isinstance(sequence, tuple) else tuple(sequence)
+            return
+
+        # Else there's at least one duplicate and two+ permutations; use our version
         seen = set()
         for i, choice in enumerate(sequence):
             if i > 0 and choice in seen: continue          # don't need to check the first one
@@ -1195,6 +1215,7 @@ def permutations_nodups(sequence):
             for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
                 yield (choice,) + rest
         return
+
 
 # This generator utility is a bit like itertools.product. It takes a list of iterators
 # and invokes them in (the equivalent of) a nested for loop, except instead of a list
@@ -1218,6 +1239,7 @@ def generator_product(initial_value, generator, *other_generators):
         for intermediate_value in generator(initial_value):
             for final_value in generator_product(intermediate_value, *other_generators):
                 yield final_value
+
 
 # This generator function that expands all wildcards in the string passed to it,
 # or if there are no wildcards it simply produces that single string
