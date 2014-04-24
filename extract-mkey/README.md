@@ -47,4 +47,4 @@ The encrypted mkey is useful to *btcrecover*, but it does not contain any of you
 
 ### Limitations ###
 
-*extract-mkey.py* only works with Bitcoin Core (a.k.a. Bitcoin-QT) wallet files.
+*extract-mkey.py* only works with Bitcoin Core (a.k.a. Bitcoin-QT) wallet files. For Armory and MultiBit wallets, please refer to the [extract-privkey scripts](../extract-privkey/README.md).

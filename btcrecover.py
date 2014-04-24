@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.4"
+__version__          = "0.5.5"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -516,7 +516,7 @@ if __name__ == '__main__':
     # (note that command line arguments can override arguments in this file)
     if tokenlist_file:
         if tokenlist_file.read(3) == "#--":  # TODO: Unicode BOM breaks this
-            print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'")
+            print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
             tokenlist_args = ("--"+tokenlist_file.readline()).split()  # TODO: support quoting / escaping?
             for arg in tokenlist_args:
                 if arg.startswith("--to"):  # --tokenlist
@@ -1123,7 +1123,7 @@ def password_generator():
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
             if isinstance(ordered_token_guess[0], AnchoredToken) or isinstance(ordered_token_guess[-1], AnchoredToken):
-                continue  # range anchors are never permitted at the beginning or end
+                continue  # middle/range anchors are never permitted at the beginning or end
             invalid_anchors = False
             for i, token in enumerate(ordered_token_guess[1:-1], 1):
                 if isinstance(token, AnchoredToken):
@@ -1146,12 +1146,11 @@ def password_generator():
             # Reset this for each new password_base
             typos_sofar = 0
 
-            # modification_generators is a list of function generators each of which take a
+            # modification_generators is a list of function generators each of which takes a
             # string and produces one or more password variations based on that string. It is
             # built at the beginning of this function, and is built differently depending on
             # the token_lists (are any wildcards present?) and the program options (were any
-            # typos requested?). It may contain:
-            #     expand_wildcards_generator, swap_typos_generator, and/or simple_typos_generator
+            # typos requested?).
 
             # If any modifications have been requested, create an iterator that will
             # loop through all combinations of the requested modifications
@@ -1193,11 +1192,8 @@ def permutations_nodups(sequence):
     else:
 
         # If the sequence contains no duplicates, use the faster itertools version
-        seen = set()
-        for i, x in enumerate(sequence):
-            if i > 0 and x in seen: break        # don't need to check the first one
-            if i+1 < len(sequence): seen.add(x)  # don't need to add the last one
-        else:  # if we didn't break, there were no duplicates
+        seen = set(sequence)
+        if len(seen) == len(sequence):
             for permutation in itertools.permutations(sequence):
                 yield permutation
             return
