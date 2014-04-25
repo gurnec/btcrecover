@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.6"
+__version__          = "0.5.7"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -906,6 +906,17 @@ class AnchoredToken:
     # For sort
     def __lt__(self, other):
         return self.text <  other.text or  self.begin <  other.begin or  self.end <  other.end if isinstance(other, AnchoredToken) else False
+    # For hashlib
+    def __str__(self):
+        if self.begin == 0:   return "^" + self.text
+        if self.begin == "$": return self.text + "$"
+        strval = "^"
+        if self.end is None or self.begin > 1: strval += str(self.begin + 1)
+        if self.end:
+            strval += ","
+            if self.end < sys.maxint: strval += str(self.end + 1)
+        return strval + "$" + self.text
+    def __repr__(self): return self.__class__.__name__ + "(" + repr(str(self)) + ")"
 
 if __name__ == '__main__':
 
