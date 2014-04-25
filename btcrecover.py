@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.5"
+__version__          = "0.5.6"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -444,14 +444,16 @@ def count_valid_wildcards(str_with_wildcards):
     valid_wildcards_removed, count = re.subn(r"%(?:(?:\d+,)?\d+)?(?:i)?(?:["+wildcard_keys+"]|\[.+?\])", "", str_with_wildcards)
     if "%" in valid_wildcards_removed: return -1
     if count == 0:                     return  0
-    try:
-        # Expand any custom wildcard sets, ignoring the results (but not ignoring any exceptions)
-        for wildcard_set in re.findall(r"%[\d,i]*?\[(.+?)\]|%%", str_with_wildcards):
-            if wildcard_set:
+    # Expand any custom wildcard sets for the sole purpose of checking for exceptions (e.g. %[z-a])
+    # We know all wildcards present have valid syntax, so we don't need to use the full regex, but
+    # we do need to capture %% to avoid seeing this as a wildcard set (it isn't one): %%[not-a-set]
+    for wildcard_set in re.findall(r"%[\d,i]*\[(.+?)\]|%%", str_with_wildcards):
+        if wildcard_set:
+            try:
                 re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
-        return count
-    except ValueError: return -1
-    except: raise
+            except ValueError: return -1
+            except: raise
+    return count
 
 
 if __name__ == '__main__':
@@ -635,14 +637,14 @@ if __name__ == '__main__':
                 print(parser.prog+": error: --custom_wild has non-ASCII character '"+c+"'", file=sys.stderr)
                 sys.exit(2)
         custom_set_built   = build_wildcard_set(args.custom_wild)
-        wildcard_sets["c"] = custom_set_built
+        wildcard_sets["c"] = custom_set_built  # (duplicates already removed by build_wildcard_set)
         wildcard_sets["C"] = remove_duplicates(custom_set_built.upper())
         # If there are any case-sensitive letters in the set, build the case-insensitive versions
         custom_set_caseswapped = custom_set_built.swapcase()
         if custom_set_caseswapped != custom_set_built:
             wildcard_nocase_sets["c"] = remove_duplicates(custom_set_built + custom_set_caseswapped)
             wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
-        wildcard_keys += "cC"  # keep track of available wildcard types (used in regex's)
+        wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
 
     regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
     regex_never = re.compile(args.regex_never) if args.regex_never else None
@@ -996,7 +998,7 @@ class DuplicateChecker:
     def is_duplicate(self, x):
         # The duplicates cache is built during the first run
         if self.run_number == 0:
-            if x in self.seen_once:       # If it's the second time we've seen it:
+            if x in self.seen_once:       # If it's now the second time we've seen it:
                 self.seen_once.remove(x)      # it's been seen *more* than once
                 self.duplicates[x] = 1        # mark it as having duplicates
                 return True
@@ -1062,23 +1064,16 @@ def password_generator():
         tokens_combination = filter(lambda t: t is not None, tokens_combination)
         if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
 
-        # An early layer of duplicate checking that can run regardless of --no-dupchecks
-        # TODO:
-        #   Allow --no-dupchecks to disable this?
-        #   Be smarter in deciding when to turn this on?
-        #   Instead of dup checking, write a smarter product (seems hard)?
-        if has_any_duplicate_tokens and \
-           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
-
-        # There are two types of anchors- the first type has only a single possible
-        # position. This type is searched for below and removed from tokens_combination,
-        # and will be inserted back into the correct position later. Also search for
-        # invalid anchors of the second type: a range anchor whose minimum allowed
-        # position would always place it at or past the end of the tokens (note that
-        # single-position anchors may be at the end, but middle/range anchors may not).
-        positional_anchors     = None  # (will contain strings, not AnchoredToken's)
-        new_tokens_combination = []
-        invalid_anchors        = False
+        # There are two types of anchors, positional and middle/range. Positional anchors
+        # only have a single possible position; middle anchors have a range, but are never
+        # tried at the beginning or end. Below, build a tokens_combination_nopos list from
+        # tokens_combination with all positional anchors removed. They will be inserted
+        # back into the correct position later. Also search for invalid anchors of any
+        # type: a positional anchor placed past the end of the current combination (based
+        # on its length) or a middle anchor whose begin position is past *or at* the end.
+        positional_anchors       = None  # (will contain strings, not AnchoredToken's)
+        tokens_combination_nopos = []
+        invalid_anchors          = False
         for token in tokens_combination:
             if isinstance(token, AnchoredToken):
                 pos = token.begin
@@ -1093,24 +1088,36 @@ def password_generator():
                     if positional_anchors[pos]:
                         invalid_anchors = True  # two tokens anchored to the same place
                         break
-                    positional_anchors[pos] = token.text  # save valid single-position anchor
-                else:
+                    positional_anchors[pos] = token.text    # save valid single-position anchor
+                else:                           # else it's a middle anchor
                     if pos+1 >= len(tokens_combination):
-                        invalid_anchors = True  # anchored past or at the end
+                        invalid_anchors = True  # anchored past *or at* the end
                         break
-                    new_tokens_combination.append(token)  # keep this token as-is
-            else:                               # not an anchor token, just a string
-                new_tokens_combination.append(token)  # keep this token as-is
+                    tokens_combination_nopos.append(token)  # add this token (a middle anchor)
+            else:                                           # else it's not an anchored token,
+                tokens_combination_nopos.append(token)      # add this token (just a string)
         if invalid_anchors: continue
         #
-        if len(new_tokens_combination) > 0:
-            tokens_combination = new_tokens_combination
-        else:
-            tokens_combination = [ "" ]
+        if len(tokens_combination_nopos) == 0:  # if all tokens have positional anchors,
+            tokens_combination_nopos = ( "", )  # make this non-empty so a password can be created
+
+        # Do some duplicate checking early on to avoid running through potentially a
+        # lot of passwords all of which end up being duplicates. We check the current
+        # combination (of all tokens), sorted because different orderings of token
+        # combinations are equivalent at this point. This runs regardless of the
+        # --no-dupchecks option because it probably doesn't take up much memory...
+        # TODO:
+        #   Allow --no-dupchecks, or something else, to disable this?
+        #   Be smarter in deciding when to turn this on?
+        #   Instead of dup checking, write a smarter product (seems hard)?
+        if has_any_duplicate_tokens and \
+           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
-        # combination of tokens and combines the tokens to create a password string
-        for ordered_token_guess in permutations_function(tokens_combination):
+        # combination of tokens and combines the tokens to create a password string.
+        # Because positionally anchored tokens can only appear in one position, they
+        # are not passed to the permutations_function.
+        for ordered_token_guess in permutations_function(tokens_combination_nopos):
 
             # Insert the positional anchors we removed above back into the guess
             if positional_anchors:
@@ -1123,7 +1130,7 @@ def password_generator():
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
             if isinstance(ordered_token_guess[0], AnchoredToken) or isinstance(ordered_token_guess[-1], AnchoredToken):
-                continue  # middle/range anchors are never permitted at the beginning or end
+                continue  # middle anchors are never permitted at the beginning or end
             invalid_anchors = False
             for i, token in enumerate(ordered_token_guess[1:-1], 1):
                 if isinstance(token, AnchoredToken):
@@ -1165,9 +1172,12 @@ def password_generator():
 
                 if typos_sofar < args.min_typos: continue
 
+                # Check the password against the --regex-only and --regex-never options
                 if regex_only  and not regex_only .search(password): continue
                 if regex_never and     regex_never.search(password): continue
 
+                # This duplicate check can be disabled via --no-dupchecks
+                # because it can take up a lot memory, sometimes needlessly
                 if not args.no_dupchecks and password_dups.is_duplicate(password): continue
 
                 yield password
@@ -1260,7 +1270,7 @@ def expand_wildcards_generator(password_with_wildcards):
     # Build the set of possible characters based on the wildcard type and caseflag
     m_custom, m_nocase = match.group("custom", "nocase")
     if m_custom:
-        wildcard_set = custom_wildcard_cache.get(m_custom)
+        wildcard_set = custom_wildcard_cache.get((m_custom, m_nocase))
         if wildcard_set is None:
             wildcard_set = build_wildcard_set(m_custom)
             if m_nocase:
@@ -1268,7 +1278,7 @@ def expand_wildcards_generator(password_with_wildcards):
                 wildcard_set_caseswapped = wildcard_set.swapcase()
                 if wildcard_set_caseswapped != wildcard_set:
                     wildcard_set = remove_duplicates(wildcard_set + wildcard_set_caseswapped)
-            custom_wildcard_cache[m_custom] = wildcard_set
+            custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
     else:
         m_type = match.group("type")
         if m_nocase and m_type in wildcard_nocase_sets:
