@@ -10,14 +10,16 @@ Sometimes, it is not desirable to run *btcrecover* directly on the computer whic
 
 *extract-armory-privkey.py* and *extract-multibit-privkey.py* are relatively short and simple scripts which extract a single encrypted private key (or for MultiBit, just a fraction of a private key) associated with a single Bitcoin address from a wallet. *btcrecover* can then operate on this single key, and once decrypted, only the Bitcoin funds associated with this one address could ever be at risk. The rest of your keys remain safely in your wallet.
 
+For more information regarding *btcrecover*, please see [TUTORIAL.md](../TUTORIAL.md).
+
 ### Download ###
 
 You can download the entire *btcrecover* package from: <https://github.com/gurnec/btcrecover/archive/master.zip>
 
 If you'd prefer to download just a single extract script, please select the one for your wallet software from below, then right click and choose “Save link as...” or “Save target as...”:
 
- * Armory - <https://github.com/gurnec/btcrecover/blob/master/extract-privkey/extract-armory-privkey.py>
- * MultiBit - <https://github.com/gurnec/btcrecover/blob/master/extract-privkey/extract-multibit-privkey.py>
+ * Armory - <https://github.com/gurnec/btcrecover/raw/master/extract-privkey/extract-armory-privkey.py>
+ * MultiBit - <https://github.com/gurnec/btcrecover/raw/master/extract-privkey/extract-multibit-privkey.py>
 
 If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, you must install the 32-bit version. For MultiBit, you may install either the 32-bit or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or the “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version, both available here: <https://www.python.org/download/>. For Armory wallets, you must also have Armory v0.91 or later installed.
 
@@ -53,6 +55,12 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
     ...
     Password found: xxx
 
+#### Armory Technical Details ####
+
+The *extract-armory-privkey.py* script is intentionally short and should be easy to read for any Python programmer. As detailed above, it extracts a single address and private key using the official armoryengine library, putting this one address at risk. However, without access to the rest of your wallet file, the rest of your addresses and private keys are not at risk, even after a successful password guess and decryption.
+
+Armory automatically pre-generates 100 addresses and private keys before they are needed, which is why you can ask it to display a "new" address without a password. If you've asked for and then used 100 new addresses without providing a password, it's possible that Armory will be unable to provide a new address (without a password) as required by this procedure. If this is the case, you'll have no choice but to choose an already used address. To assist in choosing such an address, you can run `extract-armory-privkey.py list` from the command line to display a list of addresses available in the wallet which include an encrypted private key (including pre-generated addresses that may not be visible via the Armory GUI) along with the first and last known dates of use for each address. These dates of known use do not check the current block chain; you should always check a questionable address on <https://blockchain.info/> to check it's current balance before you use it with this procedure.
+
 
 ### Usage for MultiBit ###
 
@@ -82,7 +90,7 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 
 #### MultiBit Technical Details ####
 
-The *extract-multibit-privkey.py* script extracts the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 30% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 characters are decrypted (assuming the password search succeeds). Because these 16 characters are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the characters with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
+The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 30% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 characters are decrypted (assuming the password search succeeds). Because these 16 characters are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the characters with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
 
 Without access to the rest of your private key backup file or your wallet file, these 16 characters alone do not put any of your Bitcoin funds at risk, even after a successful password guess and decryption.
 

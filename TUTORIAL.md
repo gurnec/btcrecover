@@ -13,14 +13,14 @@ If you find *btcrecover* helpful, please consider a small donation:
 
 This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
 
- 1. Jump down to the *Installation* section to see what you need to download (which differs depending on your operating system and which Bitcoin wallet software you use).
+ 1. Jump down to the [Installation](#installation) section to see what you need to download (which differs depending on your operating system and which Bitcoin wallet software you use).
  2. Once you've unzipped the *btcrecover* download, you'll want to place two (possibly three) other files into the directory that has the `btcrecover.py` script file:
-     * A copy of your wallet file, which you can rename to “wallet.dat”. You'll need to do a bit of searching online to discover where your wallet file is (but if you're using MultiBit, please read the *Finding MultiBit Wallet Files* section first).
+     * A copy of your wallet file, which you can rename to “wallet.dat”. You'll need to do a bit of searching online to discover where your wallet file is (but if you're using MultiBit, please read the [Finding MultiBit Wallet Files](#finding-multibit-wallet-files) section first).
      * A text (Notepad) file named “tokens.txt” which you will create. It will contain a list of your password guesses (maybe just one).
      * Optional, for more complicated typos, a text file named “typos.txt”.
- 3. Next, take a look at *The Token File* section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it.
- 4. Next, take a look at the *Typos* section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
- 5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the *Running btcrecover* section and follow the instructions to run *btcrecover* in a Command Prompt window.
+ 3. Next, take a look at [The Token File](#the-token-file) section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it.
+ 4. Next, take a look at the [Typos](#typos) section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
+ 5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the [Running *btcrecover*](#running-btcrecover) section and follow the instructions to run *btcrecover* in a Command Prompt window.
 
 
 ## The Token File ##
@@ -260,12 +260,12 @@ With this combination, you will also need to download and install:
 
 ## Running *btcrecover* ##
 
-(Also see the *Quick Start* section.) After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt window and typing something like this:
+(Also see the [Quick Start](#quick-start) section.) After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt window and typing something like this:
 
     cd \Users\Chris\Downloads\btcrecover-master
     C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt
 
-Locating your wallet file so that you can make a copy is up to you... Google/Bing are your friends (but read below for a special note about MultiBit). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
+Locating your wallet file so that you can make a copy is up to you... Google/Bing are your friends (but read below for a [special note about MultiBit](#finding-multibit-wallet-files)). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
 
 Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the required `--wallet wallet.dat --tokenlist tokens.txt` options on the command line in any order.
 
@@ -310,7 +310,7 @@ Additionally, *btcrecover* considers the following symbols special under certain
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
  * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
- * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the *Mutual Exclusion* section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
+ * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
 
 ### Unicode Support ###
 
