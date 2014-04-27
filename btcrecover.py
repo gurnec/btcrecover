@@ -1507,7 +1507,7 @@ def windows_ctrl_handler(signal):
     print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
     if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
         print("\nInterrupted after finishing password #", args.skip + passwords_tried)
-    sys.exit
+    sys.exit()
 
 # TODO: implement a safer atomic autosave? fsync? (buffering is already disabled at file open)
 def do_autosave(skip, inside_interrupt_handler = False):

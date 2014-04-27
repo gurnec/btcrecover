@@ -23,12 +23,13 @@
 #
 #                      Thank You!
 
+from __future__ import print_function
 import sys, os.path, bsddb.db, struct, base64, zlib
 
 prog = os.path.basename(sys.argv[0])
 
 if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
-    print("usage: "+prog+" BITCOINCORE_WALLET_FILE")
+    print("usage:", prog, "BITCOINCORE_WALLET_FILE", file=sys.stderr)
     sys.exit(2)
 
 wallet_filename = sys.argv[1]
@@ -36,7 +37,7 @@ wallet_filename = sys.argv[1]
 with open(wallet_filename, "rb") as wallet_file:
     wallet_file.seek(12)
     if wallet_file.read(8) != b"\x62\x31\x05\x00\x09\x00\x00\x00":  # BDB magic, Btree v9
-        print(prog+": error: file is not a Bitcoin Core wallet")
+        print(prog+": error: file is not a Bitcoin Core wallet", file=sys.stderr)
         sys.exit(1)
 
 db_env = bsddb.db.DBEnv()
@@ -56,9 +57,9 @@ if not mkey:
 # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
 encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I I", mkey)
 if method != 0:
-    print(prog+": warning: unexpected Bitcoin Core key derivation method " + str(method))
+    print(prog+": warning: unexpected Bitcoin Core key derivation method", str(method), file=sys.stderr)
 
-print("Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:")
+print("Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:", file=sys.stderr)
 
 bytes = b"bc:" + encrypted_master_key + salt + struct.pack("<I", iter_count)
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)

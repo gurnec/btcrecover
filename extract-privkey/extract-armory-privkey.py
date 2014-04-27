@@ -23,12 +23,13 @@
 #
 #                      Thank You!
 
+from __future__ import print_function
 import sys, os.path, struct, zlib, base64, time
 
 prog = os.path.basename(sys.argv[0])
 
 def print_usage():
-    print("usage: "+prog+" ARMORY_WALLET_FILE <option>\n" +
+    print("usage:", prog, "ARMORY_WALLET_FILE <option>\n" +
           "    <option> must either be:\n" +
           "    list                    - list addresses that have encrypted private keys\n" +
           "    extract BITCOIN_ADDRESS - extract the encrypted private key of the address")
@@ -60,7 +61,7 @@ import armoryengine.PyBtcWallet, armoryengine.ArmoryUtils
 wallet = armoryengine.PyBtcWallet.PyBtcWallet().readWalletFile(wallet_filename)
 
 # Utility function to print out some useful details of an Armory address object
-def print_address(address):
+def print_address(address, file=sys.stdout):
     # The public address string
     desc = address.getAddrStr()
     desc += " " * (34 - len(desc))  # line them up nicely
@@ -77,7 +78,7 @@ def print_address(address):
     comment = wallet.commentsMap.get(address.addrStr20)
     if comment:
         desc += " " + comment
-    print(desc)
+    print(desc, file=file)
 
 # "list" mode- just list out all addresses that have an encrypted private key
 # except the ROOT address
@@ -94,24 +95,25 @@ else:
     # Lookup the address in the wallet and make sure it's suitable
     address = wallet.addrMap.get(armoryengine.ArmoryUtils.addrStr_to_hash160(base58_bitcoin_address)[1])
     if address is None:
-        print(prog+": error: bitcoin address not found in this wallet")
+        print(prog+": error: bitcoin address not found in this wallet", file=sys.stderr)
         sys.exit(1)
-    print_address(address)
+
+    print("\nWARNING: once decrypted, this will provide access to all Bitcoin\n" +
+            "         funds available now and in the future of this one address\n", file=sys.stderr)
+    print_address(address, file=sys.stderr)
+
     if address.binPrivKey32_Plain.getSize() != 0:
-        print(prog+": error: private key is already decrypted")
+        print(prog+": error: private key is already decrypted", file=sys.stderr)
         sys.exit(1)
     if address.binPrivKey32_Encr.getSize() == 0:
-        print(prog+": error: private key for this address is not stored in this wallet")
+        print(prog+": error: private key for this address is not stored in this wallet", file=sys.stderr)
         sys.exit(1)
     assert not address.isAddrChainRoot(),             "this isn't the ROOT address"
     assert len(address.addrStr20)              == 20, "public key hash is 20 bytes long"
     assert address.binPrivKey32_Encr.getSize() == 32, "encrypted private key is 32 bytes long"
     assert address.binInitVect16.getSize()     == 16, "aes initialization vector is 16 bytes long"
 
-    print("\n" +
-          "WARNING: once decrypted, this will provide access to all Bitcoin\n"    +
-          "         funds available now and in the future of this one address\n\n" +
-          "Armory address, encrypted private key, iv, kdf parameters, and crc in base64:")
+    print("\nArmory address, encrypted private key, iv, kdf parameters, and crc in base64:", file=sys.stderr)
 
     kdf   = wallet.kdf  # Contains the key derivation function parameters and salt
     assert kdf, "kdf is present"
