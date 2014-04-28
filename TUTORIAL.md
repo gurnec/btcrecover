@@ -246,13 +246,13 @@ With this combination, you will also need to download and install:
 
  * Optional, but highly recommended for MultiBit or Electrum (for a 30x speed improvement): The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
 
- * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
+ * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU and slightly improves autosave safety: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
 
 ### Linux or OS X – Bitcoin Core, MultiBit Classic, or Electrum ###
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
- * Optional, but highly recommended for MultiBit or Electrum: PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
+ * Optional, but highly recommended for MultiBit or Electrum: PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto” or just “python-crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
 
         sudo apt-get install python-pip
         sudo pip install pycrypto

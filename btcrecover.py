@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.7"
+__version__          = "0.5.8"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -42,7 +42,8 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 # distributed with btcrecover (it is loaded later on demand)
 
 # The pywin32 module is also recommended on Windows but optional; it's only
-# used to adjust the process priority to be more friendly. When used with
+# used to adjust the process priority to be more friendly and to catch more
+# signals (other than just Ctrl-C) for better autosaves. When used with
 # Armory, btcrecover will just load the version that ships with Armory.
 
 
@@ -455,6 +456,17 @@ def count_valid_wildcards(str_with_wildcards):
             except: raise
     return count
 
+pause_registered = None
+def enable_pause():
+    global pause_registered
+    if pause_registered is None:
+        if sys.stdin.isatty():
+            atexit.register(lambda: raw_input("Press Enter to exit ..."))
+            pause_registered = True
+        else:
+            print(parser.prog+": warning: ignoring --pause since stdin is not interactive (or was redirected)", file=sys.stderr)
+            pause_registered = False
+
 
 if __name__ == '__main__':
 
@@ -501,11 +513,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Do this as early as possible so user doesn't miss any error messages
-    if args.pause:
-        atexit.register(lambda: raw_input("Press Enter to exit ..."))
-        pause_registered = True
-    else:
-        pause_registered = False
+    if args.pause: enable_pause()
 
     # If we're not --restoring, open the tokenlist_file now (if we are restoring,
     # we don't know what to open until after the restore data is loaded)
@@ -527,9 +535,7 @@ if __name__ == '__main__':
             effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
             args = parser.parse_args(effective_argv)          # reparse the arguments
             # Check this again as early as possible so user doesn't miss any error messages
-            if not pause_registered and args.pause:
-                atexit.register(lambda: raw_input("Press Enter to exit ..."))
-                pause_registered = True
+            if args.pause: enable_pause()
         tokenlist_file.seek(0)  # reset to beginning of file
 
     # There are two ways to restore from an autosave file: either specify --restore (alone)
@@ -547,9 +553,7 @@ if __name__ == '__main__':
         print("Last session ended having finished password #", savestate["skip"])
         args = parser.parse_args(effective_argv)
         # Check this again as early as possible so user doesn't miss any error messages
-        if not pause_registered and args.pause:
-            atexit.register(lambda: raw_input("Press Enter to exit ..."))
-            pause_registered = True
+        if args.pause: enable_pause()
         # If the order of passwords generated has changed since the last version, don't permit a restore
         if __ordering_version__ != savestate.get("ordering_version"):
             print(parser.prog+": error: autosave was created with an incompatible version of "+parser.prog, file=sys.stderr)
@@ -754,6 +758,11 @@ if __name__ == '__main__':
         else:
             prompt = "Reading encrypted key data from stdin\n"
         key_crc_data = base64.b64decode(raw_input(prompt))
+        # If stdin was redirected, close it so we don't keep the file alive while running
+        if not sys.stdin.isatty():
+            sys.stdin.close()    # this doesn't really close the fd
+            try:    os.close(0)  # but this should, where supported
+            except: pass
         # Need to save key_data (in a global) for reinitializing worker
         # processes on windows, and key_crc (another global) for do_autosave()
         key_data   = key_crc_data[:-4]
