@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.8"
+__version__          = "0.5.9"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -1199,6 +1199,13 @@ def password_generator():
                 # This duplicate check can be disabled via --no-dupchecks
                 # because it can take up a lot memory, sometimes needlessly
                 if not args.no_dupchecks and password_dups.is_duplicate(password): continue
+
+                # Workers in a server pool ignore passwords not assigned to them
+                if args.worker:
+                    if worker_count % workers_total != worker_id-1:
+                        worker_count += 1
+                        continue
+                    worker_count += 1
 
                 yield password
 
