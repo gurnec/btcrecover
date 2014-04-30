@@ -1530,8 +1530,10 @@ def do_autosave(skip, inside_interrupt_handler = False):
     assert autosave_file and not autosave_file.closed,  "autosave_file is open"
     autosave_file.seek(0)
     if not inside_interrupt_handler:
-        sigint_handler  = signal.signal(signal.SIGINT,  signal.SIG_IGN)  # ignore Ctrl-C and
-        sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)  # SIGTERM while saving
+        sigint_handler  = signal.signal(signal.SIGINT,  signal.SIG_IGN)    # ignore Ctrl-C,
+        sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)    # SIGTERM, and
+        if sys.platform != "win32":  # (windows has no SIGHUP)
+            sighup_handler = signal.signal(signal.SIGHUP, signal.SIG_IGN)  # SIGHUP while saving
     autosave_file.truncate()
     cPickle.dump(dict(
             argv             = effective_argv,   # combined options from command line and tokenlists file
@@ -1543,8 +1545,10 @@ def do_autosave(skip, inside_interrupt_handler = False):
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
     autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
     if not inside_interrupt_handler:
-        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGINT,  sigint_handler)
         signal.signal(signal.SIGTERM, sigterm_handler)
+        if sys.platform != "win32":
+            signal.signal(signal.SIGHUP, sighup_handler)
 
 
 if __name__ == '__main__':
@@ -1664,8 +1668,11 @@ if __name__ == '__main__':
     # Try to catch all types of intentional program shutdowns so we can
     # display password progress information and do a final autosave
     try:
-        signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
-        if sys.platform == "win32":
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGTERM, sigint_handler)     # OK to call on any OS
+        if sys.platform != "win32":
+            signal.signal(signal.SIGHUP, sigint_handler)  # can't call this on windows
+        else:
             import win32api
             win32api.SetConsoleCtrlHandler(windows_ctrl_handler, True)
     except: pass
