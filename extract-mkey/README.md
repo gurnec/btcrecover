@@ -8,7 +8,7 @@ Sometimes, it is not desirable to run *btcrecover* directly on the computer whic
  * Configuring *btcrecover* to search for your password correctly can be tricky; you might be interested in finding someone who can configure and run *btcrecover* for you on their computer.
  * You may not trust that *btcrecover* is free from harmful bugs or other malicious behavior. *btcrecover* is open source, and requires no untrustworthy binaries be installed. However it's also a fairly long and complicated Python script, which makes it difficult even for other Python programmers to be certain that it doesn't contain any harmful code (either intentionally malicious or just by accident).
 
-*extract-mkey.py* is a relatively short and simple script which extracts just enough information from a Bitcoin Core wallet file to be useful to *btcrecover* in a password search, but it doesn't extract enough information to put any of your Bitcoin funds at risk.
+*extract-mkey.py* is a relatively short and simple script which extracts just enough information from a Bitcoin Core or Litecoin-Qt wallet file to be useful to *btcrecover* in a password search, but it doesn't extract enough information to put any of your funds at risk.
 
 For more information regarding *btcrecover*, please see [TUTORIAL.md](../TUTORIAL.md).
 
@@ -51,4 +51,4 @@ The encrypted mkey is useful to *btcrecover*, but it does not contain any of you
 
 ### Limitations ###
 
-*extract-mkey.py* only works with Bitcoin Core (a.k.a. Bitcoin-QT) wallet files. For Armory and MultiBit wallets, please refer to the [extract-privkey scripts](../extract-privkey/README.md).
+*extract-mkey.py* only works with Bitcoin Core (a.k.a. Bitcoin-QT) and Litecoin-Qt wallet files. For Armory and MultiBit wallets, please refer to the [extract-privkey scripts](../extract-privkey/README.md).

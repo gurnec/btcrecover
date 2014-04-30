@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), and Electrum. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -238,7 +238,7 @@ In addition to requiring Armory 0.91, you will also need to download and install
 
  * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: <https://www.python.org/download/>
 
-### Windows – Bitcoin Core, MultiBit Classic, or Electrum ###
+### Windows – Bitcoin Core, MultiBit Classic, Electrum, or Litecoin-Qt ###
 
 With this combination, you will also need to download and install:
 
@@ -248,7 +248,7 @@ With this combination, you will also need to download and install:
 
  * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU and slightly improves autosave safety: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
 
-### Linux or OS X – Bitcoin Core, MultiBit Classic, or Electrum ###
+### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, or Litecoin-Qt ###
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
