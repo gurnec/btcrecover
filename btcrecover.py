@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.9"
+__version__          = "0.5.10"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -1617,7 +1617,7 @@ if __name__ == '__main__':
             eta_seconds += iterate_time
         eta_seconds = int(round(eta_seconds)) or 1
         if args.autosave:
-            est_passwords_per_5min = passwords_count / eta_seconds * 300
+            est_passwords_per_5min = passwords_count // eta_seconds * 300
 
     # Create an iterator which produces the desired password permutations, skipping some if so instructed
     password_iterator = password_generator()
