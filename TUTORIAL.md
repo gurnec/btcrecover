@@ -326,7 +326,14 @@ In short, Unicode support is something I’d like to add if there’s a signific
 
 When *btcrecover* starts, it's first task is to count all the passwords it's about to try, looking for and recording duplicates for future reference (so that no password is tried twice). This duplicate checking can take **a lot** of memory, depending on how many passwords need to be counted. If *btcrecover* appears to hang after displaying the `Counting passwords ...` message, or if it outright crashes, try running it again with the `--no-dupchecks` option. After this initial counting phase, it doesn't use up much RAM as it searches through passwords.
 
-You may want to always use the `--no-dupchecks` option when working with MultiBit key files or Electrum wallets because the duplicate checking saves very little time with these in most cases.
+You may want to always use a single `--no-dupchecks` option when working with MultiBit key files or Electrum wallets because the duplicate checking saves very little time with these in most cases.
+
+If you specify the `--no-dupchecks` more than once, it will disable even more of the duplicate checks:
+
+ * 1 time - disables the most comprehensive and also the most memory intensive duplicate checking
+ * 2 times - disables duplicate checking that rarely consumes much memory relative to the time it saves, although it may if the tokenlist file has a large number of tokens on relatively few lines with at least one but relatively few identical tokens
+ * 3 times - disables duplicate checking which consumes very little memory relative to the duplicates it can potentially find; it's almost never useful to use this level
+ * 4 times - disables duplicate checking which consumes no additional memory; it's never useful to use this level (and it's only available for debugging purposes)
 
 #### CPU ####
 

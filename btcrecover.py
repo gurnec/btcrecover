@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.10"
+__version__          = "0.5.11"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -417,21 +417,27 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
 # Returns an (order preserved) list or string with duplicate elements removed
 # (if input is a string, returns a string, otherwise returns a list)
 # (N.B. not a generator function, so faster for small inputs, not for large)
-def remove_duplicates(iterable):
+def duplicates_removed(iterable):
+    if args.no_dupchecks >= 4:
+        if isinstance(iterable, str) or isinstance(iterable, list):
+            return iterable
+        return list(iterable)
     seen = set()
     unique = []
     for x in iterable:
         if x not in seen:
             unique.append(x)
             seen.add(x)
+    if len(unique) == len(iterable) and (isinstance(iterable, str) or isinstance(iterable, list)):
+        return iterable
     if isinstance(iterable, str):
-        return "".join(unique) if len(unique) < len(iterable) else iterable
+        return "".join(unique)
     return unique
 
 # Converts a wildcard set into a string, expanding ranges and removing duplicates,
 # e.g.: "hexa-fA-F" -> "hexabcdfABCDEF"
 def build_wildcard_set(set_string):
-    return remove_duplicates(re.sub(r"(.)-(.)", expand_single_range, set_string))
+    return duplicates_removed(re.sub(r"(.)-(.)", expand_single_range, set_string))
 #
 def expand_single_range(m):
     char_first, char_last = map(ord, m.groups())
@@ -492,11 +498,11 @@ if __name__ == '__main__':
     parser.add_argument("--delimiter",   metavar="STRING", help="the delimiter for multiple alternative tokens on each line of the tokenlist (default: whitespace)")
     parser.add_argument("--skip",        type=int, default=0, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
     parser.add_argument("--autosave",    metavar="FILE",   help="autosaves (5 min) progress to/ restores it from a file")
-    parser.add_argument("--restore",     type=argparse.FileType("r+b", 0), metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
+    parser.add_argument("--restore",     type=argparse.FileType("r+b"), metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
     parser.add_argument("--worker",      metavar="ID#/TOTAL#", help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
-    parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
+    parser.add_argument("--no-dupchecks",action="count",      default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
     parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
     parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
     parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
@@ -572,7 +578,7 @@ if __name__ == '__main__':
         restored = True   # a global flag for future reference
     #
     elif args.autosave and os.path.isfile(args.autosave) and os.path.getsize(args.autosave) > 0:  # Load and compare to current arguments
-        autosave_file = open(args.autosave, "r+b", 0)
+        autosave_file = open(args.autosave, "r+b")
         savestate = cPickle.load(autosave_file)
         restored_argv = savestate["argv"]
         print("Restoring session:", " ".join(restored_argv))
@@ -642,11 +648,11 @@ if __name__ == '__main__':
                 sys.exit(2)
         custom_set_built   = build_wildcard_set(args.custom_wild)
         wildcard_sets["c"] = custom_set_built  # (duplicates already removed by build_wildcard_set)
-        wildcard_sets["C"] = remove_duplicates(custom_set_built.upper())
+        wildcard_sets["C"] = duplicates_removed(custom_set_built.upper())
         # If there are any case-sensitive letters in the set, build the case-insensitive versions
         custom_set_caseswapped = custom_set_built.swapcase()
         if custom_set_caseswapped != custom_set_built:
-            wildcard_nocase_sets["c"] = remove_duplicates(custom_set_built + custom_set_caseswapped)
+            wildcard_nocase_sets["c"] = duplicates_removed(custom_set_built + custom_set_caseswapped)
             wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
         wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
 
@@ -683,7 +689,7 @@ if __name__ == '__main__':
                 if ord(c) > 127:
                     print(parser.prog+": error: --typos-map file has non-ASCII character '"+c+"' on line", line_num, file=sys.stderr)
                     sys.exit(2)
-            replacements = remove_duplicates(split_line[1])
+            replacements = duplicates_removed(split_line[1])
             for c in split_line[0]:
                 if c in replacements:
                     typos_map[c] = filter(lambda r: r != c, replacements)
@@ -795,7 +801,7 @@ if __name__ == '__main__':
         if os.path.exists(args.autosave) and (os.path.getsize(args.autosave) > 0 or not os.path.isfile(args.autosave)):
             print(parser.prog+": error: --autosave file '"+args.autosave+"' already exists, won't overwrite", file=sys.stderr)
             sys.exit(2)
-        autosave_file = open(args.autosave, "wb", 0)  # (0 == buffering is disabled)
+        autosave_file = open(args.autosave, "wb")
         print("Using autosave file '"+args.autosave+"'")
 
 
@@ -929,10 +935,11 @@ class AnchoredToken:
 
 if __name__ == '__main__':
 
-    has_any_wildcards        = False
-    has_any_duplicate_tokens = False
-    token_set_for_dupchecks  = set()
-    token_lists = []
+    if args.no_dupchecks < 2:
+        has_any_duplicate_tokens = False
+        token_set_for_dupchecks  = set()
+    has_any_wildcards = False
+    token_lists       = []
 
     for line_num, line in enumerate(tokenlist_file, 1):
 
@@ -974,7 +981,7 @@ if __name__ == '__main__':
                 has_any_wildcards = True  # (a global)
 
             # Keep track of the existence of any duplicate tokens for future optimization
-            if not has_any_duplicate_tokens:
+            if args.no_dupchecks < 2 and not has_any_duplicate_tokens:
                 if token in token_set_for_dupchecks:
                     has_any_duplicate_tokens = True
                 else:
@@ -988,6 +995,8 @@ if __name__ == '__main__':
         token_lists.append(new_list)
 
     tokenlist_file.close()
+    if args.no_dupchecks < 2:
+        token_set_for_dupchecks = None
 
     # Tokens at the end of the outer token_lists get tried first below;
     # reverse the list here so that tokens at the beginning of the file
@@ -1053,14 +1062,22 @@ typos_sofar = 0
 # no duplicates from the token_lists global as constructed above plus wildcard expansion
 # and up to a certain number of requested typos
 #
-token_combination_dups = DuplicateChecker()
-password_dups          = DuplicateChecker()
+if __name__ == '__main__':
+    if args.no_dupchecks   < 1:
+        password_dups          = DuplicateChecker()
+        token_combination_dups = DuplicateChecker()
+    elif args.no_dupchecks < 2:
+        token_combination_dups = DuplicateChecker()
 #
 def password_generator():
     global typos_sofar, token_combination_dups, password_dups
     worker_count = 0  # only used if --worker is specified
 
-    if has_any_duplicate_tokens:
+    # If has_any_duplicate_tokens is available (because args.no_dupchecks < 2), use it to
+    # intelligently choose between the custom duplicate-checking and the standard itertools
+    # permutation functions. If has_any_duplicate_tokens isn't available, use the duplicate-
+    # checking version unless it's been disabled with three (or more) --no-dupcheck options.
+    if args.no_dupchecks < 2 and has_any_duplicate_tokens or args.no_dupchecks == 2:
         permutations_function = permutations_nodups
     else:
         permutations_function = itertools.permutations
@@ -1077,12 +1094,28 @@ def password_generator():
     # were not required (no "+") have a None in their corresponding list; if this
     # None item is chosen for a tokens_combination, then this tokens_combination
     # corresponds to one without any token from that line, and we we simply remove
-    # the None from this tokens_combination below.
-    for tokens_combination in itertools.product(*token_lists):
+    # the None from this tokens_combination (product_limitedlen does this on its own,
+    # itertools.product does not so it's done below).
+    #
+    # First choose which product generator to use: the custom product_limitedlen
+    # might be faster (possibly a lot) if a large --min-tokens or any --max-tokens
+    # is specified at the command line, otherwise use the standard itertools version.
+    using_product_limitedlen = args.min_tokens > 5 or args.max_tokens < sys.maxint
+    if using_product_limitedlen:
+        # Unfortunately, product_limitedlen is recursive; the recursion limit
+        # must be at least as high as the number of lines in the tokenlist file
+        if len(token_lists) + 20 > sys.getrecursionlimit():
+            sys.setrecursionlimit(len(token_lists) + 20)
+        product_generator = product_limitedlen(*token_lists, minlen=args.min_tokens, maxlen=args.max_tokens)
+    else:
+        product_generator = itertools.product(*token_lists)
+    for tokens_combination in product_generator:
 
         # Remove any None's, then check against token length constraints:
-        tokens_combination = filter(lambda t: t is not None, tokens_combination)
-        if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
+        # (product_limitedlen, if used, has already done all this)
+        if not using_product_limitedlen:
+            tokens_combination = filter(lambda t: t is not None, tokens_combination)
+            if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
 
         # There are two types of anchors, positional and middle/range. Positional anchors
         # only have a single possible position; middle anchors have a range, but are never
@@ -1124,13 +1157,12 @@ def password_generator():
         # Do some duplicate checking early on to avoid running through potentially a
         # lot of passwords all of which end up being duplicates. We check the current
         # combination (of all tokens), sorted because different orderings of token
-        # combinations are equivalent at this point. This runs regardless of the
-        # --no-dupchecks option because it probably doesn't take up much memory...
+        # combinations are equivalent at this point. This check can be disabled with two
+        # (or more) --no-dupcheck options (one disables only the other duplicate check).
         # TODO:
-        #   Allow --no-dupchecks, or something else, to disable this?
         #   Be smarter in deciding when to turn this on?
         #   Instead of dup checking, write a smarter product (seems hard)?
-        if has_any_duplicate_tokens and \
+        if args.no_dupchecks < 2 and has_any_duplicate_tokens and \
            token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
@@ -1197,8 +1229,8 @@ def password_generator():
                 if regex_never and     regex_never.search(password): continue
 
                 # This duplicate check can be disabled via --no-dupchecks
-                # because it can take up a lot memory, sometimes needlessly
-                if not args.no_dupchecks and password_dups.is_duplicate(password): continue
+                # because it can take up a lot of memory, sometimes needlessly
+                if args.no_dupchecks < 1 and password_dups.is_duplicate(password): continue
 
                 # Workers in a server pool ignore passwords not assigned to them
                 if args.worker:
@@ -1209,12 +1241,63 @@ def password_generator():
 
                 yield password
 
-    token_combination_dups.run_finished()
-    password_dups.run_finished()
+    if args.no_dupchecks   < 1:
+        password_dups.run_finished()
+        token_combination_dups.run_finished()
+    elif args.no_dupchecks < 2:
+        token_combination_dups.run_finished()
+
+
+# Like itertools.product, but only produces output tuples whose length is between
+# minlen and maxlen. Normally, product always produces output of length len(sequences),
+# but this version removes elements from each produced product which are == None
+# (making their length variable) and only then applies the requested length constraint.
+# (Does not accept the itertools "repeat" argument.)
+# TODO: implement without recursion?
+def product_limitedlen(*sequences, **kwds):
+    minlen = kwds.get("minlen", 0)
+    maxlen = kwds.get("maxlen", sys.maxint)
+    if len(sequences) == 0:
+        if minlen <= 0 <= maxlen: yield ()
+        return
+
+    # Iterate through elements in the first sequence
+    for choice in sequences[0]:
+
+        # Adjust minlen and maxlen if this element affects the length (isn't None)
+        if choice is None:
+            new_minlen = minlen
+            new_maxlen = maxlen
+        else:
+            new_minlen = minlen - 1
+            new_maxlen = maxlen - 1
+
+        # If (and only if) the total length after recursing could
+        # possibly fall inside the requested range, continue
+        if len(sequences) > new_minlen and new_maxlen >= 0:
+
+            # Special case (just so we can be non-recursive) when new_maxlen == 0:
+            # this is only possible if each of the remaining sequences has a None
+            # option, otherwise the result will be too long, so search for this
+            # requirement and produce a single output if it's found
+            if new_maxlen == 0:
+                for seq in sequences:
+                    if None not in seq: break
+                else:  # if it didn't break, there was a None in every sequence
+                    yield () if choice is None else (choice,)
+                continue
+
+            # Special case (to avoid one recursion) when this sequence is the last
+            if len(sequences) == 1:
+                yield () if choice is None else (choice,)
+                continue
+
+            for rest in product_limitedlen(*sequences[1:], minlen=new_minlen, maxlen=new_maxlen):
+                yield rest if choice is None else (choice,) + rest
 
 
 # Like itertools.permutations, but avoids duplicates even if input contains some.
-# Input must be a sequence of hashable elements.
+# Input must be a sequence of hashable elements. (Does not accept the itertools "r" argument.)
 # TODO: implement without recursion?
 def permutations_nodups(sequence):
     if len(sequence) == 2:
@@ -1304,7 +1387,7 @@ def expand_wildcards_generator(password_with_wildcards):
                 # Build a case-insensitive version
                 wildcard_set_caseswapped = wildcard_set.swapcase()
                 if wildcard_set_caseswapped != wildcard_set:
-                    wildcard_set = remove_duplicates(wildcard_set + wildcard_set_caseswapped)
+                    wildcard_set = duplicates_removed(wildcard_set + wildcard_set_caseswapped)
             custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
     else:
         m_type = match.group("type")
@@ -1390,7 +1473,7 @@ def swap_typos_generator(password_base):
                 # Perform and the actual swaps
                 password = password_base
                 for i in swap_indexes:
-                    if password[i] == password[i+1]:  # "swapping" these would result in generating a duplicate guess
+                    if password[i] == password[i+1] and args.no_dupchecks < 4:  # "swapping" these would result in generating a duplicate guess
                         break
                     password = password[:i] + password[i+1] + password[i] + password[i+2:]
                 else:  # if we left the loop normally (didn't break)
@@ -1525,7 +1608,7 @@ def windows_ctrl_handler(signal):
         print("\nInterrupted after finishing password #", args.skip + passwords_tried)
     sys.exit()
 
-# TODO: implement a safer atomic autosave? fsync? (buffering is already disabled at file open)
+# TODO: implement a safer atomic autosave?
 def do_autosave(skip, inside_interrupt_handler = False):
     assert autosave_file and not autosave_file.closed,  "autosave_file is open"
     autosave_file.seek(0)
@@ -1543,7 +1626,8 @@ def do_autosave(skip, inside_interrupt_handler = False):
             key_crc          = key_crc,          #/
             ordering_version = __ordering_version__ # password ordering can't change between runs
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
-    autosave_file.flush()  # buffering should already be disabled, but this doesn't hurt
+    autosave_file.flush()
+    os.fsync(autosave_file.fileno())
     if not inside_interrupt_handler:
         signal.signal(signal.SIGINT,  sigint_handler)
         signal.signal(signal.SIGTERM, sigterm_handler)
