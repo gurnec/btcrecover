@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.11"
+__version__          = "0.5.12"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -158,8 +158,8 @@ def load_wallet(wallet_filename):
 
         # MultiBit private key backup file (not the wallet file)
         wallet_file.seek(0)
-        try:    is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith(b"Salted__")
-        except: is_multibitpk = False
+        try:                  is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith(b"Salted__")
+        except StandardError: is_multibitpk = False
         if is_multibitpk:
             load_multibit_privkey_file(wallet_file)  # passing in a file object
             return_verified_password_or_false = return_multibitpk_verified_password_or_false
@@ -173,7 +173,6 @@ def load_wallet(wallet_filename):
                 return_verified_password_or_false = return_electrum_verified_password_or_false
                 return
             except SyntaxError: pass     # probably wasn't an electrum wallet
-            except: raise
 
         print(parser.prog+": error: unrecognized wallet format", file=sys.stderr)
         sys.exit(2)
@@ -327,7 +326,7 @@ def load_multibit_privkey_file(privkey_file):
     wallet = "".join(privkey_file.read(50).split())  # join multiple lines into one
     if len(wallet) < 44: raise EOFError("Expected at least 44 bytes of text in the MultiBit private key file")
     wallet = base64.b64decode(wallet[:44])
-    assert wallet.startswith(b"Salted__"), "loaded a Multibit privkey file"
+    assert wallet.startswith(b"Salted__"), "load_multibit_privkey_file: file starts with base64 'Salted__'"
     if len(wallet) < 32:  raise EOFError("Expected at least 32 bytes of decoded data in the MultiBit private key file")
     wallet = wallet[8:32]
     # wallet now consists of:
@@ -459,8 +458,52 @@ def count_valid_wildcards(str_with_wildcards):
             try:
                 re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
             except ValueError: return -1
-            except: raise
     return count
+
+# Loads the savestate from the more recent save slot in an autosave_file
+SAVESLOT_SIZE     = 4096
+savestate         = None
+autosave_nextslot = 0
+def load_savestate(autosave_file):
+    global savestate, autosave_nextslot
+    savestate0 = savestate1 = first_error = None
+    # Try to load both save slots, ignoring pickle errors at first
+    autosave_file.seek(0)
+    try:
+        savestate0 = cPickle.load(autosave_file)
+        assert autosave_file.tell() <= SAVESLOT_SIZE, "load_savestate: slot 0 data <= "+str(SAVESLOT_SIZE)+" bytes long"
+    except AssertionError: raise
+    except Exception as e:
+        first_error = e
+    autosave_file.seek(0, os.SEEK_END)
+    autosave_len = autosave_file.tell()
+    if autosave_len >= SAVESLOT_SIZE:  # if the second save slot is present
+        autosave_file.seek(SAVESLOT_SIZE)
+        try:
+            savestate1 = cPickle.load(autosave_file)
+            assert autosave_file.tell() <= 2*SAVESLOT_SIZE, "load_savestate: slot 1 data <= "+str(SAVESLOT_SIZE)+" bytes long"
+        except AssertionError: raise
+        except Exception: pass
+    else:
+        # Convert an old format file to a new one by making it at least SAVESLOT_SIZE bytes long
+        autosave_file.write((SAVESLOT_SIZE - autosave_len) * b"\0")
+    #
+    # Determine which slot is more recent, and use it
+    if savestate0 and savestate1:
+        use_slot = 0 if savestate0["skip"] >= savestate1["skip"] else 1
+    elif savestate0:
+        use_slot = 0
+    elif savestate1:
+        use_slot = 1
+    else:
+        raise first_error
+    if use_slot == 0:
+        savestate = savestate0
+        autosave_nextslot =  1
+    else:
+        assert use_slot == 1
+        savestate = savestate1
+        autosave_nextslot =  0
 
 pause_registered = None
 def enable_pause():
@@ -477,8 +520,8 @@ def enable_pause():
 if __name__ == '__main__':
 
     # can raise exceptions on some platforms
-    try:    cpus = multiprocessing.cpu_count()
-    except: cpus = 1
+    try:                  cpus = multiprocessing.cpu_count()
+    except StandardError: cpus = 1
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (this or --mkey or --listpass req'd)")
@@ -553,7 +596,7 @@ if __name__ == '__main__':
             print(parser.prog+": error: the --restore option must be the only option when used", file=sys.stderr)
             sys.exit(2)
         autosave_file = args.restore        # reuse the restore file as the new autosave file
-        savestate = cPickle.load(autosave_file)
+        load_savestate(autosave_file)
         effective_argv = savestate["argv"]  # argv is effectively being replaced; it's reparsed below
         print("Restoring session:", " ".join(effective_argv))
         print("Last session ended having finished password #", savestate["skip"])
@@ -579,7 +622,7 @@ if __name__ == '__main__':
     #
     elif args.autosave and os.path.isfile(args.autosave) and os.path.getsize(args.autosave) > 0:  # Load and compare to current arguments
         autosave_file = open(args.autosave, "r+b")
-        savestate = cPickle.load(autosave_file)
+        load_savestate(autosave_file)
         restored_argv = savestate["argv"]
         print("Restoring session:", " ".join(restored_argv))
         print("Last session ended having finished password #", savestate["skip"])
@@ -766,9 +809,9 @@ if __name__ == '__main__':
         key_crc_data = base64.b64decode(raw_input(prompt))
         # If stdin was redirected, close it so we don't keep the file alive while running
         if not sys.stdin.isatty():
-            sys.stdin.close()    # this doesn't really close the fd
-            try:    os.close(0)  # but this should, where supported
-            except: pass
+            sys.stdin.close()   # this doesn't really close the fd
+            try:   os.close(0)  # but this should, where supported
+            except StandardError: pass
         # Need to save key_data (in a global) for reinitializing worker
         # processes on windows, and key_crc (another global) for do_autosave()
         key_data   = key_crc_data[:-4]
@@ -1372,7 +1415,7 @@ def expand_wildcards_generator(password_with_wildcards):
     # where caseflag=="i" if present and type is one of the wildcard_keys
     # (e.g. "%d", "%2n", "%1,3ia", etc.) or type is of the form "[custom-wildcard-set]"
     match = re.search(r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>["+wildcard_keys+"])|\[(?P<custom>.+?)\])", password_with_wildcards)
-    assert match, "parsed valid wildcard spec"
+    assert match, "expand_wildcards_generator: parsed valid wildcard spec"
 
     password_prefix = password_with_wildcards[0:match.start()]               # no wildcards present here;
     password_postfix_with_wildcards = password_with_wildcards[match.end():]  # might be other wildcards in here
@@ -1395,7 +1438,7 @@ def expand_wildcards_generator(password_with_wildcards):
             wildcard_set = wildcard_nocase_sets[m_type]
         else:
             wildcard_set = wildcard_sets[m_type]
-    assert wildcard_set, "found wildcard type"
+    assert wildcard_set, "expand_wildcards_generator: found wildcard type"
 
     # Extract or default the wildcard min and max length
     wildcard_maxlen = match.group("max")
@@ -1521,7 +1564,7 @@ if __name__ == '__main__':
 #
 def simple_typos_generator(password_base):
     global typos_sofar
-    assert len(typo_generators) > 0, "typo types specified"
+    assert len(typo_generators) > 0, "simple_typos_generator: typo types specified"
 
     # Start with the unmodified password itself
     yield password_base
@@ -1580,7 +1623,7 @@ def init_worker(wallet_filename, key_data):
     if not wallet:
         if wallet_filename: load_wallet(wallet_filename)
         elif key_data:      load_from_key(key_data)
-        else: assert False, "wallet filename or key data passed to init_worker"
+        else: assert False, "init_worker: wallet filename or key data specified"
     set_process_priority_idle()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 #
@@ -1591,7 +1634,7 @@ def set_process_priority_idle():
             win32process.SetPriorityClass(win32process.GetCurrentProcess(), win32process.IDLE_PRIORITY_CLASS)
         else:
             os.nice(19)
-    except: pass
+    except StandardError: pass
 
 # Once installed, performs cleanup prior to a requested process shutdown on Windows
 def windows_ctrl_handler(signal):
@@ -1608,16 +1651,29 @@ def windows_ctrl_handler(signal):
         print("\nInterrupted after finishing password #", args.skip + passwords_tried)
     sys.exit()
 
-# TODO: implement a safer atomic autosave?
+
 def do_autosave(skip, inside_interrupt_handler = False):
-    assert autosave_file and not autosave_file.closed,  "autosave_file is open"
-    autosave_file.seek(0)
+    global autosave_nextslot
+    assert autosave_file and not autosave_file.closed, "do_autosave: autosave_file is open"
     if not inside_interrupt_handler:
         sigint_handler  = signal.signal(signal.SIGINT,  signal.SIG_IGN)    # ignore Ctrl-C,
         sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)    # SIGTERM, and
         if sys.platform != "win32":  # (windows has no SIGHUP)
             sighup_handler = signal.signal(signal.SIGHUP, signal.SIG_IGN)  # SIGHUP while saving
-    autosave_file.truncate()
+    # Erase the target save slot
+    if autosave_nextslot == 0:
+        start_pos = 0
+        autosave_file.seek(start_pos)
+        autosave_file.write(SAVESLOT_SIZE * b"\0")
+        autosave_file.flush()
+        os.fsync(autosave_file.fileno())
+        autosave_file.seek(start_pos)
+    else:
+        assert autosave_nextslot == 1
+        start_pos = SAVESLOT_SIZE
+        autosave_file.seek(start_pos)
+        autosave_file.truncate()
+        os.fsync(autosave_file.fileno())
     cPickle.dump(dict(
             argv             = effective_argv,   # combined options from command line and tokenlists file
             skip             = skip,             # passwords completed so far
@@ -1626,8 +1682,10 @@ def do_autosave(skip, inside_interrupt_handler = False):
             key_crc          = key_crc,          #/
             ordering_version = __ordering_version__ # password ordering can't change between runs
         ), autosave_file, cPickle.HIGHEST_PROTOCOL)
+    assert autosave_file.tell() <= start_pos + SAVESLOT_SIZE, "do_autosave: data <= "+str(SAVESLOT_SIZE)+" bytes long"
     autosave_file.flush()
     os.fsync(autosave_file.fileno())
+    autosave_nextslot = 1 if autosave_nextslot==0 else 0
     if not inside_interrupt_handler:
         signal.signal(signal.SIGINT,  sigint_handler)
         signal.signal(signal.SIGTERM, sigterm_handler)
@@ -1759,7 +1817,7 @@ if __name__ == '__main__':
         else:
             import win32api
             win32api.SetConsoleCtrlHandler(windows_ctrl_handler, True)
-    except: pass
+    except StandardError: pass
 
     # Iterate through password_found_iterator looking for a successful guess
     passwords_tried = 0
@@ -1780,18 +1838,11 @@ if __name__ == '__main__':
 
     # Gracefully handle Ctrl-C (and other intentional program shutdowns), printing the
     # count completed so far so that it can be skipped if the user restarts the same run
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: pass
+    finally:
         print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
             print("\nInterrupted after finishing password #", args.skip + passwords_tried)
-        # (falls through to the autosave next)
-
-    # For unexpected exceptions, still print the count, but re-raise (w/o a final autosave)
-    except:
-        print("\nUnexpected error after finishing password #", args.skip + passwords_tried, file=sys.stderr)
-        if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
-            print("\nUnexpected error after finishing password #", args.skip + passwords_tried)
-        raise
 
     # Autosave the final state (for all non-error cases-- we're shutting down
     # (e.g. Ctrl-C or a reboot), the password was found, or the search was exhausted)
