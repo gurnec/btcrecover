@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.12"
+__version__          = "0.5.13"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -47,7 +47,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 # Armory, btcrecover will just load the version that ships with Armory.
 
 
-############################## Configurables/Plugins ##############################
+################################### Configurables/Plugins ###################################
 # wildcard sets, simple typo generators, and wallet support functions
 
 
@@ -410,7 +410,7 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
     return str(plaintext)
 
 
-############################## Argument Parsing ##############################
+################################### Argument Parsing ###################################
 
 
 # Returns an (order preserved) list or string with duplicate elements removed
@@ -523,7 +523,8 @@ if __name__ == '__main__':
     try:                  cpus = multiprocessing.cpu_count()
     except StandardError: cpus = 1
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--help", "-h",  action="store_true", help="show this help message and exit")
     parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (this or --mkey or --listpass req'd)")
     parser.add_argument("--tokenlist",   metavar="FILE", help="the list of tokens/partial passwords (required)")
     parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
@@ -549,6 +550,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
     parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
     parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
+    parser.add_argument("--passwordlist",metavar="FILE",      help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
     parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
     parser.add_argument("--pause",       action="store_true", help="pause before exiting")
     parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
@@ -564,10 +566,37 @@ if __name__ == '__main__':
     # Do this as early as possible so user doesn't miss any error messages
     if args.pause: enable_pause()
 
-    # If we're not --restoring, open the tokenlist_file now (if we are restoring,
-    # we don't know what to open until after the restore data is loaded)
+    # If a simple passwordlist is being provided, re-parse the command line with limited options
+    # (--help is handled by argparse in this case)
+    if args.passwordlist:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--passwordlist",type=argparse.FileType(), metavar="FILE", required=True, help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
+        parser.add_argument("--wallet",      metavar="FILE",   help="the wallet file (this or --mkey or --listpass req'd)")
+        parser.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
+        parser.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
+        parser.add_argument("--skip",        type=int, default=0,    metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
+        parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
+        parser.add_argument("--worker",      metavar="ID#/TOTAL#", help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
+        parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
+        parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
+        parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
+        parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
+        parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
+        parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
+        parser.add_argument("--pause",       action="store_true", help="pause before exiting")
+        parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
+        args = parser.parse_args()
+        # Autosave isn't currently permitted with a passwordlist
+        args.__dict__["autosave"] = args.__dict__["restore"] = False
+    # Manually handle the --help option
+    elif args.help:
+        parser.print_help()
+        sys.exit(0)
+
+    # If we're not --restoring and we're using a tokenlist, open the tokenlist_file now
+    # (if we are restoring, we don't know what to open until after the restore data is loaded)
     tokenlist_file = None
-    if not args.restore:
+    if not args.restore and not args.passwordlist:
         if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
 
@@ -640,117 +669,119 @@ if __name__ == '__main__':
     else:
         restored = False  # a global flag for future reference
 
-    argsdict = vars(args)  # only used to check for presence of typos_* arguments
-
     # Do a bunch of argument sanity checking
 
-    # tokenlist_file should have been opened by now (possibly during the a session restore)
-    if not tokenlist_file:
-        print(parser.prog+": error: argument --tokenlist is required (or file btcrecover-tokens-auto.txt must be present)", file=sys.stderr)
-        sys.exit(2)
+    if not args.passwordlist:
 
-    if args.max_tokens < args.min_tokens:
-        print(parser.prog+": error: --max-tokens is less than --min-tokens", file=sys.stderr)
-        sys.exit(2)
+        argsdict = vars(args)  # only used to check for presence of typos_* arguments
 
-    # Have _any_ typo types been specified?
-    simple_typo_types_specified = False
-    for typo_name in simple_typos:
-        if argsdict.get("typos_"+typo_name):
-            simple_typo_types_specified = True
-            break
-    # also check other typo types which aren't "simple" typos
-    any_typo_types_specified = simple_typo_types_specified or args.typos_capslock or args.typos_swap
+        # tokenlist_file should have been opened by now (possibly during the a session restore)
+        if not tokenlist_file:
+            print(parser.prog+": error: argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)", file=sys.stderr)
+            sys.exit(2)
 
-    if args.typos and not any_typo_types_specified:
-        print(parser.prog+": warning: --typos has no effect because no type of typo was chosen", file=sys.stderr)
-    elif args.min_typos and not any_typo_types_specified:
-        print(parser.prog+": warning: --min-typos has no effect because no type of typo was chosen", file=sys.stderr)
+        if args.max_tokens < args.min_tokens:
+            print(parser.prog+": error: --max-tokens is less than --min-tokens", file=sys.stderr)
+            sys.exit(2)
 
-    if any_typo_types_specified and not args.typos:
-        if args.min_typos:
-            print(parser.prog+": warning: --typos COUNT not specified or 0; assuming same as --min_typos ("+str(args.min_typos)+")", file=sys.stderr)
-            args.typos = args.min_typos
-        else:
-            print(parser.prog+": warning: --typos COUNT not specified or 0; assuming 1", file=sys.stderr)
-            args.typos = 1
+        # Have _any_ typo types been specified?
+        simple_typo_types_specified = False
+        for typo_name in simple_typos:
+            if argsdict.get("typos_"+typo_name):
+                simple_typo_types_specified = True
+                break
+        # also check other typo types which aren't "simple" typos
+        any_typo_types_specified = simple_typo_types_specified or args.typos_capslock or args.typos_swap
 
-    if args.typos < args.min_typos:
-        print(parser.prog+": error: --typos is less than --min_typos", file=sys.stderr)
-        sys.exit(2)
+        if args.typos and not any_typo_types_specified:
+            print(parser.prog+": warning: --typos has no effect because no type of typo was chosen", file=sys.stderr)
+        elif args.min_typos and not any_typo_types_specified:
+            print(parser.prog+": warning: --min-typos has no effect because no type of typo was chosen", file=sys.stderr)
 
-    if args.typos_closecase and args.typos_case:
-        print(parser.prog+": warning: disabling --typos-closecase because --typos-case was also specified", file=sys.stderr)
-        args.typos_closecase = None
+        if any_typo_types_specified and not args.typos:
+            if args.min_typos:
+                print(parser.prog+": warning: --typos COUNT not specified or 0; assuming same as --min_typos ("+str(args.min_typos)+")", file=sys.stderr)
+                args.typos = args.min_typos
+            else:
+                print(parser.prog+": warning: --typos COUNT not specified or 0; assuming 1", file=sys.stderr)
+                args.typos = 1
 
-    # Parse the custom wildcard set option
-    if args.custom_wild:
-        for c in args.custom_wild:
-            if ord(c) > 127:
-                print(parser.prog+": error: --custom_wild has non-ASCII character '"+c+"'", file=sys.stderr)
+        if args.typos < args.min_typos:
+            print(parser.prog+": error: --typos is less than --min_typos", file=sys.stderr)
+            sys.exit(2)
+
+        if args.typos_closecase and args.typos_case:
+            print(parser.prog+": warning: disabling --typos-closecase because --typos-case was also specified", file=sys.stderr)
+            args.typos_closecase = None
+
+        # Parse the custom wildcard set option
+        if args.custom_wild:
+            for c in args.custom_wild:
+                if ord(c) > 127:
+                    print(parser.prog+": error: --custom_wild has non-ASCII character '"+c+"'", file=sys.stderr)
+                    sys.exit(2)
+            custom_set_built   = build_wildcard_set(args.custom_wild)
+            wildcard_sets["c"] = custom_set_built  # (duplicates already removed by build_wildcard_set)
+            wildcard_sets["C"] = duplicates_removed(custom_set_built.upper())
+            # If there are any case-sensitive letters in the set, build the case-insensitive versions
+            custom_set_caseswapped = custom_set_built.swapcase()
+            if custom_set_caseswapped != custom_set_built:
+                wildcard_nocase_sets["c"] = duplicates_removed(custom_set_built + custom_set_caseswapped)
+                wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
+            wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
+
+        # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
+        if args.typos_insert:
+            if count_valid_wildcards(args.typos_insert) == -1:
+                print(parser.prog+": error: --typos-insert", args.typos_insert, "has an invalid wildcard (%) spec", file=sys.stderr)
                 sys.exit(2)
-        custom_set_built   = build_wildcard_set(args.custom_wild)
-        wildcard_sets["c"] = custom_set_built  # (duplicates already removed by build_wildcard_set)
-        wildcard_sets["C"] = duplicates_removed(custom_set_built.upper())
-        # If there are any case-sensitive letters in the set, build the case-insensitive versions
-        custom_set_caseswapped = custom_set_built.swapcase()
-        if custom_set_caseswapped != custom_set_built:
-            wildcard_nocase_sets["c"] = duplicates_removed(custom_set_built + custom_set_caseswapped)
-            wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
-        wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
+        # Syntax check any --typos-replace wildcard (it's expanded later in the Password Generation section)
+        if args.typos_replace:
+            if count_valid_wildcards(args.typos_replace) == -1:
+                print(parser.prog+": error: --typos-replace", args.typos_replace, "has an invalid wildcard (%) spec", file=sys.stderr)
+                sys.exit(2)
+
+        # Process any --typos-map file: build a dict (typos_map) mapping replaceable characters to their replacements
+        typos_map_hash = None
+        if args.typos_map:
+            typos_map = dict()
+            for line_num, line in enumerate(args.typos_map, 1):
+                if line[0] == "#": continue  # ignore comments
+                #
+                # Remove the trailing newline, then split the line exactly
+                # once on the specified delimiter (default: whitespace)
+                split_line = line.rstrip("\r\n").split(args.delimiter, 1)
+                if len(split_line) == 0: continue  # ignore empty lines
+                if len(split_line) == 1:
+                    print("--typos-map file has an empty replacement list on line", line_num)
+                    sys.exit(2)
+                if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
+                for c in "".join(split_line):
+                    if ord(c) > 127:
+                        print(parser.prog+": error: --typos-map file has non-ASCII character '"+c+"' on line", line_num, file=sys.stderr)
+                        sys.exit(2)
+                replacements = duplicates_removed(split_line[1])
+                for c in split_line[0]:
+                    if c in replacements:
+                        typos_map[c] = filter(lambda r: r != c, replacements)
+                    else:
+                        typos_map[c] = replacements
+            #
+            # Take a hash of the typos_map and check it during a session restore
+            # to make sure we're actually restoring the exact same session
+            if args.autosave:
+                sha1 = hashlib.sha1()
+                for k in sorted(typos_map.keys()):  # must take the hash in a deterministic order (not in typos_map order)
+                    sha1.update(k + str(typos_map[k]))
+                typos_map_hash = sha1.digest()
+                sha1 = None
+            if restored:
+                if typos_map_hash != savestate["typos_map_hash"]:
+                    print(parser.prog+": error: can't restore previous session: the typos_map file has changed", file=sys.stderr)
+                    sys.exit(2)
 
     regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
     regex_never = re.compile(args.regex_never) if args.regex_never else None
-
-    # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
-    if args.typos_insert:
-        if count_valid_wildcards(args.typos_insert) == -1:
-            print(parser.prog+": error: --typos-insert", args.typos_insert, "has an invalid wildcard (%) spec", file=sys.stderr)
-            sys.exit(2)
-    # Syntax check any --typos-replace wildcard (it's expanded later in the Password Generation section)
-    if args.typos_replace:
-        if count_valid_wildcards(args.typos_replace) == -1:
-            print(parser.prog+": error: --typos-replace", args.typos_replace, "has an invalid wildcard (%) spec", file=sys.stderr)
-            sys.exit(2)
-
-    # Process any --typos-map file: build a dict (typos_map) mapping replaceable characters to their replacements
-    typos_map_hash = None
-    if args.typos_map:
-        typos_map = dict()
-        for line_num, line in enumerate(args.typos_map, 1):
-            if line[0] == "#": continue  # ignore comments
-            #
-            # Remove the trailing newline, then split the line exactly
-            # once on the specified delimiter (default: whitespace)
-            split_line = line.rstrip("\r\n").split(args.delimiter, 1)
-            if len(split_line) == 0: continue  # ignore empty lines
-            if len(split_line) == 1:
-                print("--typos-map file has an empty replacement list on line", line_num)
-                sys.exit(2)
-            if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
-            for c in "".join(split_line):
-                if ord(c) > 127:
-                    print(parser.prog+": error: --typos-map file has non-ASCII character '"+c+"' on line", line_num, file=sys.stderr)
-                    sys.exit(2)
-            replacements = duplicates_removed(split_line[1])
-            for c in split_line[0]:
-                if c in replacements:
-                    typos_map[c] = filter(lambda r: r != c, replacements)
-                else:
-                    typos_map[c] = replacements
-        #
-        # Take a hash of the typos_map and check it during a session restore
-        # to make sure we're actually restoring the exact same session
-        if args.autosave:
-            sha1 = hashlib.sha1()
-            for k in sorted(typos_map.keys()):  # must take the hash in a deterministic order (not in typos_map order)
-                sha1.update(k + str(typos_map[k]))
-            typos_map_hash = sha1.digest()
-            sha1 = None
-        if restored:
-            if typos_map_hash != savestate["typos_map_hash"]:
-                print(parser.prog+": error: can't restore previous session: the typos_map file has changed", file=sys.stderr)
-                sys.exit(2)
 
     worker_threads = max(args.threads, 1)
 
@@ -848,7 +879,7 @@ if __name__ == '__main__':
         print("Using autosave file '"+args.autosave+"'")
 
 
-############################## Tokenfile Parsing ##############################
+################################### Tokenfile Parsing ###################################
 
 
 # Build up the token_lists structure, a list of lists, reflecting the tokenlist file.
@@ -976,7 +1007,7 @@ class AnchoredToken:
         return strval + "$" + self.text
     def __repr__(self): return self.__class__.__name__ + "(" + repr(str(self)) + ")"
 
-if __name__ == '__main__':
+if __name__ == '__main__' and tokenlist_file:
 
     if args.no_dupchecks < 2:
         has_any_duplicate_tokens = False
@@ -1056,7 +1087,7 @@ if __name__ == '__main__':
             sys.exit(2)
 
 
-############################## Password Generation ##############################
+################################### Password Generation ###################################
 
 
 # Checks for duplicate hashable items in multiple identical runs
@@ -1105,7 +1136,7 @@ typos_sofar = 0
 # no duplicates from the token_lists global as constructed above plus wildcard expansion
 # and up to a certain number of requested typos
 #
-if __name__ == '__main__':
+if __name__ == '__main__' and not args.passwordlist:
     if args.no_dupchecks   < 1:
         password_dups          = DuplicateChecker()
         token_combination_dups = DuplicateChecker()
@@ -1552,7 +1583,7 @@ def case_id_changed(case_id1, case_id2):
 # section which simple_typos_generator() calls are simple; they are collectively called
 # simple typo generators)
 #
-if __name__ == '__main__':
+if __name__ == '__main__' and not args.passwordlist:
     # Req'd by the typo_append_wildcard and typo_replace_wildcard simple generator functions:
     if args.typos_insert:
         typos_insert_expanded  = list(expand_wildcards_generator(args.typos_insert))
@@ -1612,7 +1643,7 @@ def simple_typos_generator(password_base):
         typos_sofar -= typos_count
 
 
-############################## Main ##############################
+################################### Main ###################################
 
 
 # Init function for the password verifying worker processes:
@@ -1693,12 +1724,48 @@ def do_autosave(skip, inside_interrupt_handler = False):
             signal.signal(signal.SIGHUP, sighup_handler)
 
 
+# A simple generator which produced passwords directly from a file, one per line
+if __name__ == '__main__' and args.passwordlist and not args.no_dupchecks:
+    password_dups = DuplicateChecker()
+def passwordlist_generator():
+    worker_count = 0  # only used if --worker is specified
+    args.passwordlist.seek(0)
+
+    for password in args.passwordlist:
+        # Remove the trailing newline
+        password = password.rstrip("\r\n")
+
+        # Check the password against the --regex-only and --regex-never options
+        if regex_only  and not regex_only .search(password): continue
+        if regex_never and     regex_never.search(password): continue
+
+        # This duplicate check can be disabled via --no-dupchecks
+        # because it can take up a lot of memory, sometimes needlessly
+        if not args.no_dupchecks and password_dups.is_duplicate(password): continue
+
+        # Workers in a server pool ignore passwords not assigned to them
+        if args.worker:
+            if worker_count % workers_total != worker_id-1:
+                worker_count += 1
+                continue
+            worker_count += 1
+
+        yield password
+
+    if not args.no_dupchecks:
+        password_dups.run_finished()
+
+# Creates and returns a generator which produces the requested list of passwords,
+# either created from a tokenlist file or directly from a passwordlist file
+def chosen_password_generator(): return passwordlist_generator() if args.passwordlist else password_generator()
+
+
 if __name__ == '__main__':
 
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
     if args.listpass:
-        for password in password_generator():
+        for password in chosen_password_generator():
             print(password)
             passwords_count += 1
         print("\n", passwords_count, "password combinations", file=sys.stderr)
@@ -1738,7 +1805,7 @@ if __name__ == '__main__':
     # Count how many passwords there are so we can display and conform to ETAs
     max_seconds = args.max_eta * 3600  # max_eta is in hours
     start = time.clock()
-    for password in password_generator():
+    for password in chosen_password_generator():
         passwords_count += 1
         if passwords_count * est_secs_per_password > max_seconds:
             print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
@@ -1762,7 +1829,7 @@ if __name__ == '__main__':
             est_passwords_per_5min = passwords_count // eta_seconds * 300
 
     # Create an iterator which produces the desired password permutations, skipping some if so instructed
-    password_iterator = password_generator()
+    password_iterator = chosen_password_generator()
     if args.skip > 0:
         print("Starting with password #", args.skip + 1)
         for i in xrange(args.skip): password_iterator.next()
@@ -1838,11 +1905,11 @@ if __name__ == '__main__':
 
     # Gracefully handle Ctrl-C (and other intentional program shutdowns), printing the
     # count completed so far so that it can be skipped if the user restarts the same run
-    except KeyboardInterrupt: pass
-    finally:
+    except BaseException as e:
         print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
             print("\nInterrupted after finishing password #", args.skip + passwords_tried)
+        if not isinstance(e, KeyboardInterrupt): raise
 
     # Autosave the final state (for all non-error cases-- we're shutting down
     # (e.g. Ctrl-C or a reboot), the password was found, or the search was exhausted)
