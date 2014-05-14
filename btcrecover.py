@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.14"
+__version__          = "0.5.15"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -460,6 +460,12 @@ def count_valid_wildcards(str_with_wildcards):
             except ValueError: return -1
     return count
 
+def open_file_or_stdin(filename):
+    if filename == "-":
+        return sys.stdin
+    else:
+        return open(filename)
+
 # Loads the savestate from the more recent save slot in an autosave_file
 SAVESLOT_SIZE     = 4096
 savestate         = None
@@ -571,7 +577,7 @@ if __name__ == '__main__':
     # (--help is handled by argparse in this case)
     if args.passwordlist:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--passwordlist",type=argparse.FileType(), metavar="FILE", required=True, help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
+        parser.add_argument("--passwordlist",metavar="FILE",   help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file", required=True)
         parser.add_argument("--wallet",      metavar="FILE",   help="the wallet file (this, --mkey, --privkey, or --listpass req'd)")
         parser.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
         parser.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
@@ -598,24 +604,32 @@ if __name__ == '__main__':
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
     tokenlist_file = None
     if not args.restore and not args.passwordlist:
-        if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
+        if args.tokenlist:                                 tokenlist_file = open_file_or_stdin(args.tokenlist)
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
 
     # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
+    # TODO: handle Unicode BOM
+    char1_of_tokenlist_file = ""
     if tokenlist_file:
-        if tokenlist_file.read(3) == "#--":  # TODO: Unicode BOM breaks this
-            print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
-            tokenlist_args = ("--"+tokenlist_file.readline()).split()  # TODO: support quoting / escaping?
-            for arg in tokenlist_args:
-                if arg.startswith("--to"):  # --tokenlist
-                    print(parser.prog+": error: the --tokenlist option is not permitted inside a tokenlist file", file=sys.stderr)
-                    sys.exit(2)
-            effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
-            args = parser.parse_args(effective_argv)          # reparse the arguments
-            # Check this again as early as possible so user doesn't miss any error messages
-            if args.pause: enable_pause()
-        tokenlist_file.seek(0)  # reset to beginning of file
+        char1_of_tokenlist_file = tokenlist_file.read(1)  # need to save this in case it's not "#"
+        if char1_of_tokenlist_file == "#":                # it's either a comment or additional args
+            char1_of_tokenlist_file = ""
+            first_line = tokenlist_file.readline()
+            if first_line.startswith("--"):               # if it's additional args
+                print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
+                tokenlist_args = first_line.split()       # TODO: support quoting / escaping?
+                for arg in tokenlist_args:
+                    if arg.startswith("--to"):  # --tokenlist
+                        print(parser.prog+": error: the --tokenlist option is not permitted inside a tokenlist file", file=sys.stderr)
+                        sys.exit(2)
+                    elif arg.startswith("--pas"):  # --passwordlist
+                        print(parser.prog+": error: the --passwordlist option is not permitted inside a tokenlist file", file=sys.stderr)
+                        sys.exit(2)
+                effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
+                args = parser.parse_args(effective_argv)          # reparse the arguments
+                # Check this again as early as possible so user doesn't miss any error messages
+                if args.pause: enable_pause()
 
     # There are two ways to restore from an autosave file: either specify --restore (alone)
     # on the command line in which case the saved arguments completely replace everything else,
@@ -640,12 +654,15 @@ if __name__ == '__main__':
         assert args.autosave, "autosave option enabled in restored autosave file"
         #
         # We finally know the tokenlist filename; open it here
-        if args.tokenlist:                                 tokenlist_file = open(args.tokenlist)
+        if args.tokenlist:                                 tokenlist_file = open_file_or_stdin(args.tokenlist)
         elif os.path.isfile("btcrecover-tokens-auto.txt"): tokenlist_file = open("btcrecover-tokens-auto.txt")
         if tokenlist_file:
-            if tokenlist_file.read(3) == "#--":
-                print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
-            tokenlist_file.seek(0)
+            char1_of_tokenlist_file = tokenlist_file.read(1)  # need to save this in case it's not "#"
+            if char1_of_tokenlist_file == "#":                # it's either a comment or additional args
+                char1_of_tokenlist_file = ""
+                first_line = tokenlist_file.readline()
+                if first_line.startswith("--"):
+                    print(parser.prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
         print("Using autosave file '"+autosave_file.name+"'")
         args.skip = savestate["skip"]       # override this with the most recent value
         restored = True   # a global flag for future reference
@@ -670,10 +687,18 @@ if __name__ == '__main__':
     else:
         restored = False  # a global flag for future reference
 
-    # Do a bunch of argument sanity checking
+    # Open the passwordlist file, if specified
+    passwordlist_file = None
+    if args.passwordlist:
+        passwordlist_file = open_file_or_stdin(args.passwordlist)
+        if passwordlist_file == sys.stdin and not args.no_eta:
+            print(parser.prog+": error: --no-eta option is required if --passwordlist is stdin", file=sys.stderr)
+            sys.exit(2)
 
     # These arguments are only present with a tokenlist file, not with a --passwordlist
-    if not args.passwordlist:
+    else:
+
+        # Do a bunch of argument sanity checking
 
         argsdict = vars(args)  # only used to check for presence of typos_* arguments
 
@@ -838,19 +863,32 @@ if __name__ == '__main__':
     if args.mkey or args.privkey:
         # Make sure we don't have readline support (which could save keys in a history file)
         assert "readline" not in sys.modules, "readline not loaded during sensitive input"
+        #
+        if tokenlist_file == sys.stdin:
+            print(parser.prog+": warning: order of data on stdin is: optional extra command-line arguments, key data, rest of tokenlist", file=sys.stderr)
+        elif passwordlist_file == sys.stdin:
+            print(parser.prog+": warning: order of data on stdin is: key data, password list", file=sys.stderr)
         if args.privkey:
             # We could warn about wallet files too, but hopefully that's already obvious...
             print("WARNING: a complete private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
-        if sys.stdin.isatty():
+        #
+        if sys.stdin.isatty() and char1_of_tokenlist_file == "":
             prompt = "Please enter the encrypted key data from the extract script\n> "
         else:
             prompt = "Reading encrypted key data from stdin\n"
-        key_crc_data = base64.b64decode(raw_input(prompt))
-        # If stdin was redirected, close it so we don't keep the file alive while running
-        if not sys.stdin.isatty():
+        if char1_of_tokenlist_file:  # if we've already read in the first char of the key
+            key_crc_data = base64.b64decode(char1_of_tokenlist_file + raw_input(prompt))
+            char1_of_tokenlist_file = ""
+        else:
+            key_crc_data = base64.b64decode(raw_input(prompt))
+        #
+        # If something was redirected to stdin and we're now done with it,
+        # close it so we don't keep the file alive while running
+        if not sys.stdin.isatty() and tokenlist_file != sys.stdin and passwordlist_file != sys.stdin:
             sys.stdin.close()   # this doesn't really close the fd
             try:   os.close(0)  # but this should, where supported
             except StandardError: pass
+        #
         # Need to save key_data (in a global) for reinitializing worker
         # processes on windows, and key_crc (another global) for do_autosave()
         key_data   = key_crc_data[:-4]
@@ -858,6 +896,7 @@ if __name__ == '__main__':
         if zlib.crc32(key_data) & 0xffffffff != key_crc:
             print(parser.prog+": error: encrypted key data is corrupted (failed CRC check)", file=sys.stderr)
             sys.exit(2)
+        #
         is_mkey = key_data.startswith("bc:")  # Bitcoin Core
         if args.mkey and not is_mkey:
             print(parser.prog+": error: the --mkey data is not a Bitcoin Core encrypted master key (might be a privkey?)", file=sys.stderr)
@@ -865,6 +904,7 @@ if __name__ == '__main__':
         if args.privkey and is_mkey:
             print(parser.prog+": error: the --privkey data is a Bitcoin Core encrypted mkey, not a privkey", file=sys.stderr)
             sys.exit(2)
+        #
         # Emulates load_wallet, but using key_data instead
         load_from_key(key_data)
         if restored and key_crc != savestate["key_crc"]:
@@ -1025,6 +1065,10 @@ if __name__ == '__main__' and tokenlist_file:
 
     for line_num, line in enumerate(tokenlist_file, 1):
 
+        # Need to restore the first character we read in the argument parsing section
+        if line_num == 1:
+            line = char1_of_tokenlist_file + line
+
         # Ignore comments
         if line[0] == "#": continue
 
@@ -1076,7 +1120,15 @@ if __name__ == '__main__' and tokenlist_file:
         # Add the completed list for this one line to the token_lists list of lists
         token_lists.append(new_list)
 
-    tokenlist_file.close()
+    if tokenlist_file != sys.stdin:
+        tokenlist_file.close()
+    # If something was redirected to stdin and it was being read for the tokenlist,
+    # close it so we don't keep the file alive while running
+    elif not sys.stdin.isatty():
+        tokenlist_file.close()  # this doesn't really close the fd
+        try:   os.close(0)      # but this should, where supported
+        except StandardError: pass
+
     if args.no_dupchecks < 2:
         del token_set_for_dupchecks
 
@@ -1743,11 +1795,13 @@ def do_autosave(skip, inside_interrupt_handler = False):
 
 # A simple generator which produces passwords directly from a file, one per line
 def passwordlist_generator():
+    global passwordlist_file
     global password_dups  # initialized just before the def password_generator()
     worker_count  = 0     # only used if --worker is specified
-    args.passwordlist.seek(0)
+    if passwordlist_file != sys.stdin:
+        passwordlist_file.seek(0)
 
-    for password in args.passwordlist:
+    for password in passwordlist_file:
         # Remove the trailing newline
         password = password.rstrip("\r\n")
 
@@ -1769,6 +1823,7 @@ def passwordlist_generator():
         yield password
 
     if password_dups: password_dups.run_finished()
+
 
 # Creates and returns a generator which produces the requested list of passwords,
 # either created from a tokenlist file or directly from a passwordlist file
