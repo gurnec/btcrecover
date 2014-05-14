@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.13"
+__version__          = "0.5.14"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -525,7 +525,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--help", "-h",  action="store_true", help="show this help message and exit")
-    parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (this or --mkey or --listpass req'd)")
+    parser.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --mkey, --privkey, or --listpass is required)")
     parser.add_argument("--tokenlist",   metavar="FILE", help="the list of tokens/partial passwords (required)")
     parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
     parser.add_argument("--min-tokens",  type=int, default=1, metavar="COUNT", help="enforce a min # of tokens included per guess")
@@ -546,14 +546,15 @@ if __name__ == '__main__':
     parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
     parser.add_argument("--worker",      metavar="ID#/TOTAL#", help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
     parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
-    parser.add_argument("--no-dupchecks",action="count",      default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
+    parser.add_argument("--no-eta",      action="store_true", help="disable calculating the estimated time to completion")
+    parser.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
     parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
     parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
     parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
     parser.add_argument("--passwordlist",metavar="FILE",      help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
-    parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
+    parser.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
     parser.add_argument("--pause",       action="store_true", help="pause before exiting")
-    parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
+    parser.add_argument("--version","-v",action="version",    version="%(prog)s " + __version__)
 
     # effective_argv is what we are effectively given, either via the command line, via embedded
     # options in the tokenlist file, or as a result of restoring a session, before any argument
@@ -571,23 +572,23 @@ if __name__ == '__main__':
     if args.passwordlist:
         parser = argparse.ArgumentParser()
         parser.add_argument("--passwordlist",type=argparse.FileType(), metavar="FILE", required=True, help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
-        parser.add_argument("--wallet",      metavar="FILE",   help="the wallet file (this or --mkey or --listpass req'd)")
+        parser.add_argument("--wallet",      metavar="FILE",   help="the wallet file (this, --mkey, --privkey, or --listpass req'd)")
         parser.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
         parser.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
         parser.add_argument("--skip",        type=int, default=0,    metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
         parser.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
         parser.add_argument("--worker",      metavar="ID#/TOTAL#", help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
         parser.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
-        parser.add_argument("--no-dupchecks",action="store_true", help="disable duplicate guess checking to save memory")
+        parser.add_argument("--no-eta",      action="store_true", help="disable calculating the estimated time to completion")
+        parser.add_argument("--no-dupchecks", "-d", action="store_true", help="disable duplicate guess checking to save memory")
         parser.add_argument("--no-progress", action="store_true", default=not sys.stdout.isatty(), help="disable the progress bar")
         parser.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
         parser.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
-        parser.add_argument("--listpass",    action="store_true", help="just list all password combinations and exit")
+        parser.add_argument("--listpass",    action="store_true", help="just list all passwords to test and exit")
         parser.add_argument("--pause",       action="store_true", help="pause before exiting")
-        parser.add_argument("--version",     action="version",    version="%(prog)s " + __version__)
+        parser.add_argument("--version","-v",action="version",    version="%(prog)s " + __version__)
+        parser.set_defaults(autosave=False, restore=False)  # Autosave isn't currently permitted with a passwordlist
         args = parser.parse_args()
-        # Autosave isn't currently permitted with a passwordlist
-        args.__dict__["autosave"] = args.__dict__["restore"] = False
     # Manually handle the --help option
     elif args.help:
         parser.print_help()
@@ -671,6 +672,7 @@ if __name__ == '__main__':
 
     # Do a bunch of argument sanity checking
 
+    # These arguments are only present with a tokenlist file, not with a --passwordlist
     if not args.passwordlist:
 
         argsdict = vars(args)  # only used to check for presence of typos_* arguments
@@ -774,7 +776,7 @@ if __name__ == '__main__':
                 for k in sorted(typos_map.keys()):  # must take the hash in a deterministic order (not in typos_map order)
                     sha1.update(k + str(typos_map[k]))
                 typos_map_hash = sha1.digest()
-                sha1 = None
+                del sha1
             if restored:
                 if typos_map_hash != savestate["typos_map_hash"]:
                     print(parser.prog+": error: can't restore previous session: the typos_map file has changed", file=sys.stderr)
@@ -790,15 +792,15 @@ if __name__ == '__main__':
         if not match:
             print(parser.prog+": error: --worker ID#/TOTAL# must be have the format uint/uint", file=sys.stderr)
             sys.exit(2)
-        worker_id     = int(match.group(1))
+        worker_id     = int(match.group(1)) - 1  # must be in the range [0, workers_total) (after subtracting 1)
         workers_total = int(match.group(2))
         if workers_total < 2:
             print(parser.prog+": error: in --worker ID#/TOTAL#, TOTAL# must be >= 2", file=sys.stderr)
             sys.exit(2)
-        if worker_id < 1:
+        if worker_id < 0:
             print(parser.prog+": error: in --worker ID#/TOTAL#, ID# must be >= 1", file=sys.stderr)
             sys.exit(2)
-        if worker_id > workers_total:
+        if worker_id >= workers_total:
             print(parser.prog+": error: in --worker ID#/TOTAL#, ID# must be <= TOTAL#", file=sys.stderr)
             sys.exit(2)
 
@@ -810,6 +812,12 @@ if __name__ == '__main__':
         except ImportError:
             have_progress = False
 
+    if args.no_eta:
+        if not args.no_dupchecks:
+            print(parser.prog+": warning: --no-eta without --no-dupchecks can cause out-of-memory failures while searching", file=sys.stderr)
+        if args.max_eta != parser.get_default("max_eta"):
+            print(parser.prog+": warning: --max-eta is ignored with --no-eta", file=sys.stderr)
+
     # (move this into an argparse group?)
     required_args = 0
     if args.wallet:   required_args += 1
@@ -817,7 +825,7 @@ if __name__ == '__main__':
     if args.privkey:  required_args += 1
     if args.listpass: required_args += 1
     if required_args != 1:
-        print(parser.prog+": error: argument --wallet (--listpass, --mkey, or --privkey, exactly one) is required", file=sys.stderr)
+        print(parser.prog+": error: argument --wallet (--mkey, --privkey, or --listpass, exactly one) is required", file=sys.stderr)
         sys.exit(2)
 
     # Load the wallet file
@@ -1070,7 +1078,7 @@ if __name__ == '__main__' and tokenlist_file:
 
     tokenlist_file.close()
     if args.no_dupchecks < 2:
-        token_set_for_dupchecks = None
+        del token_set_for_dupchecks
 
     # Tokens at the end of the outer token_lists get tried first below;
     # reverse the list here so that tokens at the beginning of the file
@@ -1123,7 +1131,7 @@ class DuplicateChecker:
 
     def run_finished(self):
         if self.run_number == 0:
-            self.seen_once = None  # No longer need this for second+ runs
+            del self.seen_once  # No longer need this for second+ runs
         self.run_number += 1
 
 
@@ -1136,12 +1144,10 @@ typos_sofar = 0
 # no duplicates from the token_lists global as constructed above plus wildcard expansion
 # and up to a certain number of requested typos
 #
-if __name__ == '__main__' and not args.passwordlist:
-    if args.no_dupchecks   < 1:
-        password_dups          = DuplicateChecker()
-        token_combination_dups = DuplicateChecker()
-    elif args.no_dupchecks < 2:
-        token_combination_dups = DuplicateChecker()
+if __name__ == '__main__':
+    password_dups          = DuplicateChecker() if args.no_dupchecks < 1 else None
+    token_combination_dups = DuplicateChecker() if args.no_dupchecks < 2 and \
+        not args.passwordlist and has_any_duplicate_tokens else None
 #
 def password_generator():
     global typos_sofar, token_combination_dups, password_dups
@@ -1234,10 +1240,9 @@ def password_generator():
         # combinations are equivalent at this point. This check can be disabled with two
         # (or more) --no-dupcheck options (one disables only the other duplicate check).
         # TODO:
-        #   Be smarter in deciding when to turn this on?
+        #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
-        if args.no_dupchecks < 2 and has_any_duplicate_tokens and \
-           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
+        if token_combination_dups and token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -1304,22 +1309,19 @@ def password_generator():
 
                 # This duplicate check can be disabled via --no-dupchecks
                 # because it can take up a lot of memory, sometimes needlessly
-                if args.no_dupchecks < 1 and password_dups.is_duplicate(password): continue
+                if password_dups and password_dups.is_duplicate(password): continue
 
                 # Workers in a server pool ignore passwords not assigned to them
                 if args.worker:
-                    if worker_count % workers_total != worker_id-1:
+                    if worker_count % workers_total != worker_id:
                         worker_count += 1
                         continue
                     worker_count += 1
 
                 yield password
 
-    if args.no_dupchecks   < 1:
-        password_dups.run_finished()
-        token_combination_dups.run_finished()
-    elif args.no_dupchecks < 2:
-        token_combination_dups.run_finished()
+    if password_dups:          password_dups.run_finished()
+    if token_combination_dups: token_combination_dups.run_finished()
 
 
 # Like itertools.product, but only produces output tuples whose length is between
@@ -1682,6 +1684,21 @@ def windows_ctrl_handler(signal):
         print("\nInterrupted after finishing password #", args.skip + passwords_tried)
     sys.exit()
 
+# If an out-of-memory error occurs which can be handled, free up some memory, display
+# an informative error message, and then return, otherwise re-raise the exception
+def handle_oom():
+    global password_dups, token_combination_dups  # these are the memory-hogging culprits
+    if password_dups and password_dups.run_number == 0:
+        del password_dups, token_combination_dups
+        gc.collect(2)
+        print(parser.prog+": error: out of memory", file=sys.stderr)
+        print(parser.prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
+    elif token_combination_dups and token_combination_dups.run_number == 0:
+        del token_combination_dups
+        gc.collect(2)
+        print(parser.prog+": error: out of memory", file=sys.stderr)
+        print(parser.prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
+    else: raise
 
 def do_autosave(skip, inside_interrupt_handler = False):
     global autosave_nextslot
@@ -1724,11 +1741,10 @@ def do_autosave(skip, inside_interrupt_handler = False):
             signal.signal(signal.SIGHUP, sighup_handler)
 
 
-# A simple generator which produced passwords directly from a file, one per line
-if __name__ == '__main__' and args.passwordlist and not args.no_dupchecks:
-    password_dups = DuplicateChecker()
+# A simple generator which produces passwords directly from a file, one per line
 def passwordlist_generator():
-    worker_count = 0  # only used if --worker is specified
+    global password_dups  # initialized just before the def password_generator()
+    worker_count  = 0     # only used if --worker is specified
     args.passwordlist.seek(0)
 
     for password in args.passwordlist:
@@ -1741,19 +1757,18 @@ def passwordlist_generator():
 
         # This duplicate check can be disabled via --no-dupchecks
         # because it can take up a lot of memory, sometimes needlessly
-        if not args.no_dupchecks and password_dups.is_duplicate(password): continue
+        if password_dups and password_dups.is_duplicate(password): continue
 
         # Workers in a server pool ignore passwords not assigned to them
         if args.worker:
-            if worker_count % workers_total != worker_id-1:
+            if worker_count % workers_total != worker_id:
                 worker_count += 1
                 continue
             worker_count += 1
 
         yield password
 
-    if not args.no_dupchecks:
-        password_dups.run_finished()
+    if password_dups: password_dups.run_finished()
 
 # Creates and returns a generator which produces the requested list of passwords,
 # either created from a tokenlist file or directly from a passwordlist file
@@ -1765,10 +1780,17 @@ if __name__ == '__main__':
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
     if args.listpass:
-        for password in chosen_password_generator():
-            print(password)
-            passwords_count += 1
-        print("\n", passwords_count, "password combinations", file=sys.stderr)
+        try:
+            for password in chosen_password_generator():
+                passwords_count += 1
+                if passwords_count > args.skip: print(password)
+        except BaseException as e:
+            print("\nInterrupted after generating", passwords_count, "passwords", "(including skipped ones)" if args.skip else "", file=sys.stderr)
+            if isinstance(e, MemoryError):
+                handle_oom()  # will re-raise if not handled
+                sys.exit(1)
+            raise
+        print("\n", max(passwords_count - args.skip, 0), "password combinations", "(plus "+str(min(args.skip, passwords_count))+" skipped)" if args.skip else "", file=sys.stderr)
         sys.exit(0)
 
     # Measure the performance of the verification function
@@ -1778,6 +1800,7 @@ if __name__ == '__main__':
     for i in xrange(measure_performance_iterations):
         return_verified_password_or_false("measure performance passphrase "+str(i))
     est_secs_per_password = (time.clock() - start) / float(measure_performance_iterations)
+    assert est_secs_per_password > 0.0
 
     # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
@@ -1798,50 +1821,77 @@ if __name__ == '__main__':
     # Adjust estimate for the number of verifying threads (final estimate is probably an underestimate)
     est_secs_per_password /= min(verifying_threads, cpus)
 
-    # If requested, subtract out skipped passwords from the count (calculated just below)
-    if args.skip > 0:
-        passwords_count = -args.skip
+    # Count how many passwords there are (excluding skipped ones) so we can display and conform to ETAs
+    if not args.no_eta:
 
-    # Count how many passwords there are so we can display and conform to ETAs
-    max_seconds = args.max_eta * 3600  # max_eta is in hours
-    start = time.clock()
-    for password in chosen_password_generator():
-        passwords_count += 1
-        if passwords_count * est_secs_per_password > max_seconds:
-            print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
-                  .format(passwords_count, args.max_eta), file=sys.stderr)
-            sys.exit(2)
-        if passwords_count == 5000000:  # takes about 5 seconds on my CPU, YMMV
-            print("Counting passwords ...")
-    iterate_time = time.clock() - start
+        # If requested, subtract out skipped passwords from the count (calculated just below)
+        if args.skip > 0:
+            passwords_count = -args.skip
 
-    if passwords_count <= 0:
-        print("Skipped all", passwords_count + args.skip, "passwords, exiting")
-        sys.exit(0)
+        max_seconds = args.max_eta * 3600  # max_eta is in hours
+        start = time.clock()
+        try:
+            for password in chosen_password_generator():
+                passwords_count += 1
+                if passwords_count * est_secs_per_password > max_seconds:
+                    print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
+                          .format(passwords_count, args.max_eta), file=sys.stderr)
+                    sys.exit(2)
+                if passwords_count + args.skip == 5000000:  # takes about 5 seconds on my CPU, YMMV
+                    print("Counting passwords ...")
+        except BaseException as e:
+            if isinstance(e, SystemExit): raise
+            print("\nInterrupted after counting", passwords_count + args.skip, "passwords", "(including skipped ones)" if args.skip else "", file=sys.stderr)
+            if isinstance(e, MemoryError):
+                handle_oom()  # will re-raise if not handled
+                sys.exit(1)
+            raise
+        iterate_time = time.clock() - start
 
-    # If additional ETA calculations are required
-    if args.autosave or not have_progress:
-        eta_seconds = passwords_count * est_secs_per_password
-        if (spawned_threads == 0 or spawned_threads >= cpus):  # if the main thread is sharing CPU time with a verifying thread
-            eta_seconds += iterate_time
-        eta_seconds = int(round(eta_seconds)) or 1
-        if args.autosave:
-            est_passwords_per_5min = passwords_count // eta_seconds * 300
+        if passwords_count <= 0:
+            print("Skipped all", passwords_count + args.skip, "passwords, exiting")
+            sys.exit(0)
+
+        # If additional ETA calculations are required
+        if args.autosave or not have_progress:
+            eta_seconds = passwords_count * est_secs_per_password
+            if (spawned_threads == 0 or spawned_threads >= cpus):  # if the main thread is sharing CPU time with a verifying thread
+                eta_seconds += iterate_time
+            eta_seconds = int(round(eta_seconds)) or 1
+            if args.autosave:
+                est_passwords_per_5min = passwords_count // eta_seconds * 300
+
+    # else if args.no_eta and args.autosave, calculate a simple approximate of est_passwords_per_5min
+    elif args.autosave:
+        est_passwords_per_5min = int(round(300.0 / est_secs_per_password))
+        assert est_passwords_per_5min > 0
 
     # Create an iterator which produces the desired password permutations, skipping some if so instructed
     password_iterator = chosen_password_generator()
     if args.skip > 0:
         print("Starting with password #", args.skip + 1)
-        for i in xrange(args.skip): password_iterator.next()
+        try:
+            for i in xrange(args.skip): password_iterator.next()
+        except BaseException as e:
+            print("\nInterrupted after skipping", passwords_count + args.skip, "passwords", file=sys.stderr)
+            if isinstance(e, MemoryError):
+                handle_oom()  # will re-raise if not handled
+                sys.exit(1)
+            raise
 
     print("Using", worker_threads, "worker", "threads" if worker_threads > 1 else "thread")  # (they're actually worker processes)
 
     if have_progress:
-        progress = ProgressBar(maxval=passwords_count, widgets=[
-            SimpleProgress(), " ", Bar(left="[", fill="-", right="]"), FormatLabel(" %(elapsed)s, "), ETA()
-        ])
+        if args.no_eta:
+            progress = ProgressBar(maxval=sys.maxint, widgets=[
+                AnimatedMarker(), FormatLabel(" %(value)d  elapsed: %(elapsed)s  rate: "), FileTransferSpeed(unit="P")
+            ])
+        else:
+            progress = ProgressBar(maxval=passwords_count, widgets=[
+                SimpleProgress(), " ", Bar(left="[", fill="-", right="]"), FormatLabel(" %(elapsed)s, "), ETA()
+            ])
 
-    else:
+    elif not args.no_eta:
         # If progressbar is unavailable, print out a time estimate instead
         print("Will try {:,} passwords, ETA ".format(passwords_count), end="")
         eta_hours    = eta_seconds // 3600
@@ -1853,8 +1903,11 @@ if __name__ == '__main__':
         if eta_hours  == 0: print(eta_seconds, "seconds ", end="")
         print("...")
 
+    else:
+        print("Searching for password ...")
+
     # If there aren't many passwords, give each of the N workers 1/Nth of the passwords
-    if spawned_threads and spawned_threads * imap_chunksize > passwords_count:
+    if not args.no_eta and spawned_threads and spawned_threads * imap_chunksize > passwords_count:
         imap_chunksize = (passwords_count-1) // spawned_threads + 1
 
     # Autosave the starting state now that we're just about ready to start
@@ -1900,19 +1953,25 @@ if __name__ == '__main__':
             if args.autosave and passwords_tried % est_passwords_per_5min == 0:
                 do_autosave(args.skip + passwords_tried)
         else:  # if the for loop exits normally (without breaking)
-            if have_progress: progress.finish()
+            if have_progress:
+                if args.no_eta:
+                    progress.maxval = passwords_tried
+                progress.finish()
             print("Password search exhausted")
 
-    # Gracefully handle Ctrl-C (and other intentional program shutdowns), printing the
-    # count completed so far so that it can be skipped if the user restarts the same run
+    # Gracefully handle any exceptions, printing the count completed so far so that it can be
+    # skipped if the user restarts the same run. If the exception was expected (Ctrl-C or some
+    # other intentional shutdown, or an out-of-memory condition that can be handled), fall
+    # through to the autosave, otherwise re-raise the exception.
     except BaseException as e:
         print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
             print("\nInterrupted after finishing password #", args.skip + passwords_tried)
-        if not isinstance(e, KeyboardInterrupt): raise
+        if isinstance(e, MemoryError): handle_oom()    # will re-raise if not handled
+        elif not isinstance(e, KeyboardInterrupt): raise
 
-    # Autosave the final state (for all non-error cases-- we're shutting down
-    # (e.g. Ctrl-C or a reboot), the password was found, or the search was exhausted)
+    # Autosave the final state (for all non-error cases -- we're shutting down (e.g. Ctrl-C or a
+    # reboot), the password was found, or the search was exhausted -- or for handled out-of-memory)
     if args.autosave:
         do_autosave(args.skip + passwords_tried)
         autosave_file.close()
