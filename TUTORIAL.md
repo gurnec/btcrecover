@@ -251,6 +251,13 @@ If you cancel in the middle of testing (with Ctrl-C, or due to a reboot, or for 
 If you'd just like to test your token file and chosen typos, you can use the `--listpass` option (in which case you don't need to supply a wallet file). *btcrecover* will then list out all the passwords to the screen instead of actually testing them against a wallet file. This can also be useful if you have another tool which can test some other type of wallet, and is capable of taking a list of passwords to test from *btcrecover*.
 
 
+## The Passwordlist File ##
+
+If you already have a simple list of specific passwords you'd like to test, and you don't need any of the features of a token file, you can specify a passwordlist file using the `--passwordlist FILE` command-line option (instead of using the `--tokenlist FILE` option). Passwords will then be taken from this file verbatim, exactly one per line, with no additional processing. Even extra spaces will be considered part of the password (the carriage return / line feed at the end of each line is always removed).
+
+You still can use any of the Typos features if you'd like. The Autosave feature does not currently work with a passwordlist. If you're using a different generator program to create the passwords, you can pipe the output of that generator program directly to *btcrecover* by specifying `--passwordlist -` and the passwords will be read in from stdin.
+
+
 ## Installation ##
 
 Just download the latest version from <https://github.com/gurnec/btcrecover/archive/master.zip> and unzip to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements depending on your operating system and the wallet type you’re trying to recover.
