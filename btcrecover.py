@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.16"
+__version__          = "0.5.17"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -452,9 +452,11 @@ def expand_single_range(m):
 # (see expand_wildcards_generator() for more details on wildcards)
 def count_valid_wildcards(str_with_wildcards, permit_negative_wildcards = False):
     negative_wildcards = "<>-" if permit_negative_wildcards else ""
-    # Remove all valid wildcards; if any %'s are left they are invalid
-    # TODO: sanity check that max >= min
-    valid_wildcards_removed, count = re.subn(r"%(?:(?:\d+,)?\d+)?(?:i)?(?:["+wildcard_keys+negative_wildcards+"]|\[.+?\])", "", str_with_wildcards)
+    # Remove all valid wildcards, syntax checking the min to max ranges; if any %'s are left they are invalid
+    try:
+        valid_wildcards_removed, count = \
+            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:["+wildcard_keys+negative_wildcards+"]|\[.+?\])", syntax_check_range, str_with_wildcards)
+    except ValueError: return -1
     if "%" in valid_wildcards_removed: return -1
     if count == 0:                     return  0
     # Expand any custom wildcard sets for the sole purpose of checking for exceptions (e.g. %[z-a])
@@ -466,6 +468,13 @@ def count_valid_wildcards(str_with_wildcards, permit_negative_wildcards = False)
                 re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
             except ValueError: return -1
     return count
+#
+def syntax_check_range(m):
+    minlen, maxlen = m.groups()
+    maxlen = int(maxlen) if maxlen else 1
+    minlen = int(minlen) if minlen else maxlen
+    if minlen > maxlen: raise ValueError("min > max in wildcard length")
+    return ""
 
 def open_file_or_stdin(filename):
     if filename == "-":
@@ -1517,7 +1526,7 @@ def expand_wildcards_generator(password_with_wildcards):
     # For positive (expanding) wildcards, build the set of possible characters based on the wildcard type and caseflag
     m_custom, m_nocase = match.group("custom", "nocase")
     if m_custom:  # e.g. %[abcdef0-9]
-        m_type = "["
+        is_expanding = True
         wildcard_set = custom_wildcard_cache.get((m_custom, m_nocase))
         if wildcard_set is None:
             wildcard_set = build_wildcard_set(m_custom)
@@ -1529,12 +1538,13 @@ def expand_wildcards_generator(password_with_wildcards):
             custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
     else:
         m_type = match.group("type")
-        if m_type not in "<>-":  # if it's not a negative (contracting) wildcard
+        is_expanding = m_type not in "<>-"
+        if is_expanding:
             if m_nocase and m_type in wildcard_nocase_sets:
                 wildcard_set = wildcard_nocase_sets[m_type]
             else:
                 wildcard_set = wildcard_sets[m_type]
-    assert m_type in "<>-" or wildcard_set, "expand_wildcards_generator: found positive wildcard set"
+    assert not is_expanding or wildcard_set, "expand_wildcards_generator: found expanding wildcard set"
 
     # Extract or default the wildcard min and max length
     wildcard_maxlen = match.group("max")
@@ -1542,8 +1552,8 @@ def expand_wildcards_generator(password_with_wildcards):
     wildcard_minlen = match.group("min")
     wildcard_minlen = int(wildcard_minlen) if wildcard_minlen else wildcard_maxlen
 
-    # If it's a positive (expanding) wildcard
-    if m_type not in "<>-":
+    # If it's an expanding wildcard
+    if is_expanding:
         # Iterate through specified wildcard lengths
         for wildcard_len in xrange(wildcard_minlen, wildcard_maxlen+1):
 
@@ -1555,35 +1565,27 @@ def expand_wildcards_generator(password_with_wildcards):
                 for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards):
                     yield password_prefix_expanded + password_postfix_expanded
 
-        return
-
-    # Otherwise it's a negative (contracting) wildcard
-    if wildcard_minlen == 0:  # special case for when the wildcard is simply removed
-        wildcard_minlen = 1   # don't generate this case again down below
-        for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards):
-            yield password_prefix + password_postfix_expanded
-
-    # If it's a negative (contracting) wildcard that removes chars to the left
-    if m_type in "<-":
-        for remove_len in xrange(wildcard_minlen, min(wildcard_maxlen, len(password_prefix)) + 1):
-
-            # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-            for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards):
-                yield password_prefix[:-remove_len] + password_postfix_expanded
-
-    # If it's a negative (contracting) wildcard that removes chars to the right
-    if m_type in ">-":
-        next_wildcard_pos = password_postfix_with_wildcards.find("%")
-        if next_wildcard_pos == -1:
-            password_postfix_len = len(password_postfix_with_wildcards)
+    # Otherwise it's a contracting wildcard
+    else:
+        # Determine the max # of characters that can be removed from either the left
+        # or the right of the wildcard, not yet taking wildcard_maxlen into account
+        max_from_left  = len(password_prefix) if m_type in "<-" else 0
+        if m_type in ">-":
+            max_from_right = password_postfix_with_wildcards.find("%")
+            if max_from_right == -1: max_from_right = len(password_postfix_with_wildcards)
         else:
-            password_postfix_len = min(next_wildcard_pos, len(password_postfix_with_wildcards))
+            max_from_right = 0
 
-        for remove_len in xrange(wildcard_minlen, min(wildcard_maxlen, password_postfix_len) + 1):
+        # Iterate over the total number of characters to remove
+        for remove_total in xrange(wildcard_minlen, min(wildcard_maxlen, max_from_left+max_from_right) + 1):
 
-            # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-            for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_len:]):
-                yield password_prefix + password_postfix_expanded
+            # Iterate over the number of characters to remove from the right of the wildcard
+            for remove_right in xrange(max(0, remove_total-max_from_left), min(remove_total, max_from_right) + 1):
+                remove_left = remove_total-remove_right
+
+                # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
+                for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:]):
+                    yield (password_prefix[:-remove_left] if remove_left else password_prefix) + password_postfix_expanded
 
 
 # capslock_typos_generator() is a generator function which tries swapping the case of
@@ -1716,14 +1718,14 @@ def simple_typos_generator(password_base):
                 # replacement per selected typo target. If all of the selected generators
                 # above each produce only one replacement, this loop will execute once with
                 # that one replacement set. If one or more of the generators produce multiple
-                # replacements (for a single target), this loop iterates accross all possible
+                # replacements (for a single target), this loop iterates across all possible
                 # combinations of those replacements. If any generator produces zero outputs
                 # (therefore that the target has no typo), this loop iterates zero times.
                 for one_replacement_set in itertools.product(*typo_replacements):
 
                     # Construct a new password, left-to-right, from password_base and the
                     # one_replacement_set.
-                    # typo_indexes_ has a added sentinal at the end; it's the index of
+                    # typo_indexes_ has an added sentinel at the end; it's the index of
                     # one-past-the-end of password_base.
                     typo_indexes_ = typo_indexes + (len(password_base),)
                     password = password_base[0:typo_indexes_[0]]

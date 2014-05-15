@@ -125,7 +125,7 @@ You can't leave out the comma (that's what makes it a middle anchor instead of a
 
 There are a number of command line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from that last example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
 
-### Wildcards ###
+### Expanding Wildcards ###
 
 What if you think one of the tokens has a number in it, but you’re not sure what that number is? For example, if you think that Cairo is definitely followed by a single digit, you could do this:
 
@@ -160,12 +160,39 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%1,3[chars]` - between 1 and 3 of the characters between `[` and `]`
  * `%[0-9a-f]` - exactly 1 of these characters: `0123456789abcdef`
  * `%2i[0-9a-f]` - exactly 2 of these characters: `0123456789abcdefABCDEF`
- * `%%`    - exactly one “%” (so that %’s in your password aren’t confused as wildcards)
- * `%^`    - exactly one “^” (so it’s not confused with an anchor if it’s at the beginning of a token)
- * `%S`    - exactly one “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if that’s confusing)
+ * `%s`    - a single space
+ * `%l`    - a single line feed character
+ * `%r`    - a single carriage return character
+ * `%t`    - a single tab character
+ * `%w`    - a single space, line feed, or carriage return character
+ * `%%`    - a single  “%” (so that %’s in your password aren’t confused as wildcards)
+ * `%^`    - a single  “^” (so it’s not confused with an anchor if it’s at the beginning of a token)
+ * `%S`    - a single  “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if that’s confusing)
 
 Up until now, most of the features help by reducing the number of passwords that need to be tried by exploiting your knowledge of what’s probably in the password. Wildcards significantly expand the number of passwords that need to be tried, so they’re best used in moderation.
 
+### Contracting Wildcards ###
+
+Instead of adding new characters to a password guess, contracting wildcards remove one or more characters. Here's an example:
+
+    Start%0,2-End
+
+The `%0,2-` contracting wildcard will remove between 0 and 2 adjacent characters from either side, so that each of `StartEnd` (removes 0), `StarEnd` (removes 1 from left), `StaEnd` (removes 2 from left), `Starnd` (removes 1 from left and 1 from right), `Startnd` (removes 1 from right), and `Startd` (removes 2 from right) will be tried. This can be useful when considering copy-paste errors, for example:
+
+    %0,20-A+Long+Password+with+symbols-&-maybe+it+was+partially+copy+pasted%0,20-
+
+Different versions of this password will be tried removing up to 20 characters from either end. Here are the three types of contracting wildcards:
+
+ * `%0,2-` - removes between 0 and 2 adjacent characters (total) taken from either side of the wildcard
+ * `%0,2<` - removes between 0 and 2 adjacent characters only from the wildcard's left
+ * `%0,2>` - removes between 0 and 2 adjacent characters only from the wildcard's right
+
+You may want to note that a contracting wildcard in one token can potentially remove characters from other tokens, but it will never remove or cross over another wildcard. Here's an example to fully illustrate this:
+
+    AAAA%0,10>BBBB
+    xxxx%dyyyy
+
+These two tokens each have eight normal letters. The first token has a contracting wildcard which removes up to 10 characters from its right, and the second token has an expanding wildcard which expands to a single digit. One of the passwords generated from these tokens is `AAAABBxxxx5yyyy`, which comes from selecting the first token followed by the second token, and then applying the wildcards with the contracting wildcard removing two characters. Another is `AAAAxx5yyyy` which comes from the same tokens, but the contracting wildcard now is removing six characters, two of which are from the second token. The digit and the `yyyy` will never be removed by the contracting wildcard because other wildcards are never removed or crossed over. Even though the contracting wildcard is set to remove up to 10 characters, `AAAAyyy` will never be produced because the `%d` blocks it.   
 
 ## Typos ##
 
