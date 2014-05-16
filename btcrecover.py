@@ -32,7 +32,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.18"
+__version__          = "0.5.19"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -393,7 +393,7 @@ def load_aes256_library():
         measure_performance_iterations = 50000
     except ImportError:
         import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
-        aes256_cbc_decrypt = aes256_cbc_decrypt_pp
+        aes256_cbc_decrypt  = aes256_cbc_decrypt_pp
         aes256_key_expander = aespython.key_expander.KeyExpander(256)
         measure_performance_iterations = 2000
 
@@ -445,42 +445,48 @@ def build_wildcard_set(set_string):
 #
 def expand_single_range(m):
     char_first, char_last = map(ord, m.groups())
-    if char_first > char_last: raise ValueError("first char > last char in wildcard range")
+    if char_first > char_last:
+        raise ValueError("first character in wildcard range '"+chr(char_first)+"' > last '"+chr(char_last)+"'")
     return "".join(map(chr, xrange(char_first, char_last+1)))
 
-# Returns a count of valid wildcards in the string, or -1 if any invalid wildcards are present
+# Returns an integer count of valid wildcards in the string, or
+# a string error message if any invalid wildcards are present
 # (see expand_wildcards_generator() for more details on wildcards)
-def count_valid_wildcards(str_with_wildcards, permit_negative_wildcards = False):
-    negative_wildcards = "<>-" if permit_negative_wildcards else ""
+def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = False):
+    contracting_wildcards = "<>-" if permit_contracting_wildcards else ""
     # Remove all valid wildcards, syntax checking the min to max ranges; if any %'s are left they are invalid
     try:
         valid_wildcards_removed, count = \
-            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:["+wildcard_keys+negative_wildcards+"]|\[.+?\])", syntax_check_range, str_with_wildcards)
-    except ValueError: return -1
-    if "%" in valid_wildcards_removed: return -1
-    if count == 0:                     return  0
+            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:["+wildcard_keys+contracting_wildcards+"]|\[.+?\])",
+            syntax_check_range, str_with_wildcards)
+    except ValueError as e: return str(e)
+    if "%" in valid_wildcards_removed:
+        if not permit_contracting_wildcards and count_valid_wildcards(str_with_wildcards, True) != \
+                   "invalid wildcard (%) syntax (use %% to escape a %)":
+            return "contracting wildcards are not permitted here"
+        else:
+            return "invalid wildcard (%) syntax (use %% to escape a %)"
+    if count == 0: return 0
     # Expand any custom wildcard sets for the sole purpose of checking for exceptions (e.g. %[z-a])
     # We know all wildcards present have valid syntax, so we don't need to use the full regex, but
-    # we do need to capture %% to avoid seeing this as a wildcard set (it isn't one): %%[not-a-set]
+    # we do need to capture %% to avoid parsing this as a wildcard set (it isn't one): %%[not-a-set]
     for wildcard_set in re.findall(r"%[\d,i]*\[(.+?)\]|%%", str_with_wildcards):
         if wildcard_set:
-            try:
-                re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
-            except ValueError: return -1
+            try:   re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
+            except ValueError as e: return str(e)
     return count
 #
 def syntax_check_range(m):
     minlen, maxlen = m.groups()
-    maxlen = int(maxlen) if maxlen else 1
-    minlen = int(minlen) if minlen else maxlen
-    if minlen > maxlen: raise ValueError("min > max in wildcard length")
+    if minlen is not None and maxlen is not None and int(minlen) > int(maxlen):
+        raise ValueError("min wildcard length ("+minlen+") > max length ("+maxlen+")")
+    if maxlen is not None and int(maxlen) == 0:
+        print(parser.prog+": warning: %0 or %0,0 wildcards have no effect", file=sys.stderr)
     return ""
 
 def open_file_or_stdin(filename):
-    if filename == "-":
-        return sys.stdin
-    else:
-        return open(filename)
+    if filename == "-": return sys.stdin
+    else:               return open(filename)
 
 # Loads the savestate from the more recent save slot in an autosave_file
 SAVESLOT_SIZE     = 4096
@@ -589,7 +595,7 @@ if __name__ == '__main__':
     # Do this as early as possible so user doesn't miss any error messages
     if args.pause: enable_pause()
 
-    # If a simple passwordlist is being provided, re-parse the command line with limited options
+    # If a simple passwordlist is being provided, re-parse the command line with fewer options
     # (--help is handled by argparse in this case)
     if args.passwordlist:
         parser = argparse.ArgumentParser()
@@ -646,10 +652,10 @@ if __name__ == '__main__':
                 print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
                 tokenlist_args = first_line.split()       # TODO: support quoting / escaping?
                 for arg in tokenlist_args:
-                    if arg.startswith("--to"):  # --tokenlist
+                    if arg.startswith("--to"):        # --tokenlist
                         print(parser.prog+": error: the --tokenlist option is not permitted inside a tokenlist file", file=sys.stderr)
                         sys.exit(2)
-                    elif arg.startswith("--pas"):  # --passwordlist
+                    elif arg.startswith("--pas"):     # --passwordlist
                         print(parser.prog+": error: the --passwordlist option is not permitted inside a tokenlist file", file=sys.stderr)
                         sys.exit(2)
                 effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
@@ -785,16 +791,13 @@ if __name__ == '__main__':
                 wildcard_nocase_sets["C"] = wildcard_nocase_sets["c"].swapcase()
             wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
 
-    # Syntax check any --typos-insert wildcard (it's expanded later in the Password Generation section)
-    if args.typos_insert:
-        if count_valid_wildcards(args.typos_insert) == -1:
-            print(parser.prog+": error: --typos-insert", args.typos_insert, "has an invalid wildcard (%) spec", file=sys.stderr)
-            sys.exit(2)
-    # Syntax check any --typos-replace wildcard (it's expanded later in the Password Generation section)
-    if args.typos_replace:
-        if count_valid_wildcards(args.typos_replace) == -1:
-            print(parser.prog+": error: --typos-replace", args.typos_replace, "has an invalid wildcard (%) spec", file=sys.stderr)
-            sys.exit(2)
+    # Syntax check --typos-insert/--typos-replace wildcards (expanded later in the Password Generation section)
+    for arg_name, arg_val in (("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace)):
+        if arg_val:
+            error_msg = count_valid_wildcards(arg_val)
+            if isinstance(error_msg, str):
+                print(parser.prog+": error:", arg_name, arg_val, ":", error_msg, file=sys.stderr)
+                sys.exit(2)
 
     # Process any --typos-map file: build a dict (typos_map) mapping replaceable characters to their replacements
     typos_map_hash = None
@@ -837,8 +840,12 @@ if __name__ == '__main__':
     elif args.passwordlist and args.delimiter:  # with a passwordlist, --delimiter is only used for typos-map
         print(parser.prog+": warning: ignoring unused --delimiter", file=sys.stderr)
 
-    regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
-    regex_never = re.compile(args.regex_never) if args.regex_never else None
+    try:
+        regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
+        regex_never = re.compile(args.regex_never) if args.regex_never else None
+    except re.error as e:
+        print(parser.prog+": error: invalid --regex:", e, file=sys.stderr)
+        sys.exit(2)
 
     worker_threads = max(args.threads, 1)
 
@@ -1129,12 +1136,17 @@ if __name__ == '__main__' and tokenlist_file:
                     sys.exit(2)
 
             # Syntax check any wildcards
-            wildcard_count = count_valid_wildcards(token, True)
-            if wildcard_count:
-                if wildcard_count == -1:
-                    print(parser.prog+": error: token on line", line_num, "has an invalid wildcard (%) spec (use %% to escape a %)", file=sys.stderr)
-                    sys.exit(2)
+            count_or_error_msg = count_valid_wildcards(token, True)  # True == permit contracting wildcards
+            if isinstance(count_or_error_msg, str):
+                print(parser.prog+": error: on line", str(line_num)+":", count_or_error_msg, file=sys.stderr)
+                sys.exit(2)
+            elif count_or_error_msg:
                 has_any_wildcards = True  # (a global)
+
+            # Parse anchor if present and convert to an AnchoredToken object
+            if token[0] == "^" or token[-1] == "$":
+                token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
+                new_list[i] = token
 
             # Keep track of the existence of any duplicate tokens for future optimization
             if args.no_dupchecks < 2 and not has_any_duplicate_tokens:
@@ -1142,10 +1154,6 @@ if __name__ == '__main__' and tokenlist_file:
                     has_any_duplicate_tokens = True
                 else:
                     token_set_for_dupchecks.add(token)
-
-            # Parse anchor if present
-            if token[0] == "^" or token[-1] == "$":
-                new_list[i] = AnchoredToken(token, line_num)
 
         # Add the completed list for this one line to the token_lists list of lists
         token_lists.append(new_list)
@@ -1299,8 +1307,8 @@ def password_generator():
                         invalid_anchors = True  # anchored past the end
                         break
                     if not positional_anchors:  # initialize it to a list of None's
-                        positional_anchors = list(itertools.repeat(None, len(tokens_combination)))
-                    if positional_anchors[pos]:
+                        positional_anchors = [None for i in xrange(len(tokens_combination))]
+                    if positional_anchors[pos] is not None:
                         invalid_anchors = True  # two tokens anchored to the same place
                         break
                     positional_anchors[pos] = token.text    # save valid single-position anchor
@@ -1324,7 +1332,8 @@ def password_generator():
         # TODO:
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
-        if token_combination_dups and token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
+        if token_combination_dups and \
+           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -1336,7 +1345,8 @@ def password_generator():
             if positional_anchors:
                 ordered_token_guess = list(ordered_token_guess)
                 for i, token in enumerate(positional_anchors):
-                    if token: ordered_token_guess.insert(i, token)  # (token here is just a string)
+                    if token is not None:
+                        ordered_token_guess.insert(i, token)  # (token here is just a string)
 
             # The second type of anchor has a range of possible positions for the anchored
             # token. If any anchored token is outside of its permissible range, we continue
@@ -1515,9 +1525,8 @@ def generator_product(initial_value, generator, *other_generators):
                 yield final_value
 
 
-# This generator function that expands (or contracts) all wildcards in the string
-# passed to it, or if there are no wildcards it simply produces that single string
-#
+# This generator function expands (or contracts) all wildcards in the string passed
+# to it, or if there are no wildcards it simply produces the string unchanged
 # TODO: implement without recursion?
 custom_wildcard_cache = dict()
 def expand_wildcards_generator(password_with_wildcards):
@@ -1575,6 +1584,11 @@ def expand_wildcards_generator(password_with_wildcards):
             for wildcard_expanded_list in itertools.product(wildcard_set, repeat=wildcard_len):
                 password_prefix_expanded = password_prefix + "".join(wildcard_expanded_list)
 
+                # If the wildcard was at the end of the string, we're done
+                if len(password_postfix_with_wildcards) == 0:
+                    yield password_prefix_expanded
+                    continue
+
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
                 for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards):
                     yield password_prefix_expanded + password_postfix_expanded
@@ -1594,8 +1608,14 @@ def expand_wildcards_generator(password_with_wildcards):
         for remove_total in xrange(wildcard_minlen, min(wildcard_maxlen, max_from_left+max_from_right) + 1):
 
             # Iterate over the number of characters to remove from the right of the wildcard
+            # (this loop runs just once for %#,#< or %#,#> ; or for %#,#- at the beginning or end)
             for remove_right in xrange(max(0, remove_total-max_from_left), min(remove_total, max_from_right) + 1):
                 remove_left = remove_total-remove_right
+
+                # If the wildcard was at the end or if there's nothing remaining on the right, we're done
+                if len(password_postfix_with_wildcards) - remove_right == 0:
+                    yield password_prefix[:-remove_left] if remove_left else password_prefix
+                    continue
 
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
                 for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:]):
@@ -1643,7 +1663,7 @@ def swap_typos_generator(password_base):
         # single guess (swapped with the character at the next position in the string)
         for swap_indexes in itertools.combinations(xrange(len(password_base)-1), swap_count):
 
-            # Look for adjacent indexes in  swap_indexes (which would cause a single
+            # Look for adjacent indexes in swap_indexes (which would cause a single
             # character to be swapped more than once in a single guess), and only
             # continue if no such adjacent indexes are found
             for i in xrange(1, swap_count):
@@ -1697,7 +1717,7 @@ if __name__ == '__main__':
     if args.typos_replace:
         typos_replace_expanded = list(expand_wildcards_generator(args.typos_replace))
     #
-    # A list of simple typo generator functions enabled via the command line:
+    # An ordered list of simple typo generator functions enabled via the command line:
     typo_generators = [generator for name,generator in simple_typos.items() if argsdict.get("typos_"+name)]
 #
 def simple_typos_generator(password_base):
@@ -1715,6 +1735,9 @@ def simple_typos_generator(password_base):
         # Select the indexes of exactly typos_count characters from the password_base
         # that will be the target of the typos (out of all possible combinations thereof)
         for typo_indexes in itertools.combinations(xrange(len(password_base)), typos_count):
+            # typo_indexes_ has an added sentinel at the end; it's the index of
+            # one-past-the-end of password_base. This is used in the inner loop.
+            typo_indexes_ = typo_indexes + (len(password_base),)
 
             # Iterate through all possible permutations of the specified
             # typo_generators being applied to the selected typo targets
@@ -1738,10 +1761,7 @@ def simple_typos_generator(password_base):
                 for one_replacement_set in itertools.product(*typo_replacements):
 
                     # Construct a new password, left-to-right, from password_base and the
-                    # one_replacement_set.
-                    # typo_indexes_ has an added sentinel at the end; it's the index of
-                    # one-past-the-end of password_base.
-                    typo_indexes_ = typo_indexes + (len(password_base),)
+                    # one_replacement_set. (Note the use of typo_indexes_, not typo_indexes.)
                     password = password_base[0:typo_indexes_[0]]
                     for i, replacement in enumerate(one_replacement_set):
                         password += replacement + password_base[typo_indexes_[i]+1:typo_indexes_[i+1]]
@@ -1779,8 +1799,8 @@ def windows_ctrl_handler(signal):
     if signal == 0:   # if it's a Ctrl-C,
        return False   # defer to the native Python handler which works just fine
     #
-    # Python on Windows is a bit touchy with signal handlers; it's safest to just
-    # do all the cleanup code here (even though it's cleaner to throw an exception)
+    # Python on Windows is a bit touchy with signal handlers; it's safest to just do
+    # all the cleanup code here (even though it'd be cleaner to throw an exception)
     if args.autosave:
         do_autosave(args.skip + passwords_tried, True)  # do this first, it's most important
         autosave_file.close()
@@ -1805,6 +1825,8 @@ def handle_oom():
         print(parser.prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
     else: raise
 
+# Saves progress by overwriting the older (of two) slots in the autosave file
+# (autosave_nextslot can be initialized by load_savestate() )
 def do_autosave(skip, inside_interrupt_handler = False):
     global autosave_nextslot
     assert autosave_file and not autosave_file.closed, "do_autosave: autosave_file is open"
@@ -1813,7 +1835,7 @@ def do_autosave(skip, inside_interrupt_handler = False):
         sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)    # SIGTERM, and
         if sys.platform != "win32":  # (windows has no SIGHUP)
             sighup_handler = signal.signal(signal.SIGHUP, signal.SIG_IGN)  # SIGHUP while saving
-    # Erase the target save slot
+    # Erase the target save slot so that a partially written save will be recognized as such
     if autosave_nextslot == 0:
         start_pos = 0
         autosave_file.seek(start_pos)
@@ -1851,7 +1873,7 @@ def do_autosave(skip, inside_interrupt_handler = False):
 def passwordlist_generator():
     global passwordlist_file
     global password_dups  # initialized just before the def password_generator()
-    worker_count  = 0     # only used if --worker is specified
+    worker_count = 0      # only used if --worker is specified
     if passwordlist_file != sys.stdin:
         passwordlist_file.seek(0)
 
@@ -1874,9 +1896,9 @@ def passwordlist_generator():
         # Otherwise just produce the unmodified password itself
         else:
             modification_iterator = (password_base,)
-        
+
         for password in modification_iterator:
-        
+
             # Check the password against the --regex-only and --regex-never options
             if regex_only  and not regex_only .search(password): continue
             if regex_never and     regex_never.search(password): continue
@@ -1899,7 +1921,8 @@ def passwordlist_generator():
 
 # Creates and returns a generator which produces the requested list of passwords,
 # either created from a tokenlist file or directly from a passwordlist file
-def chosen_password_generator(): return passwordlist_generator() if args.passwordlist else password_generator()
+def chosen_password_generator():
+    return passwordlist_generator() if args.passwordlist else password_generator()
 
 
 if __name__ == '__main__':
@@ -1916,6 +1939,7 @@ if __name__ == '__main__':
             if isinstance(e, MemoryError):
                 handle_oom()  # will re-raise if not handled
                 sys.exit(1)
+            if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
         print("\n", max(passwords_count - args.skip, 0), "password combinations", "(plus "+str(min(args.skip, passwords_count))+" skipped)" if args.skip else "", file=sys.stderr)
         sys.exit(0)
@@ -1956,24 +1980,45 @@ if __name__ == '__main__':
             passwords_count = -args.skip
 
         max_seconds = args.max_eta * 3600  # max_eta is in hours
+        tot_passwords_counted = 0
         start = time.clock()
         try:
             for password in chosen_password_generator():
-                passwords_count += 1
+                passwords_count       += 1
+                tot_passwords_counted += 1
                 if passwords_count * est_secs_per_password > max_seconds:
-                    print(parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
+                    print("\r"+parser.prog+": error: at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
                           .format(passwords_count, args.max_eta), file=sys.stderr)
                     sys.exit(2)
-                if passwords_count + args.skip == 5000000:  # takes about 5 seconds on my CPU, YMMV
-                    print("Counting passwords ...")
+                # Display/update a best-case ETA once we're past a certain point
+                if tot_passwords_counted >= 2000000 and tot_passwords_counted % 100000 == 0:
+                    if tot_passwords_counted == 2000000:  # takes about 5 seconds on my CPU, YMMV
+                        print("Counting passwords ...")
+                    if passwords_count > 0:
+                        eta = passwords_count * est_secs_per_password / 60
+                        if eta < 90:     eta = str(int(eta)+1) + " minutes"  # round up
+                        else:
+                            eta /= 60
+                            if eta < 48: eta = str(int(round(eta))) + " hours"
+                            else:        eta = str(round(eta / 24, 1)) + " days"
+                        msg = "\r  {:,}".format(tot_passwords_counted)
+                        if args.skip: msg += " (includes {:,} skipped)".format(args.skip)
+                        msg += "  ETA: " + eta + " and counting   "
+                        print(msg, end="")
+                    else:
+                        print("\r  {:,} (all skipped)".format(tot_passwords_counted), end="")
         except BaseException as e:
             if isinstance(e, SystemExit): raise
             print("\nInterrupted after counting", passwords_count + args.skip, "passwords", "(including skipped ones)" if args.skip else "", file=sys.stderr)
             if isinstance(e, MemoryError):
                 handle_oom()  # will re-raise if not handled
                 sys.exit(1)
+            if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
         iterate_time = time.clock() - start
+        # Erase the bast-case ETA if it was being displayed
+        if tot_passwords_counted >= 2000000:
+            print("\r" + " "*78 + "\r", end="")
 
         if passwords_count <= 0:
             print("Skipped all", passwords_count + args.skip, "passwords, exiting")
@@ -2004,6 +2049,7 @@ if __name__ == '__main__':
             if isinstance(e, MemoryError):
                 handle_oom()  # will re-raise if not handled
                 sys.exit(1)
+            if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
 
     print("Using", worker_threads, "worker", "threads" if worker_threads > 1 else "thread")  # (they're actually worker processes)
