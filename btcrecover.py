@@ -392,6 +392,7 @@ def load_aes256_library():
         aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
         measure_performance_iterations = 50000
     except ImportError:
+        print(parser.prog+": warning: can't find PyCrypto, using aespython instead", file=sys.stderr)
         import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
         aes256_cbc_decrypt  = aes256_cbc_decrypt_pp
         aes256_key_expander = aespython.key_expander.KeyExpander(256)
@@ -423,7 +424,7 @@ def aes256_cbc_decrypt_pp(key, iv, ciphertext):
 # (N.B. not a generator function, so faster for small inputs, not for large)
 def duplicates_removed(iterable):
     if args.no_dupchecks >= 4:
-        if isinstance(iterable, str) or isinstance(iterable, list):
+        if isinstance(iterable, basestring) or isinstance(iterable, list):
             return iterable
         return list(iterable)
     seen = set()
@@ -432,10 +433,12 @@ def duplicates_removed(iterable):
         if x not in seen:
             unique.append(x)
             seen.add(x)
-    if len(unique) == len(iterable) and (isinstance(iterable, str) or isinstance(iterable, list)):
+    if len(unique) == len(iterable) and (isinstance(iterable, basestring) or isinstance(iterable, list)):
         return iterable
-    if isinstance(iterable, str):
-        return "".join(unique)
+    elif isinstance(iterable, str):
+        return b"".join(unique)
+    elif isinstance(iterable, Unicode):
+        return u"".join(unique)
     return unique
 
 # Converts a wildcard set into a string, expanding ranges and removing duplicates,
@@ -795,7 +798,7 @@ if __name__ == '__main__':
     for arg_name, arg_val in (("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace)):
         if arg_val:
             error_msg = count_valid_wildcards(arg_val)
-            if isinstance(error_msg, str):
+            if isinstance(error_msg, basestring):
                 print(parser.prog+": error:", arg_name, arg_val, ":", error_msg, file=sys.stderr)
                 sys.exit(2)
 
@@ -1137,7 +1140,7 @@ if __name__ == '__main__' and tokenlist_file:
 
             # Syntax check any wildcards
             count_or_error_msg = count_valid_wildcards(token, True)  # True == permit contracting wildcards
-            if isinstance(count_or_error_msg, str):
+            if isinstance(count_or_error_msg, basestring):
                 print(parser.prog+": error: on line", str(line_num)+":", count_or_error_msg, file=sys.stderr)
                 sys.exit(2)
             elif count_or_error_msg:
@@ -1199,11 +1202,11 @@ class DuplicateChecker:
     def is_duplicate(self, x):
         # The duplicates cache is built during the first run
         if self.run_number == 0:
-            if x in self.seen_once:       # If it's now the second time we've seen it:
+            if x in self.duplicates:      # If it's the third+ time we've seen it
+                return True
+            elif x in self.seen_once:     # If it's now the second time we've seen it:
                 self.seen_once.remove(x)      # it's been seen *more* than once
                 self.duplicates[x] = 1        # mark it as having duplicates
-                return True
-            elif x in self.duplicates:    # If it's the third+ time we've seen it
                 return True
             else:                         # If it's the first time we've seen it
                 self.seen_once.add(x)
@@ -1242,6 +1245,18 @@ if __name__ == '__main__':
 def password_generator():
     global typos_sofar, token_combination_dups, password_dups
     worker_count = 0  # only used if --worker is specified
+    # Copy a few globals into local for a small speed boost
+    l_args_min_tokens        = args.min_tokens
+    l_args_max_tokens        = args.max_tokens
+    l_token_combination_dups = token_combination_dups
+    l_args_min_typos         = args.min_typos
+    l_regex_only             = regex_only
+    l_regex_never            = regex_never
+    l_password_dups          = password_dups
+    l_args_worker            = args.worker
+    if l_args_worker:
+        l_workers_total      = workers_total
+        l_worker_id          = worker_id
 
     # If has_any_duplicate_tokens is available (because args.no_dupchecks < 2), use it to
     # intelligently choose between the custom duplicate-checking and the standard itertools
@@ -1270,13 +1285,13 @@ def password_generator():
     # First choose which product generator to use: the custom product_limitedlen
     # might be faster (possibly a lot) if a large --min-tokens or any --max-tokens
     # is specified at the command line, otherwise use the standard itertools version.
-    using_product_limitedlen = args.min_tokens > 5 or args.max_tokens < sys.maxint
+    using_product_limitedlen = l_args_min_tokens > 5 or l_args_max_tokens < sys.maxint
     if using_product_limitedlen:
         # Unfortunately, product_limitedlen is recursive; the recursion limit
         # must be at least as high as the number of lines in the tokenlist file
         if len(token_lists) + 20 > sys.getrecursionlimit():
             sys.setrecursionlimit(len(token_lists) + 20)
-        product_generator = product_limitedlen(*token_lists, minlen=args.min_tokens, maxlen=args.max_tokens)
+        product_generator = product_limitedlen(*token_lists, minlen=l_args_min_tokens, maxlen=l_args_max_tokens)
     else:
         product_generator = itertools.product(*token_lists)
     for tokens_combination in product_generator:
@@ -1285,7 +1300,7 @@ def password_generator():
         # (product_limitedlen, if used, has already done all this)
         if not using_product_limitedlen:
             tokens_combination = filter(lambda t: t is not None, tokens_combination)
-            if not args.min_tokens <= len(tokens_combination) <= args.max_tokens: continue
+            if not l_args_min_tokens <= len(tokens_combination) <= l_args_max_tokens: continue
 
         # There are two types of anchors, positional and middle/range. Positional anchors
         # only have a single possible position; middle anchors have a range, but are never
@@ -1294,11 +1309,12 @@ def password_generator():
         # back into the correct position later. Also search for invalid anchors of any
         # type: a positional anchor placed past the end of the current combination (based
         # on its length) or a middle anchor whose begin position is past *or at* the end.
+        # TODO: skip this if there are zero anchored tokens in the tokenlist file
         positional_anchors       = None  # (will contain strings, not AnchoredToken's)
         tokens_combination_nopos = []
         invalid_anchors          = False
         for token in tokens_combination:
-            if isinstance(token, AnchoredToken):
+            if type(token) != str:          # If it's an AnchoredToken
                 pos = token.begin
                 if token.is_positional():       # a single-position anchor
                     if pos == "$":
@@ -1332,8 +1348,8 @@ def password_generator():
         # TODO:
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
-        if token_combination_dups and \
-           token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
+        if l_token_combination_dups and \
+           l_token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -1352,14 +1368,15 @@ def password_generator():
             # token. If any anchored token is outside of its permissible range, we continue
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
-            if isinstance(ordered_token_guess[0], AnchoredToken) or isinstance(ordered_token_guess[-1], AnchoredToken):
+            # TODO: skip this if there are zero middle-anchored tokens in the tokenlist file
+            if type(ordered_token_guess[0]) != str or type(ordered_token_guess[-1]) != str:
                 continue  # middle anchors are never permitted at the beginning or end
             invalid_anchors = False
             for i, token in enumerate(ordered_token_guess[1:-1], 1):
-                if isinstance(token, AnchoredToken):
+                if type(token) != str:  # If it's an AnchoredToken
                     assert token.is_middle(), "only middle/range anchors left"
                     if token.begin <= i <= token.end:
-                        if (not isinstance(ordered_token_guess, list)):
+                        if type(ordered_token_guess) != list:
                             ordered_token_guess = list(ordered_token_guess)
                         ordered_token_guess[i] = token.text  # now it's just a string
                     else:
@@ -1393,27 +1410,27 @@ def password_generator():
 
             for password in modification_iterator:
 
-                if typos_sofar < args.min_typos: continue
+                if typos_sofar < l_args_min_typos: continue
 
                 # Check the password against the --regex-only and --regex-never options
-                if regex_only  and not regex_only .search(password): continue
-                if regex_never and     regex_never.search(password): continue
+                if l_regex_only  and not l_regex_only .search(password): continue
+                if l_regex_never and     l_regex_never.search(password): continue
 
                 # This duplicate check can be disabled via --no-dupchecks
                 # because it can take up a lot of memory, sometimes needlessly
-                if password_dups and password_dups.is_duplicate(password): continue
+                if l_password_dups and l_password_dups.is_duplicate(password): continue
 
                 # Workers in a server pool ignore passwords not assigned to them
-                if args.worker:
-                    if worker_count % workers_total != worker_id:
+                if l_args_worker:
+                    if worker_count % l_workers_total != l_worker_id:
                         worker_count += 1
                         continue
                     worker_count += 1
 
                 yield password
 
-    if password_dups:          password_dups.run_finished()
-    if token_combination_dups: token_combination_dups.run_finished()
+    if l_password_dups:          l_password_dups.run_finished()
+    if l_token_combination_dups: l_token_combination_dups.run_finished()
 
 
 # Like itertools.product, but only produces output tuples whose length is between
@@ -1470,13 +1487,13 @@ def product_limitedlen(*sequences, **kwds):
 def permutations_nodups(sequence):
     if len(sequence) == 2:
         # Only two permutations to try:
-        yield sequence if isinstance(sequence, tuple) else tuple(sequence)
+        yield sequence if type(sequence) == tuple else tuple(sequence)
         if sequence[0] != sequence[1]:
             yield (sequence[1], sequence[0])
 
     elif len(sequence) <= 1:
         # Only one permutation to try:
-        yield sequence if isinstance(sequence, tuple) else tuple(sequence)
+        yield sequence if type(sequence) == tuple else tuple(sequence)
     else:
 
         # If the sequence contains no duplicates, use the faster itertools version
@@ -1488,7 +1505,7 @@ def permutations_nodups(sequence):
 
         # If they're all the same, there's only one permutation:
         if len(seen) == 1:
-            yield sequence if isinstance(sequence, tuple) else tuple(sequence)
+            yield sequence if type(sequence) == tuple else tuple(sequence)
             return
 
         # Else there's at least one duplicate and two+ permutations; use our version
@@ -1919,13 +1936,9 @@ def passwordlist_generator():
     if password_dups: password_dups.run_finished()
 
 
-# Creates and returns a generator which produces the requested list of passwords,
-# either created from a tokenlist file or directly from a passwordlist file
-def chosen_password_generator():
-    return passwordlist_generator() if args.passwordlist else password_generator()
-
-
 if __name__ == '__main__':
+
+    chosen_password_generator = passwordlist_generator if args.passwordlist else password_generator
 
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
