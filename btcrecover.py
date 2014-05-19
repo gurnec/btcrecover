@@ -32,11 +32,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.5.19"
+__version__          = "0.5.20"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
-       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib, functools
+       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -1016,7 +1016,8 @@ if __name__ == '__main__':
 #     [ AnchoredToken(begin=1, end=2) ]
 # ]
 
-@functools.total_ordering
+# After creation, AnchoredToken must not be changed: it creates and caches the return
+# values for __str__ and __hash__ for speed on the assumption they don't change
 class AnchoredToken:
     def __init__(self, token, line_num = "?"):
         if token[0] == "^":
@@ -1032,76 +1033,92 @@ class AnchoredToken:
                 if match:
                     # If it's a middle (range) anchor
                     if match.group("range"):
-                        self.begin = match.group("begin")
-                        self.end   = match.group("end")
-                        self.begin = 1          if self.begin is None else int(self.begin) - 1
-                        self.end   = sys.maxint if self.end   is None else int(self.end)   - 1
-                        if self.begin > self.end:
+                        begin = match.group("begin")
+                        end   = match.group("end")
+                        cached_str = "^"  # begin building the cached __str__
+                        if begin is None:
+                            begin = 2
+                        else:
+                            begin = int(begin)
+                            if begin > 2:
+                                cached_str += str(begin)
+                        cached_str += ","
+                        if end is None:
+                            end = sys.maxint
+                        else:
+                            end = int(end)
+                            cached_str += str(end)
+                        cached_str += "$"
+                        if begin > end:
                             print(parser.prog+": error: anchor range of token on line", line_num, "is invalid (begin > end)", file=sys.stderr)
                             sys.exit(2)
-                        if self.begin < 1:
+                        if begin < 2:
                             print(parser.prog+": error: anchor range of token on line", line_num, "must begin with 2 or greater", file=sys.stderr)
                             sys.exit(2)
-                        self.text = token[match.end():]
+                        self.begin = begin - 1
+                        self.end   = end   - 1 if end != sys.maxint else end
+                        self.text  = token[match.end():]
                     # Else it's a positional anchor
                     else:
-                        self.begin = int(match.group("pos")) - 1
-                        self.end   = None
-                        if self.begin < 0:
+                        begin = int(match.group("pos"))
+                        cached_str = "^"  # begin building the cached __str__
+                        if begin < 1:
                             print(parser.prog+": error: anchor position of token on line", line_num, "must be 1 or greater", file=sys.stderr)
                             sys.exit(2)
+                        if begin > 1:
+                            cached_str += str(begin) + "$"
+                        self.begin = begin - 1
+                        self.end   = None
                         self.text = token[match.end():]
                 #
                 # If it's a begin anchor that looks a bit like some other type
                 else:
                     print(parser.prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
+                    cached_str = "^"  # begin building the cached __str__
                     self.begin = 0
                     self.end   = None
                     self.text  = token[1:]
             # Else it's just a normal begin anchor
             else:
+                cached_str = "^"  # begin building the cached __str__
                 self.begin = 0
                 self.end   = None
                 self.text  = token[1:]
+            #
+            self.cached_str = cached_str + self.text  # finish building the cached __str__
         #
         # Parse end anchor if present
         elif token[-1] == "$":
             self.begin = "$"
             self.end   = None
             self.text  = token[:-1]
+            self.cached_str = self.text + "$"
         #
         else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
+        #
+        self.cached_hash = hash(self.cached_str)
 
-    def is_positional(self):  return True if self.end is     None else False
-    def is_middle(self):      return True if self.end is not None else False
+    def is_positional(self): return self.end is     None
+    def is_middle(self):     return self.end is not None
     # For sets
-    def __hash__(self):
-        return hash(self.text) ^ hash(self.begin) ^ hash(self.end)
-    def __eq__(self, other):
-        return self.text == other.text and self.begin == other.begin and self.end == other.end if isinstance(other, AnchoredToken) else False
-    # For sort
-    def __lt__(self, other):
-        return self.text <  other.text or  self.begin <  other.begin or  self.end <  other.end if isinstance(other, AnchoredToken) else False
+    def __hash__(self):      return self.cached_hash
+    def __eq__(self, other): return self.cached_str == str(other)
+    def __ne__(self, other): return self.cached_str != str(other)
+    # For sort (so that str() can be used as the key function)
+    def __str__(self):       return self.cached_str
     # For hashlib
-    def __str__(self):
-        if self.begin == 0:   return "^" + self.text
-        if self.begin == "$": return self.text + "$"
-        strval = "^"
-        if self.end is None or self.begin > 1: strval += str(self.begin + 1)
-        if self.end:
-            strval += ","
-            if self.end < sys.maxint: strval += str(self.end + 1)
-        return strval + "$" + self.text
-    def __repr__(self): return self.__class__.__name__ + "(" + repr(str(self)) + ")"
+    def __repr__(self):      return self.__class__.__name__ + "(" + repr(self.cached_str) + ")"
 
 if __name__ == '__main__' and tokenlist_file:
 
     if args.no_dupchecks < 2:
         has_any_duplicate_tokens = False
         token_set_for_dupchecks  = set()
-    has_any_wildcards = False
-    token_lists       = []
+    has_any_wildcards   = False
+    has_any_anchors     = False
+    has_any_mid_anchors = False
+    token_lists         = []
 
     for line_num, line in enumerate(tokenlist_file, 1):
 
@@ -1150,6 +1167,8 @@ if __name__ == '__main__' and tokenlist_file:
             if token[0] == "^" or token[-1] == "$":
                 token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
                 new_list[i] = token
+                has_any_anchors = True
+                if token.is_middle(): has_any_mid_anchors = True
 
             # Keep track of the existence of any duplicate tokens for future optimization
             if args.no_dupchecks < 2 and not has_any_duplicate_tokens:
@@ -1243,11 +1262,12 @@ if __name__ == '__main__':
         not args.passwordlist and has_any_duplicate_tokens else None
 #
 def password_generator():
-    global typos_sofar, token_combination_dups, password_dups
+    global typos_sofar
     worker_count = 0  # only used if --worker is specified
     # Copy a few globals into local for a small speed boost
     l_args_min_tokens        = args.min_tokens
     l_args_max_tokens        = args.max_tokens
+    l_has_any_anchors        = has_any_anchors
     l_token_combination_dups = token_combination_dups
     l_args_min_typos         = args.min_typos
     l_regex_only             = regex_only
@@ -1309,36 +1329,38 @@ def password_generator():
         # back into the correct position later. Also search for invalid anchors of any
         # type: a positional anchor placed past the end of the current combination (based
         # on its length) or a middle anchor whose begin position is past *or at* the end.
-        # TODO: skip this if there are zero anchored tokens in the tokenlist file
-        positional_anchors       = None  # (will contain strings, not AnchoredToken's)
-        tokens_combination_nopos = []
-        invalid_anchors          = False
-        for token in tokens_combination:
-            if type(token) != str:          # If it's an AnchoredToken
-                pos = token.begin
-                if token.is_positional():       # a single-position anchor
-                    if pos == "$":
-                        pos = len(tokens_combination) - 1
-                    elif pos >= len(tokens_combination):
-                        invalid_anchors = True  # anchored past the end
-                        break
-                    if not positional_anchors:  # initialize it to a list of None's
-                        positional_anchors = [None for i in xrange(len(tokens_combination))]
-                    if positional_anchors[pos] is not None:
-                        invalid_anchors = True  # two tokens anchored to the same place
-                        break
-                    positional_anchors[pos] = token.text    # save valid single-position anchor
-                else:                           # else it's a middle anchor
-                    if pos+1 >= len(tokens_combination):
-                        invalid_anchors = True  # anchored past *or at* the end
-                        break
-                    tokens_combination_nopos.append(token)  # add this token (a middle anchor)
-            else:                                           # else it's not an anchored token,
-                tokens_combination_nopos.append(token)      # add this token (just a string)
-        if invalid_anchors: continue
-        #
-        if len(tokens_combination_nopos) == 0:  # if all tokens have positional anchors,
-            tokens_combination_nopos = ( "", )  # make this non-empty so a password can be created
+        positional_anchors = None  # (will contain strings, not AnchoredToken's)
+        if l_has_any_anchors:
+            tokens_combination_nopos = []
+            invalid_anchors          = False
+            for token in tokens_combination:
+                if type(token) != str:          # If it's an AnchoredToken
+                    pos = token.begin
+                    if token.is_positional():       # a single-position anchor
+                        if pos == "$":
+                            pos = len(tokens_combination) - 1
+                        elif pos >= len(tokens_combination):
+                            invalid_anchors = True  # anchored past the end
+                            break
+                        if not positional_anchors:  # initialize it to a list of None's
+                            positional_anchors = [None for i in xrange(len(tokens_combination))]
+                        if positional_anchors[pos] is not None:
+                            invalid_anchors = True  # two tokens anchored to the same place
+                            break
+                        positional_anchors[pos] = token.text    # save valid single-position anchor
+                    else:                           # else it's a middle anchor
+                        if pos+1 >= len(tokens_combination):
+                            invalid_anchors = True  # anchored past *or at* the end
+                            break
+                        tokens_combination_nopos.append(token)  # add this token (a middle anchor)
+                else:                                           # else it's not an anchored token,
+                    tokens_combination_nopos.append(token)      # add this token (just a string)
+            if invalid_anchors: continue
+            #
+            if len(tokens_combination_nopos) == 0:  # if all tokens have positional anchors,
+                tokens_combination_nopos = ( "", )  # make this non-empty so a password can be created
+        else:
+            tokens_combination_nopos = tokens_combination
 
         # Do some duplicate checking early on to avoid running through potentially a
         # lot of passwords all of which end up being duplicates. We check the current
@@ -1349,7 +1371,7 @@ def password_generator():
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
         if l_token_combination_dups and \
-           l_token_combination_dups.is_duplicate(tuple(sorted(tokens_combination))): continue
+           l_token_combination_dups.is_duplicate(tuple(sorted(tokens_combination, None, str))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -1368,21 +1390,21 @@ def password_generator():
             # token. If any anchored token is outside of its permissible range, we continue
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
-            # TODO: skip this if there are zero middle-anchored tokens in the tokenlist file
-            if type(ordered_token_guess[0]) != str or type(ordered_token_guess[-1]) != str:
-                continue  # middle anchors are never permitted at the beginning or end
-            invalid_anchors = False
-            for i, token in enumerate(ordered_token_guess[1:-1], 1):
-                if type(token) != str:  # If it's an AnchoredToken
-                    assert token.is_middle(), "only middle/range anchors left"
-                    if token.begin <= i <= token.end:
-                        if type(ordered_token_guess) != list:
-                            ordered_token_guess = list(ordered_token_guess)
-                        ordered_token_guess[i] = token.text  # now it's just a string
-                    else:
-                        invalid_anchors = True
-                        break
-            if invalid_anchors: continue
+            if has_any_mid_anchors:
+                if type(ordered_token_guess[0]) != str or type(ordered_token_guess[-1]) != str:
+                    continue  # middle anchors are never permitted at the beginning or end
+                invalid_anchors = False
+                for i, token in enumerate(ordered_token_guess[1:-1], 1):
+                    if type(token) != str:  # If it's an AnchoredToken
+                        assert token.is_middle(), "only middle/range anchors left"
+                        if token.begin <= i <= token.end:
+                            if type(ordered_token_guess) != list:
+                                ordered_token_guess = list(ordered_token_guess)
+                            ordered_token_guess[i] = token.text  # now it's just a string
+                        else:
+                            invalid_anchors = True
+                            break
+                if invalid_anchors: continue
 
             password_base = "".join(ordered_token_guess)
 
@@ -1390,19 +1412,19 @@ def password_generator():
             # to it to produce a number of different possible variations of password_base
             # (e.g. different wildcard expansions, typos, etc.)
 
-            # Reset this for each new password_base
-            typos_sofar = 0
-
             # modification_generators is a list of function generators each of which takes a
             # string and produces one or more password variations based on that string. It is
             # built at the beginning of this function, and is built differently depending on
             # the token_lists (are any wildcards present?) and the program options (were any
             # typos requested?).
-
+            #
             # If any modifications have been requested, create an iterator that will
             # loop through all combinations of the requested modifications
             if len(modification_generators):
-                modification_iterator = generator_product(password_base, *modification_generators)
+                if len(modification_generators) == 1:
+                    modification_iterator = modification_generators[0](password_base)
+                else:
+                    modification_iterator = generator_product(password_base, *modification_generators)
             #
             # Otherwise just produce the unmodified password itself
             else:
@@ -1428,6 +1450,8 @@ def password_generator():
                     worker_count += 1
 
                 yield password
+
+            assert typos_sofar == 0, "typos_sofar == 0 before any typo generators have been called"
 
     if l_password_dups:          l_password_dups.run_finished()
     if l_token_combination_dups: l_token_combination_dups.run_finished()
@@ -1662,6 +1686,9 @@ def capslock_typos_generator(password_base):
 # than once per generated password.
 def swap_typos_generator(password_base):
     global typos_sofar
+    # Copy a few globals into local for a small speed boost
+    l_itertools_combinations = itertools.combinations
+    l_args_nodupchecks       = args.no_dupchecks
 
     # Start with the unmodified password itself, and end if there's nothing left to do
     yield password_base
@@ -1678,7 +1705,7 @@ def swap_typos_generator(password_base):
         # Generate all possible combinations of swapping exactly swap_count characters;
         # swap_indexes is a list of indexes of characters that will be swapped in a
         # single guess (swapped with the character at the next position in the string)
-        for swap_indexes in itertools.combinations(xrange(len(password_base)-1), swap_count):
+        for swap_indexes in l_itertools_combinations(xrange(len(password_base)-1), swap_count):
 
             # Look for adjacent indexes in swap_indexes (which would cause a single
             # character to be swapped more than once in a single guess), and only
@@ -1691,7 +1718,7 @@ def swap_typos_generator(password_base):
                 # Perform and the actual swaps
                 password = password_base
                 for i in swap_indexes:
-                    if password[i] == password[i+1] and args.no_dupchecks < 4:  # "swapping" these would result in generating a duplicate guess
+                    if password[i] == password[i+1] and l_args_nodupchecks < 4:  # "swapping" these would result in generating a duplicate guess
                         break
                     password = password[:i] + password[i+1] + password[i] + password[i+2:]
                 else:  # if we left the loop normally (didn't break)
@@ -1739,6 +1766,8 @@ if __name__ == '__main__':
 #
 def simple_typos_generator(password_base):
     global typos_sofar
+    # Copy a few globals into local for a small speed boost
+    l_itertools_product = itertools.product
     assert len(typo_generators) > 0, "simple_typos_generator: typo types specified"
 
     # Start with the unmodified password itself
@@ -1758,7 +1787,7 @@ def simple_typos_generator(password_base):
 
             # Iterate through all possible permutations of the specified
             # typo_generators being applied to the selected typo targets
-            for typo_generators_per_target in itertools.product(typo_generators, repeat=typos_count):
+            for typo_generators_per_target in l_itertools_product(typo_generators, repeat=typos_count):
 
                 # For each of the selected typo targets, call the generator selected above to
                 # get the replacement(s) of said to-be-replaced typo targets. Each item in
@@ -1775,7 +1804,7 @@ def simple_typos_generator(password_base):
                 # replacements (for a single target), this loop iterates across all possible
                 # combinations of those replacements. If any generator produces zero outputs
                 # (therefore that the target has no typo), this loop iterates zero times.
-                for one_replacement_set in itertools.product(*typo_replacements):
+                for one_replacement_set in l_itertools_product(*typo_replacements):
 
                     # Construct a new password, left-to-right, from password_base and the
                     # one_replacement_set. (Note the use of typo_indexes_, not typo_indexes.)
@@ -1888,11 +1917,17 @@ def do_autosave(skip, inside_interrupt_handler = False):
 # A simple generator which produces passwords directly from a file, one per line,
 # optionally with typos applied
 def passwordlist_generator():
-    global passwordlist_file
-    global password_dups  # initialized just before the def password_generator()
+    global typos_sofar
     worker_count = 0      # only used if --worker is specified
-    if passwordlist_file != sys.stdin:
-        passwordlist_file.seek(0)
+    # Copy a few globals into local for a small speed boost
+    l_args_min_typos    = args.min_typos
+    l_regex_only        = regex_only
+    l_regex_never       = regex_never
+    l_password_dups     = password_dups
+    l_args_worker       = args.worker
+    if l_args_worker:   
+        l_workers_total = workers_total
+        l_worker_id     = worker_id
 
     # Build up the modification_generators list; see password_generator() for more details
     modification_generators = []
@@ -1900,6 +1935,8 @@ def passwordlist_generator():
     if args.typos_swap:             modification_generators.append( swap_typos_generator     )
     if simple_typo_types_specified: modification_generators.append( simple_typos_generator   )
 
+    if passwordlist_file != sys.stdin:
+        passwordlist_file.seek(0)
     for password_base in passwordlist_file:
         # Remove the trailing newline
         password_base = password_base.rstrip("\r\n")
@@ -1908,7 +1945,10 @@ def passwordlist_generator():
         # loop through all combinations of the requested typos
         # (see password_generator() for more details)
         if len(modification_generators):
-            modification_iterator = generator_product(password_base, *modification_generators)
+            if len(modification_generators) == 1:
+                modification_iterator = modification_generators[0](password_base)
+            else:
+                modification_iterator = generator_product(password_base, *modification_generators)
         #
         # Otherwise just produce the unmodified password itself
         else:
@@ -1916,24 +1956,28 @@ def passwordlist_generator():
 
         for password in modification_iterator:
 
+            if typos_sofar < l_args_min_typos: continue
+
             # Check the password against the --regex-only and --regex-never options
-            if regex_only  and not regex_only .search(password): continue
-            if regex_never and     regex_never.search(password): continue
+            if l_regex_only  and not l_regex_only .search(password): continue
+            if l_regex_never and     l_regex_never.search(password): continue
 
             # This duplicate check can be disabled via --no-dupchecks
             # because it can take up a lot of memory, sometimes needlessly
-            if password_dups and password_dups.is_duplicate(password): continue
+            if l_password_dups and l_password_dups.is_duplicate(password): continue
 
             # Workers in a server pool ignore passwords not assigned to them
-            if args.worker:
-                if worker_count % workers_total != worker_id:
+            if l_args_worker:
+                if worker_count % l_workers_total != l_worker_id:
                     worker_count += 1
                     continue
                 worker_count += 1
 
             yield password
 
-    if password_dups: password_dups.run_finished()
+        assert typos_sofar == 0, "typos_sofar == 0 before any typo generators have been called"
+
+    if l_password_dups: l_password_dups.run_finished()
 
 
 if __name__ == '__main__':
@@ -2004,8 +2048,8 @@ if __name__ == '__main__':
                           .format(passwords_count, args.max_eta), file=sys.stderr)
                     sys.exit(2)
                 # Display/update a best-case ETA once we're past a certain point
-                if tot_passwords_counted >= 2000000 and tot_passwords_counted % 100000 == 0:
-                    if tot_passwords_counted == 2000000:  # takes about 5 seconds on my CPU, YMMV
+                if tot_passwords_counted >= 5000000 and tot_passwords_counted % 100000 == 0:
+                    if tot_passwords_counted == 5000000:  # takes about 5 seconds on my CPU, YMMV
                         print("Counting passwords ...")
                     if passwords_count > 0:
                         eta = passwords_count * est_secs_per_password / 60
@@ -2030,7 +2074,7 @@ if __name__ == '__main__':
             raise
         iterate_time = time.clock() - start
         # Erase the bast-case ETA if it was being displayed
-        if tot_passwords_counted >= 2000000:
+        if tot_passwords_counted >= 5000000:
             print("\r" + " "*78 + "\r", end="")
 
         if passwords_count <= 0:
