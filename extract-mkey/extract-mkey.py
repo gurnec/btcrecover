@@ -32,7 +32,7 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
     print("usage:", prog, "BITCOINCORE_WALLET_FILE", file=sys.stderr)
     sys.exit(2)
 
-wallet_filename = sys.argv[1]
+wallet_filename = os.path.abspath(sys.argv[1])
 
 with open(wallet_filename, "rb") as wallet_file:
     wallet_file.seek(12)
@@ -43,7 +43,7 @@ with open(wallet_filename, "rb") as wallet_file:
 db_env = bsddb.db.DBEnv()
 db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
 db = bsddb.db.DB(db_env)
-db.open(wallet_filename, "main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
 mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
 db.close()
 db_env.close()

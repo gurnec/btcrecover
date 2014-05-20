@@ -282,6 +282,7 @@ def load_bitcoincore_wallet(wallet_filename):
     global measure_performance_iterations, wallet
     load_aes256_library()
     measure_performance_iterations = 5  # load_aes256_library sets this, but it's changed here
+    wallet_filename = os.path.abspath(wallet_filename)
     import bsddb.db
     db_env = bsddb.db.DBEnv()
     db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
