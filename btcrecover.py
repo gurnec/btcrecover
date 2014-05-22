@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.1"
+__version__          = "0.6.2"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -556,10 +556,14 @@ def load_savestate(autosave_file):
     if savestate0 and savestate1:
         use_slot = 0 if savestate0["skip"] >= savestate1["skip"] else 1
     elif savestate0:
+        if autosave_len > SAVESLOT_SIZE:
+            print(prog+": warning: data in second autosave slot was corrupted, using first slot", file=sys.stderr)
         use_slot = 0
     elif savestate1:
+        print(prog+": warning: data in first autosave slot was corrupted, using second slot", file=sys.stderr)
         use_slot = 1
     else:
+        print(prog+": warning: data in both primary and backup autosave slots is corrupted", file=sys.stderr)
         raise first_error
     if use_slot == 0:
         savestate = savestate0
@@ -858,7 +862,7 @@ def parse_arguments(effective_argv, **kwds):
         elif args.typos <= 0:
             print(prog+": warning: --typos "+str(args.typos)+" disables all typos", file=sys.stderr)
             enabled_simple_typos = args.typos_capslock = args.typos_swap = None
-        
+
         if args.typos_closecase and args.typos_case:
             print(prog+": warning: specifying --typos-case disables --typos-closecase", file=sys.stderr)
             args.typos_closecase = None
@@ -1121,60 +1125,52 @@ def parse_arguments(effective_argv, **kwds):
 class AnchoredToken:
     def __init__(self, token, line_num = "?"):
         if token[0:1] == "^":
-            #
-            # If it looks like it might be a positional or middle anchor
-            if token[1:2] in "0123456789," or "$" in token:
-                #
-                # If it actually is a syntactically correct positional or middle anchor
-                match = re.match(r"\^(?:(?P<begin>\d+)?(?P<range>,)(?P<end>\d+)?|(?P<pos>\d+))\$", token)
-                if match:
-                    # If it's a middle (range) anchor
-                    if match.group("range"):
-                        begin = match.group("begin")
-                        end   = match.group("end")
-                        cached_str = "^"  # begin building the cached __str__
-                        if begin is None:
-                            begin = 2
-                        else:
-                            begin = int(begin)
-                            if begin > 2:
-                                cached_str += str(begin)
-                        cached_str += ","
-                        if end is None:
-                            end = sys.maxint
-                        else:
-                            end = int(end)
-                            cached_str += str(end)
-                        cached_str += "$"
-                        if begin > end:
-                            error_exit("anchor range of token on line", line_num, "is invalid (begin > end)")
-                        if begin < 2:
-                            error_exit("anchor range of token on line", line_num, "must begin with 2 or greater")
-                        self.begin = begin - 1
-                        self.end   = end   - 1 if end != sys.maxint else end
-                        self.text  = token[match.end():]
-                    # Else it's a positional anchor
-                    else:
-                        begin = int(match.group("pos"))
-                        cached_str = "^"  # begin building the cached __str__
-                        if begin < 1:
-                            error_exit("anchor position of token on line", line_num, "must be 1 or greater")
-                        if begin > 1:
-                            cached_str += str(begin) + "$"
-                        self.begin = begin - 1
-                        self.end   = None
-                        self.text = token[match.end():]
-                #
-                # If it's a begin anchor that looks a bit like some other type
-                else:
-                    print(prog+": warning: token on line", line_num, "looks like it might be a positional anchor,\n" +
-                          "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
+            # If it is a syntactically correct positional or middle anchor
+            match = re.match(r"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<pos>\d+))(?:\^|\$)", token)
+            if match:
+                # If it's a middle (ranged) anchor
+                if match.group("middle"):
+                    begin = match.group("begin")
+                    end   = match.group("end")
                     cached_str = "^"  # begin building the cached __str__
-                    self.begin = 0
+                    if begin is None:
+                        begin = 2
+                    else:
+                        begin = int(begin)
+                        if begin > 2:
+                            cached_str += str(begin)
+                    cached_str += ","
+                    if end is None:
+                        end = sys.maxint
+                    else:
+                        end = int(end)
+                        cached_str += str(end)
+                    cached_str += "^"
+                    if begin > end:
+                        error_exit("anchor range of token on line", line_num, "is invalid (begin > end)")
+                    if begin < 2:
+                        error_exit("anchor range of token on line", line_num, "must begin with 2 or greater")
+                    self.begin = begin - 1
+                    self.end   = end   - 1 if end != sys.maxint else end
+                #
+                # Else it's a positional anchor
+                else:
+                    pos = int(match.group("pos"))
+                    cached_str = "^"  # begin building the cached __str__
+                    if pos < 1:
+                        error_exit("anchor position of token on line", line_num, "must be 1 or greater")
+                    if pos > 1:
+                        cached_str += str(pos) + "^"
+                    self.begin = pos - 1
                     self.end   = None
-                    self.text  = token[1:]
+                #
+                self.text = token[match.end():]  # same for both middle and positional anchors
+            #
             # Else it's just a normal begin anchor
             else:
+                if token[1:2] in "0123456789,":
+                    print(prog+": warning: token on line", line_num, "looks like it might be a positional anchor, " +
+                          "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                 cached_str = "^"  # begin building the cached __str__
                 self.begin = 0
                 self.end   = None
@@ -1195,6 +1191,8 @@ class AnchoredToken:
         else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
         #
         self.cached_hash = hash(self.cached_str)
+        if self.text == "":
+            print(prog+": warning: token on line", line_num, "contains only an anchor (and zero password characters)", file=sys.stderr)
 
     def is_positional(self): return self.end is     None
     def is_middle(self):     return self.end is not None

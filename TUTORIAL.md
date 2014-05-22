@@ -83,10 +83,10 @@ In this example above, either `Hotel_california` or `hotel_california` is *requi
 
 #### Positional Anchors ####
 
-Tokens with positional anchors may only appear at one specific position in the password -- there are always a specific number of other tokens which precede the anchored one. In the example below you'll notice a number in between `^` and `$` symbols added to the very beginning to create positionally anchored tokens (with no spaces):
+Tokens with positional anchors may only appear at one specific position in the password -- there are always a specific number of other tokens which precede the anchored one. In the example below you'll notice a number in between the two `^` symbols added to the very beginning to create positionally anchored tokens (with no spaces):
 
-    ^2$Second_or_bust
-    ^3$Third_or_bust
+    ^2^Second_or_bust
+    ^3^Third_or_bust
     Cairo
     Beetlejuice
     Hotel_california
@@ -99,31 +99,31 @@ Middle anchors are a bit like positional anchors, only more flexible: the anchor
 
 **Note:** Placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.
 
-You specify a middle anchor by adding a comma between two numbers (between the `^` and `$` symbols) at the very beginning of a token (all with no spaces):
+You specify a middle anchor by adding a comma between two numbers (between the `^` symbols) at the very beginning of a token (all with no spaces):
 
-    ^2,3$Second_third_or_bust
-    ^2,4$Second_to_fourth_or_bust
+    ^2,3^Second_third_(but_never_last)_or_bust
+    ^2,4^Second_to_fourth_(but_never_last)_or_bust
     Cairo
     Beetlejuice
     Hotel_california
 
- As mentioned above, neither of those middle-anchored tokens will ever be tried as the last token in a password, so something (one or more of the non-anchored tokens) will appear after the middle-anchored ones in every guess in which they appear. Since tokens with middle anchors never appear at the beginning, the smallest value you can use for that first number is 2. Finally, when you specify the range, you can leave out one (or even both) of the numbers, like this:
+ As mentioned above, neither of those middle-anchored tokens will ever be tried as the last token in a password, so something (one or more of the non-anchored tokens) will appear after the middle-anchored ones in every guess in which they appear. Since tokens with middle anchors never appear at the beginning either, the smallest value you can use for that first number is 2. Finally, when you specify the range, you can leave out one (or even both) of the numbers, like this:
 
-    ^3,$Third_or_after_or_bust
-    ^,3$Second_or_third_or_bust
-    ^,$Anywhere_in_the_middle
+    ^3,^Third_or_after_(but_never_last)_or_bust
+    ^,3^Second_or_third_(but_never_last)_or_bust
+    ^,^Anywhere_in_the_middle
     Cairo
     Beetlejuice
     Hotel_california
 
 You can't leave out the comma (that's what makes it a middle anchor instead of a positional anchor). Leaving out a number doesn't change the “never at the beginning or the end” rule which always applies to middle anchors. If you do need a token with a middle anchor to also possibly appear at the beginning or end of a password, you can add second copy to the same line with a beginning or end anchor:
 
-    ^,$Anywhere_but_the_beginning Anywhere_but_the_beginning$
-    ^,$Anywhere_but_the_end ^Anywhere_but_the_end
+    ^,^Anywhere_in_the_middle_or_end        Anywhere_in_the_middle_or_end$
+    ^,^Anywhere_in_the_middle_or_beginning ^Anywhere_in_the_middle_or_beginning
 
 ### Token Counts ###
 
-There are a number of command line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from that last example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
+There are a number of command line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from the earlier example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
 
 ### Expanding Wildcards ###
 
@@ -153,9 +153,6 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%ia`   - a “case-insensitive” version of %a: a single lower or uppercase letter
  * `%in`   - a single digit, lower or uppercase letter
  * `%1,2in`- between 1 and 2 characters long of digits, lower or uppercase letters
- * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
- * `%C`    - an uppercase version of `%c` (might be the same as `%c`, depending on how you set it)
- * `%ic`   - a case-insensitive version of `%c`
  * `%[chars]` - exactly 1 of the characters between `[` and `]` (e.g. either a `c`, `h`, `a`, `r`, or `s`)
  * `%1,3[chars]` - between 1 and 3 of the characters between `[` and `]`
  * `%[0-9a-f]` - exactly 1 of these characters: `0123456789abcdef`
@@ -165,9 +162,12 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%r`    - a single carriage return character
  * `%t`    - a single tab character
  * `%w`    - a single space, line feed, or carriage return character
- * `%%`    - a single  “%” (so that %’s in your password aren’t confused as wildcards)
- * `%^`    - a single  “^” (so it’s not confused with an anchor if it’s at the beginning of a token)
- * `%S`    - a single  “$” (yes, that’s % and a capital S that gets replaced by a dollar sign, sorry if that’s confusing)
+ * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
+ * `%C`    - an uppercased version of `%c` (the same as `%c` if `%c` has no lowercase letters)
+ * `%ic`   - a case-insensitive version of `%c`
+ * `%%`    - a single `%` (so that `%`’s in your password aren’t confused as wildcards)
+ * `%^`    - a single `^` (so it’s not confused with an anchor if it’s at the beginning of a token)
+ * `%S`    - a single `$` (yes, that’s `%` and a capital `S` that gets replaced by a dollar sign, sorry if that’s confusing)
 
 Up until now, most of the features help by reducing the number of passwords that need to be tried by exploiting your knowledge of what’s probably in the password. Wildcards significantly expand the number of passwords that need to be tried, so they’re best used in moderation.
 
@@ -179,7 +179,7 @@ Instead of adding new characters to a password guess, contracting wildcards remo
 
 The `%0,2-` contracting wildcard will remove between 0 and 2 adjacent characters from either side, so that each of `StartEnd` (removes 0), `StarEnd` (removes 1 from left), `StaEnd` (removes 2 from left), `Starnd` (removes 1 from left and 1 from right), `Startnd` (removes 1 from right), and `Startd` (removes 2 from right) will be tried. This can be useful when considering copy-paste errors, for example:
 
-    %0,20-A+Long+Password+with+symbols-&-maybe+it+was+partially+copy+pasted%0,20-
+    %0,20-A/Long/Password/with/symbols/that/maybe/was/partially/copy/pasted%0,20-
 
 Different versions of this password will be tried removing up to 20 characters from either end. Here are the three types of contracting wildcards:
 
@@ -343,7 +343,7 @@ Additionally, *btcrecover* considers the following symbols special under certain
  * `%` - always considered special; `%%` in a token will be replaced by `%` during searches
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
+ * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
  * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
 
 ### Unicode Support ###

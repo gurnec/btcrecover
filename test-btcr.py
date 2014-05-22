@@ -28,7 +28,7 @@ from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
 import btcrecover, unittest, cStringIO, StringIO, os, os.path, \
-       cPickle, tempfile, shutil, filecmp
+       cPickle, tempfile, shutil, filecmp, argparse, sys
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 
@@ -123,27 +123,36 @@ class Test02Anchors(GeneratorTester):
         self.expect_syntax_failure(["^one$"], "token on line 1 is anchored with both ^ at the beginning and $ at the end")
 
     def test_positional(self):
+        self.do_generator_test(["one", "^2^two", "^3^three"], ["one", "onetwo", "onetwothree"])
+
+    def test_positional_old(self):
         self.do_generator_test(["one", "^2$two", "^3$three"], ["one", "onetwo", "onetwothree"])
 
     def test_positional_0len(self):
-        self.do_generator_test(["+ ^1$", "^2$two"], ["", "two"])
+        self.do_generator_test(["+ ^1^", "^2^two"], ["", "two"])
 
     def test_positional_invalid(self):
-        self.expect_syntax_failure(["^0$zero"], "anchor position of token on line 1 must be 1 or greater")
+        self.expect_syntax_failure(["^0^zero"], "anchor position of token on line 1 must be 1 or greater")
 
     def test_middle(self):
+        self.do_generator_test(["^one", "^2,2^two", "^,3^three", "^,^four", "five$"],
+            ["one", "five", "onefive", "onetwofive", "onethreefive", "onetwothreefive", "onefourfive",
+            "onetwofourfive", "onefourthreefive", "onethreefourfive", "onetwothreefourfive"])
+
+    def test_middle_old(self):
         self.do_generator_test(["^one", "^2,2$two", "^,3$three", "^,$four", "five$"],
             ["one", "five", "onefive", "onetwofive", "onethreefive", "onetwothreefive", "onefourfive",
             "onetwofourfive", "onefourthreefive", "onethreefourfive", "onetwothreefourfive"])
 
     def test_middle_0len(self):
-        self.do_generator_test(["one", "+ ^,$", "^3$three"], ["onethree"])
+        self.do_generator_test(["one", "+ ^,^", "^3^three"], ["onethree"])
 
     def test_middle_invalid_begin(self):
-        self.expect_syntax_failure(["^1,$one"],  "anchor range of token on line 1 must begin with 2 or greater")
+        self.expect_syntax_failure(["^1,^one"],  "anchor range of token on line 1 must begin with 2 or greater")
     def test_middle_invalid_range(self):
-        self.expect_syntax_failure(["^3,2$one"], "anchor range of token on line 1 is invalid")
-
+        self.expect_syntax_failure(["^3,2^one"], "anchor range of token on line 1 is invalid")
+    def test_not_middle(self):
+        self.do_generator_test(["^2,3one"], ["2,3one"])
 
 class Test03WildCards(GeneratorTester):
 
@@ -580,4 +589,9 @@ class Test09EndToEnd(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main(buffer = True)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--no-buffer", action="store_true")
+    args, unittest_args = parser.parse_known_args()
+    sys.argv[1:] = unittest_args
+
+    unittest.main(buffer = not args.no_buffer)
