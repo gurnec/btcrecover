@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.0"
+__version__          = "0.6.1"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -1365,7 +1365,11 @@ def tokenlist_password_generator():
     l_args_min_tokens        = args.min_tokens
     l_args_max_tokens        = args.max_tokens
     l_has_any_anchors        = has_any_anchors
+    l_type                   = type
     l_token_combination_dups = token_combination_dups
+    l_tuple                  = tuple
+    l_sorted                 = sorted
+    l_list                   = list
     l_generator_product      = generator_product
     l_args_min_typos         = args.min_typos
     l_regex_only             = regex_only
@@ -1431,7 +1435,7 @@ def tokenlist_password_generator():
             tokens_combination_nopos = []
             invalid_anchors          = False
             for token in tokens_combination:
-                if type(token) != str:          # If it's an AnchoredToken
+                if l_type(token) != str:        # If it's an AnchoredToken
                     pos = token.begin
                     if token.is_positional():       # a single-position anchor
                         if pos == "$":
@@ -1468,7 +1472,7 @@ def tokenlist_password_generator():
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
         if l_token_combination_dups and \
-           l_token_combination_dups.is_duplicate(tuple(sorted(tokens_combination, None, str))): continue
+           l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, None, str))): continue
 
         # The middle loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -1478,7 +1482,7 @@ def tokenlist_password_generator():
 
             # Insert the positional anchors we removed above back into the guess
             if positional_anchors:
-                ordered_token_guess = list(ordered_token_guess)
+                ordered_token_guess = l_list(ordered_token_guess)
                 for i, token in enumerate(positional_anchors):
                     if token is not None:
                         ordered_token_guess.insert(i, token)  # (token here is just a string)
@@ -1488,15 +1492,15 @@ def tokenlist_password_generator():
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
             if has_any_mid_anchors:
-                if type(ordered_token_guess[0]) != str or type(ordered_token_guess[-1]) != str:
+                if l_type(ordered_token_guess[0]) != str or l_type(ordered_token_guess[-1]) != str:
                     continue  # middle anchors are never permitted at the beginning or end
                 invalid_anchors = False
                 for i, token in enumerate(ordered_token_guess[1:-1], 1):
-                    if type(token) != str:  # If it's an AnchoredToken
+                    if l_type(token) != str:  # If it's an AnchoredToken
                         assert token.is_middle(), "only middle/range anchors left"
                         if token.begin <= i <= token.end:
-                            if type(ordered_token_guess) != list:
-                                ordered_token_guess = list(ordered_token_guess)
+                            if l_type(ordered_token_guess) != l_list:
+                                ordered_token_guess = l_list(ordered_token_guess)
                             ordered_token_guess[i] = token.text  # now it's just a string
                         else:
                             invalid_anchors = True
@@ -1563,7 +1567,9 @@ def tokenlist_password_generator():
 def product_limitedlen(*sequences, **kwds):
     minlen = kwds.get("minlen", 0)
     maxlen = kwds.get("maxlen", sys.maxint)
+    # Copy a global into local for a small speed boost
     l_len  = len
+
     if l_len(sequences) == 0:
         if minlen <= 0 <= maxlen: yield ()
         return
@@ -1607,7 +1613,9 @@ def product_limitedlen(*sequences, **kwds):
 # Input must be a sequence of hashable elements. (Does not accept the itertools "r" argument.)
 # TODO: implement without recursion?
 def permutations_nodups(sequence):
+    # Copy a global into local for a small speed boost
     l_len = len
+
     if l_len(sequence) == 2:
         # Only two permutations to try:
         yield sequence if type(sequence) == tuple else tuple(sequence)
@@ -1676,8 +1684,11 @@ def expand_wildcards_generator(password_with_wildcards):
         yield password_with_wildcards
         return
 
-    # Copy a global into local for a small speed boost
-    l_len = len
+    # Copy a few globals into local for a small speed boost
+    l_xrange = xrange
+    l_len    = len
+    l_min    = min
+    l_max    = max
 
     # Find the first wildcard parameter in the format %[[min,]max][caseflag]type
     # where caseflag=="i" if present and type is one of: wildcard_keys, <, >, or -
@@ -1720,7 +1731,7 @@ def expand_wildcards_generator(password_with_wildcards):
     # If it's an expanding wildcard
     if is_expanding:
         # Iterate through specified wildcard lengths
-        for wildcard_len in xrange(wildcard_minlen, wildcard_maxlen+1):
+        for wildcard_len in l_xrange(wildcard_minlen, wildcard_maxlen+1):
 
             # Expand the wildcard into a length of characters according to the wildcard type/caseflag
             for wildcard_expanded_list in itertools.product(wildcard_set, repeat=wildcard_len):
@@ -1747,11 +1758,11 @@ def expand_wildcards_generator(password_with_wildcards):
             max_from_right = 0
 
         # Iterate over the total number of characters to remove
-        for remove_total in xrange(wildcard_minlen, min(wildcard_maxlen, max_from_left+max_from_right) + 1):
+        for remove_total in l_xrange(wildcard_minlen, l_min(wildcard_maxlen, max_from_left+max_from_right) + 1):
 
             # Iterate over the number of characters to remove from the right of the wildcard
             # (this loop runs just once for %#,#< or %#,#> ; or for %#,#- at the beginning or end)
-            for remove_right in xrange(max(0, remove_total-max_from_left), min(remove_total, max_from_right) + 1):
+            for remove_right in l_xrange(l_max(0, remove_total-max_from_left), l_min(remove_total, max_from_right) + 1):
                 remove_left = remove_total-remove_right
 
                 # If the wildcard was at the end or if there's nothing remaining on the right, we're done
@@ -1789,6 +1800,7 @@ def swap_typos_generator(password_base):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
     l_len                    = len
+    l_xrange                 = xrange
     l_itertools_combinations = itertools.combinations
     l_args_nodupchecks       = args.no_dupchecks
 
@@ -1801,18 +1813,18 @@ def swap_typos_generator(password_base):
     # up to the max requested or up to the max number swappable (whichever's less). The
     # max number swappable is len // 2 because we never swap any single character twice.
     max_swaps = min(max_swaps, l_len(password_base) // 2)
-    for swap_count in xrange(1, max_swaps + 1):
+    for swap_count in l_xrange(1, max_swaps + 1):
         typos_sofar += swap_count
 
         # Generate all possible combinations of swapping exactly swap_count characters;
         # swap_indexes is a list of indexes of characters that will be swapped in a
         # single guess (swapped with the character at the next position in the string)
-        for swap_indexes in l_itertools_combinations(xrange(l_len(password_base)-1), swap_count):
+        for swap_indexes in l_itertools_combinations(l_xrange(l_len(password_base)-1), swap_count):
 
             # Look for adjacent indexes in swap_indexes (which would cause a single
             # character to be swapped more than once in a single guess), and only
             # continue if no such adjacent indexes are found
-            for i in xrange(1, swap_count):
+            for i in l_xrange(1, swap_count):
                 if swap_indexes[i] - swap_indexes[i-1] == 1:
                     break
             else:  # if we left the loop normally (didn't break)
@@ -1859,6 +1871,7 @@ def simple_typos_generator(password_base):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
     l_len               = len
+    l_xrange            = xrange
     l_itertools_product = itertools.product
     assert l_len(enabled_simple_typos) > 0, "simple_typos_generator: at least one simple typo enabled"
 
@@ -1867,12 +1880,12 @@ def simple_typos_generator(password_base):
 
     # First change all single characters, then all combinations of 2 characters, then of 3, etc.
     max_typos = min(args.typos - typos_sofar, l_len(password_base))
-    for typos_count in xrange(1, max_typos + 1):
+    for typos_count in l_xrange(1, max_typos + 1):
         typos_sofar += typos_count
 
         # Select the indexes of exactly typos_count characters from the password_base
         # that will be the target of the typos (out of all possible combinations thereof)
-        for typo_indexes in itertools.combinations(xrange(l_len(password_base)), typos_count):
+        for typo_indexes in itertools.combinations(l_xrange(l_len(password_base)), typos_count):
             # typo_indexes_ has an added sentinel at the end; it's the index of
             # one-past-the-end of password_base. This is used in the inner loop.
             typo_indexes_ = typo_indexes + (l_len(password_base),)
