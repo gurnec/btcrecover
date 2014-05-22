@@ -161,7 +161,12 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%l`    - a single line feed character
  * `%r`    - a single carriage return character
  * `%t`    - a single tab character
+ * `%T`    - a single space or tab character
  * `%w`    - a single space, line feed, or carriage return character
+ * `%W`    - a single space, line feed, carriage return, or tab character
+ * `%y`    - any single ASCII symbol
+ * `%p`    - any single ASCII letter, digit, or symbol
+ * `%P`    - any single character from either `%p` or `%W` (pretty much everything) 
  * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
  * `%C`    - an uppercased version of `%c` (the same as `%c` if `%c` has no lowercase letters)
  * `%ic`   - a case-insensitive version of `%c`

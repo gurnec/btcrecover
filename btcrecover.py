@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.2"
+__version__          = "0.6.3"
 __ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -61,11 +61,16 @@ def init_wildcards():
         "A" : string.uppercase,
         "n" : string.lowercase + string.digits,
         "N" : string.uppercase + string.digits,
-        "s" : " ",   # space
-        "l" : "\n",  # line feed
-        "r" : "\r",  # carriage return
-        "t" : "\t",  # tab
-        "w" : " \r\n",
+        "s" : " ",        # space
+        "l" : "\n",       # line feed
+        "r" : "\r",       # carriage return
+        "t" : "\t",       # tab
+        "T" : " \t",      # space and tab
+        "w" : " \r\n",    # space and newline characters
+        "W" : " \r\n\t",  # space, newline, and tab
+        "y" : "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127))),  # ASCII symbols
+        "p" : "".join(map(chr, xrange(33, 127))),  # all ASCII printable characters except whitespace
+        "P" : "".join(map(chr, xrange(33, 127))) + " \r\n\t",  # as above, plus space, newline, and tab
         # wildcards can be used to escape these special symbols
         "%" : "%",
         "^" : "^",
