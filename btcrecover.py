@@ -31,8 +31,8 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.3"
-__ordering_version__ = "0.5.0"  # must be updated whenever password ordering changes
+__version__          = "0.6.4"
+__ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
        cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
@@ -55,6 +55,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 # warning: don't use digits, 'i', '[', ',', '-', '<', or '>' as the key for a wildcard set
 def init_wildcards():
     global wildcard_sets, wildcard_keys, wildcard_nocase_sets, custom_wildcard_cache
+    all_ascii_symbols = "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127)))
     wildcard_sets = {
         "d" : string.digits,
         "a" : string.lowercase,
@@ -64,11 +65,13 @@ def init_wildcards():
         "s" : " ",        # space
         "l" : "\n",       # line feed
         "r" : "\r",       # carriage return
+        "R" : "\n\r",     # newline characters
         "t" : "\t",       # tab
         "T" : " \t",      # space and tab
         "w" : " \r\n",    # space and newline characters
         "W" : " \r\n\t",  # space, newline, and tab
-        "y" : "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127))),  # ASCII symbols
+        "y" : all_ascii_symbols,
+        "Y" : string.digits + all_ascii_symbols,
         "p" : "".join(map(chr, xrange(33, 127))),  # all ASCII printable characters except whitespace
         "P" : "".join(map(chr, xrange(33, 127))) + " \r\n\t",  # as above, plus space, newline, and tab
         # wildcards can be used to escape these special symbols
@@ -110,12 +113,10 @@ def typo_closecase(p, i):  # (case_id functions defined in the Password Generati
             case_id_changed(case_id_of(p[i+1]), cur_case_id):
         return (p[i].swapcase(),)
     return ()
-def typo_append_wildcard(p, i):  return [p[i]+e for e in typos_insert_expanded]
 def typo_replace_wildcard(p, i): return [e      for e in typos_replace_expanded if e != p[i]]
 def typo_map(p, i):              return typos_map.get(p[i], ())
-# (typos_insert_expanded, typos_replace_expanded, and typos_map are initialized
-# from args.typos_insert, args.typos_replace, and args.typos_map respectively in
-# parse_args() )
+# (typos_replace_expanded and typos_map are initialized from args.typos_replace
+# and args.typos_map respectively in parse_args() )
 #
 # a dict: command line argument name is: "typos-" + key_name; associated value is
 # the generator function from above; this dict MUST BE ORDERED to prevent the
@@ -126,7 +127,6 @@ simple_typos["repeat"]    = typo_repeat
 simple_typos["delete"]    = typo_delete
 simple_typos["case"]      = typo_case
 simple_typos["closecase"] = typo_closecase
-simple_typos["insert"]    = typo_append_wildcard
 simple_typos["replace"]   = typo_replace_wildcard
 simple_typos["map"]       = typo_map
 #
@@ -137,9 +137,8 @@ simple_typo_args["repeat"]    = dict( action="store_true",       help="repeats (
 simple_typo_args["delete"]    = dict( action="store_true",       help="deletes a character" )
 simple_typo_args["case"]      = dict( action="store_true",       help="changes the case (upper/lower) of a letter" )
 simple_typo_args["closecase"] = dict( action="store_true",       help="like --typos-case, but only changes letters next to one with a different case")
-simple_typo_args["insert"]    = dict( metavar="WILDCARD-STRING", help="inserts a string or wildcard" )
-simple_typo_args["replace"]   = dict( metavar="WILDCARD-STRING", help="replaces a character with another string or wildcard" )
 simple_typo_args["map"]       = dict( metavar="FILE",            help="replaces specific characters based on a map file" )
+simple_typo_args["replace"]   = dict( metavar="WILDCARD-STRING", help="replaces a character with another string or wildcard" )
 
 
 # TODO: work on wallet "plugin" interface; via subclassing?
@@ -204,6 +203,8 @@ def load_from_base64_key(key_crc_base64):
     try:   key_crc_data = base64.b64decode(key_crc_base64)
     except TypeError: error_exit("encrypted key data is corrupted (invalid base64)")
 
+    if len(key_crc_data) < 8:
+        error_exit("encrypted key data is corrupted (too short)")
     l_key_data = key_crc_data[:-4]
     (key_crc,) = struct.unpack("<I", key_crc_data[-4:])
     if zlib.crc32(l_key_data) & 0xffffffff != key_crc:
@@ -527,10 +528,10 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
 #
 def syntax_check_range(m):
     minlen, maxlen = m.groups()
-    if minlen is not None and maxlen is not None and int(minlen) > int(maxlen):
+    if minlen and maxlen and int(minlen) > int(maxlen):
         raise ValueError("min wildcard length ("+minlen+") > max length ("+maxlen+")")
-    if maxlen is not None and int(maxlen) == 0:
-        print(prog+": warning: %0 or %0,0 wildcards have no effect", file=sys.stderr)
+    if maxlen and int(maxlen) == 0:
+        print(prog+": warning: %0 or %0,0 wildcards always expand to empty strings", file=sys.stderr)
     return ""
 
 # Loads the savestate from the more recent save slot in an autosave_file (into a global)
@@ -655,6 +656,8 @@ typo_types_group.add_argument("--typos-capslock", action="store_true", help="tri
 typo_types_group.add_argument("--typos-swap",     action="store_true", help="swaps two adjacent characters")
 for typo_name, typo_args in simple_typo_args.items():
     typo_types_group.add_argument("--typos-"+typo_name, **typo_args)
+typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="inserts a string or wildcard")
+typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="COUNT", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: 1)")
 parser_common.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
 parser_common.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
 parser_common.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
@@ -839,16 +842,18 @@ def parse_arguments(effective_argv, **kwds):
     # Build an ordered list of enabled simple typo generators. This list MUST be in the same relative
     # order as the items in simple_typos to prevent the breakage of --skip and --restore features
     global enabled_simple_typos
-    enabled_simple_typos = [generator for name,generator in simple_typos.items() if args.__dict__.get("typos_"+name)]
+    enabled_simple_typos = \
+        [generator for name,generator in simple_typos.items() if args.__dict__.get("typos_"+name)]
 
     # Do a bunch of argument sanity checking
 
     # Have _any_ (simple or otherwise) typo types been specified?
-    any_typo_types_specified = enabled_simple_typos or args.typos_capslock or args.typos_swap
+    any_typo_types_specified = enabled_simple_typos or \
+        args.typos_capslock or args.typos_swap or args.typos_insert
 
     if not any_typo_types_specified:
         if args.min_typos > 0:
-            error_exit("no passwords are produced when no type of typo was chosen, but --min-typos were required")
+            error_exit("no passwords are produced when no type of typo is chosen, but --min-typos were required")
         if args.typos:
             print(prog+": warning: --typos has no effect because no type of typo was chosen", file=sys.stderr)
 
@@ -865,12 +870,21 @@ def parse_arguments(effective_argv, **kwds):
             error_exit("--typos is less than --min_typos")
 
         elif args.typos <= 0:
-            print(prog+": warning: --typos "+str(args.typos)+" disables all typos", file=sys.stderr)
-            enabled_simple_typos = args.typos_capslock = args.typos_swap = None
+            print(prog+": warning: --typos", args.typos, " disables all typos", file=sys.stderr)
+            enabled_simple_typos = args.typos_capslock = args.typos_swap = args.typos_insert = None
 
         if args.typos_closecase and args.typos_case:
             print(prog+": warning: specifying --typos-case disables --typos-closecase", file=sys.stderr)
             args.typos_closecase = None
+
+    if args.max_adjacent_inserts != 1:
+        if not args.typos_insert:
+            print(prog+": warning: --max-adjacent-inserts has no effect unless --typos-insert is used", file=sys.stderr)
+        elif args.max_adjacent_inserts < 1:
+            print(prog+": warning: --max-adjacent-inserts", args.max_adjacent_inserts, " disables --typos-insert", file=sys.stderr)
+            args.typos_insert = None
+        elif args.max_adjacent_inserts > args.typos:
+            print(prog+": warning: --max-adjacent-inserts is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
 
     # Parse the custom wildcard set option
     if args.custom_wild:
@@ -910,7 +924,7 @@ def parse_arguments(effective_argv, **kwds):
         typos_map = dict()
         typos_map_file = open_or_use(args.typos_map, "r", kwds.get("typos_map"))
         for line_num, line in enumerate(typos_map_file, 1):
-            if line[0:1] == "#": continue  # ignore comments
+            if line.startswith("#"): continue  # ignore comments
             #
             # Remove the trailing newline, then split the line exactly
             # once on the specified delimiter (default: whitespace)
@@ -1013,9 +1027,6 @@ def parse_arguments(effective_argv, **kwds):
     if args.mkey or args.privkey:
         key_crc_base64 = kwds.get("mkey") if args.mkey else kwds.get("privkey")  # for unittest
         if not key_crc_base64:
-            # Make sure we don't have readline support (which could save keys in a history file)
-            assert "readline" not in sys.modules, "parse_arguments: readline not loaded during sensitive input"
-            #
             if tokenlist_file == sys.stdin:
                 print(prog+": warning: order of data on stdin is: optional extra command-line arguments, key data, rest of tokenlist", file=sys.stderr)
             elif passwordlist_file == sys.stdin:
@@ -1027,9 +1038,10 @@ def parse_arguments(effective_argv, **kwds):
             # Has the first character of the key data already been read in?
             need_to_prepend = tokenlist_file == sys.stdin and char1_of_tokenlist_file != ""
             if sys.stdin.isatty() and not need_to_prepend:
-                key_crc_base64 = raw_input("Please enter the encrypted key data from the extract script\n> ")
+                print("Please enter the encrypted key data from the extract script\n> ", end="")
             else:
-                key_crc_base64 = raw_input("Reading encrypted key data from stdin\n")
+                print("Reading encrypted key data from stdin")
+            key_crc_base64 = sys.stdin.readline().rstrip("\r\n")
             if need_to_prepend:
                 key_crc_base64 = char1_of_tokenlist_file + key_crc_base64
                 char1_of_tokenlist_file = ""
@@ -1129,7 +1141,7 @@ def parse_arguments(effective_argv, **kwds):
 # values for __str__ and __hash__ for speed on the assumption they don't change
 class AnchoredToken:
     def __init__(self, token, line_num = "?"):
-        if token[0:1] == "^":
+        if token.startswith("^"):
             # If it is a syntactically correct positional or middle anchor
             match = re.match(r"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<pos>\d+))(?:\^|\$)", token)
             if match:
@@ -1171,9 +1183,9 @@ class AnchoredToken:
                 #
                 self.text = token[match.end():]  # same for both middle and positional anchors
             #
-            # Else it's just a normal begin anchor
+            # Else it's a begin anchor
             else:
-                if token[1:2] in "0123456789,":
+                if len(token) > 1 and token[1] in "0123456789,":
                     print(prog+": warning: token on line", line_num, "looks like it might be a positional anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                 cached_str = "^"  # begin building the cached __str__
@@ -1181,13 +1193,13 @@ class AnchoredToken:
                 self.end   = None
                 self.text  = token[1:]
             #
-            if self.text[-1:] == "$":
+            if self.text.endswith("$"):
                 error_exit("token on line", line_num, "is anchored with both ^ at the beginning and $ at the end")
             #
             self.cached_str = cached_str + self.text  # finish building the cached __str__
         #
         # Parse end anchor if present
-        elif token[-1:] == "$":
+        elif token.endswith("$"):
             self.begin = "$"
             self.end   = None
             self.text  = token[:-1]
@@ -1222,15 +1234,13 @@ def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
     has_any_mid_anchors = False
     token_lists         = []
 
-    for line_num, line in enumerate(tokenlist_file, 1):
-
-        # May need to restore the first character we read in the argument parsing
-        # section while looking for command line arguments in the tokenlist file
-        if line_num == 1:
-            line = prepend_to_line1 + line
+    # May need to restore the first character we read in the argument parsing
+    # section while looking for command line arguments in the tokenlist file
+    first_line = prepend_to_line1 + tokenlist_file.readline()
+    for line_num, line in enumerate(itertools.chain((first_line,), tokenlist_file), 1):
 
         # Ignore comments
-        if line[0:1] == "#": continue
+        if line.startswith("#"): continue
 
         # Start off assuming these tokens are optional (no preceding "+");
         # if it turns out there is a "+", we'll remove this None later
@@ -1265,7 +1275,7 @@ def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
                 has_any_wildcards = True  # (a global)
 
             # Parse anchor if present and convert to an AnchoredToken object
-            if token[0:1] == "^" or token[-1:] == "$":
+            if token.startswith("^") or token.endswith("$"):
                 token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
                 new_list[i] = token
                 has_any_anchors = True
@@ -1397,6 +1407,8 @@ def tokenlist_password_generator():
     if args.typos_capslock:  modification_generators.append( capslock_typos_generator   )
     if args.typos_swap:      modification_generators.append( swap_typos_generator       )
     if enabled_simple_typos: modification_generators.append( simple_typos_generator     )
+    if args.typos_insert:    modification_generators.append( insert_typos_generator     )
+    modification_generators_len = l_len(modification_generators)
 
     # The outer loop iterates through all possible (unordered) combinations of tokens
     # taking into account the at-most-one-token-per-line rule. Note that lines which
@@ -1435,6 +1447,7 @@ def tokenlist_password_generator():
         # on its length) or a middle anchor whose begin position is past *or at* the end.
         positional_anchors = None  # (will contain strings, not AnchoredToken's)
         if l_has_any_anchors:
+            tokens_combination_len   = l_len(tokens_combination)
             tokens_combination_nopos = []
             invalid_anchors          = False
             for token in tokens_combination:
@@ -1442,18 +1455,18 @@ def tokenlist_password_generator():
                     pos = token.begin
                     if token.is_positional():       # a single-position anchor
                         if pos == "$":
-                            pos = l_len(tokens_combination) - 1
-                        elif pos >= l_len(tokens_combination):
+                            pos = tokens_combination_len - 1
+                        elif pos >= tokens_combination_len:
                             invalid_anchors = True  # anchored past the end
                             break
                         if not positional_anchors:  # initialize it to a list of None's
-                            positional_anchors = [None for i in xrange(l_len(tokens_combination))]
+                            positional_anchors = [None for i in xrange(tokens_combination_len)]
                         if positional_anchors[pos] is not None:
                             invalid_anchors = True  # two tokens anchored to the same place
                             break
                         positional_anchors[pos] = token.text    # save valid single-position anchor
                     else:                           # else it's a middle anchor
-                        if pos+1 >= l_len(tokens_combination):
+                        if pos+1 >= tokens_combination_len:
                             invalid_anchors = True  # anchored past *or at* the end
                             break
                         tokens_combination_nopos.append(token)  # add this token (a middle anchor)
@@ -1524,8 +1537,8 @@ def tokenlist_password_generator():
             #
             # If any modifications have been requested, create an iterator that will
             # loop through all combinations of the requested modifications
-            if l_len(modification_generators):
-                if l_len(modification_generators) == 1:
+            if modification_generators_len:
+                if modification_generators_len == 1:
                     modification_iterator = modification_generators[0](password_base)
                 else:
                     modification_iterator = l_generator_product(password_base, *modification_generators)
@@ -1570,10 +1583,9 @@ def tokenlist_password_generator():
 def product_limitedlen(*sequences, **kwds):
     minlen = kwds.get("minlen", 0)
     maxlen = kwds.get("maxlen", sys.maxint)
-    # Copy a global into local for a small speed boost
-    l_len  = len
 
-    if l_len(sequences) == 0:
+    sequences_len = len(sequences)
+    if sequences_len == 0:
         if minlen <= 0 <= maxlen: yield ()
         return
 
@@ -1590,7 +1602,7 @@ def product_limitedlen(*sequences, **kwds):
 
         # If (and only if) the total length after recursing could
         # possibly fall inside the requested range, continue
-        if l_len(sequences) > new_minlen and new_maxlen >= 0:
+        if sequences_len > new_minlen and new_maxlen >= 0:
 
             # Special case (just so we can be non-recursive) when new_maxlen == 0:
             # this is only possible if each of the remaining sequences has a None
@@ -1604,7 +1616,7 @@ def product_limitedlen(*sequences, **kwds):
                 continue
 
             # Special case (to avoid one recursion) when this sequence is the last
-            if l_len(sequences) == 1:
+            if sequences_len == 1:
                 yield () if choice is None else (choice,)
                 continue
 
@@ -1619,20 +1631,21 @@ def permutations_nodups(sequence):
     # Copy a global into local for a small speed boost
     l_len = len
 
-    if l_len(sequence) == 2:
+    sequence_len = l_len(sequence)
+    if sequence_len == 2:
         # Only two permutations to try:
         yield sequence if type(sequence) == tuple else tuple(sequence)
         if sequence[0] != sequence[1]:
             yield (sequence[1], sequence[0])
 
-    elif l_len(sequence) <= 1:
+    elif sequence_len <= 1:
         # Only one permutation to try:
         yield sequence if type(sequence) == tuple else tuple(sequence)
     else:
 
         # If the sequence contains no duplicates, use the faster itertools version
         seen = set(sequence)
-        if l_len(seen) == l_len(sequence):
+        if l_len(seen) == sequence_len:
             for permutation in itertools.permutations(sequence):
                 yield permutation
             return
@@ -1646,7 +1659,7 @@ def permutations_nodups(sequence):
         seen = set()
         for i, choice in enumerate(sequence):
             if i > 0 and choice in seen: continue          # don't need to check the first one
-            if i+1 < l_len(sequence):      seen.add(choice)  # don't need to add the last one
+            if i+1 < sequence_len:       seen.add(choice)  # don't need to add the last one
             for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
                 yield (choice,) + rest
         return
@@ -1802,27 +1815,27 @@ def capslock_typos_generator(password_base):
 def swap_typos_generator(password_base):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
-    l_len                    = len
     l_xrange                 = xrange
     l_itertools_combinations = itertools.combinations
     l_args_nodupchecks       = args.no_dupchecks
 
     # Start with the unmodified password itself, and end if there's nothing left to do
     yield password_base
-    max_swaps = args.typos - typos_sofar
-    if max_swaps <= 0 or l_len(password_base) < 2: return
+    max_swaps         = args.typos - typos_sofar
+    password_base_len = len(password_base)
+    if max_swaps <= 0 or password_base_len < 2: return
 
     # First swap one pair of characters, then all combinations of 2 pairs, then of 3,
     # up to the max requested or up to the max number swappable (whichever's less). The
     # max number swappable is len // 2 because we never swap any single character twice.
-    max_swaps = min(max_swaps, l_len(password_base) // 2)
+    max_swaps = min(max_swaps, password_base_len // 2)
     for swap_count in l_xrange(1, max_swaps + 1):
         typos_sofar += swap_count
 
         # Generate all possible combinations of swapping exactly swap_count characters;
         # swap_indexes is a list of indexes of characters that will be swapped in a
         # single guess (swapped with the character at the next position in the string)
-        for swap_indexes in l_itertools_combinations(l_xrange(l_len(password_base)-1), swap_count):
+        for swap_indexes in l_itertools_combinations(l_xrange(password_base_len-1), swap_count):
 
             # Look for adjacent indexes in swap_indexes (which would cause a single
             # character to be swapped more than once in a single guess), and only
@@ -1873,25 +1886,25 @@ def case_id_changed(case_id1, case_id2):
 def simple_typos_generator(password_base):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
-    l_len               = len
     l_xrange            = xrange
     l_itertools_product = itertools.product
-    assert l_len(enabled_simple_typos) > 0, "simple_typos_generator: at least one simple typo enabled"
+    assert len(enabled_simple_typos) > 0, "simple_typos_generator: at least one simple typo enabled"
 
     # Start with the unmodified password itself
     yield password_base
 
     # First change all single characters, then all combinations of 2 characters, then of 3, etc.
-    max_typos = min(args.typos - typos_sofar, l_len(password_base))
+    password_base_len = len(password_base)
+    max_typos         = min(args.typos - typos_sofar, password_base_len)
     for typos_count in l_xrange(1, max_typos + 1):
         typos_sofar += typos_count
 
         # Select the indexes of exactly typos_count characters from the password_base
         # that will be the target of the typos (out of all possible combinations thereof)
-        for typo_indexes in itertools.combinations(l_xrange(l_len(password_base)), typos_count):
+        for typo_indexes in itertools.combinations(l_xrange(password_base_len), typos_count):
             # typo_indexes_ has an added sentinel at the end; it's the index of
             # one-past-the-end of password_base. This is used in the inner loop.
-            typo_indexes_ = typo_indexes + (l_len(password_base),)
+            typo_indexes_ = typo_indexes + (password_base_len,)
 
             # Iterate through all possible permutations of the specified
             # enabled_simple_typos being applied to the selected typo targets
@@ -1924,6 +1937,72 @@ def simple_typos_generator(password_base):
         typos_sofar -= typos_count
 
 
+# insert_typos_generator() is a generator function which inserts one or more strings
+# from the typos_insert_expanded list between every pair of characters in password_base,
+# as well as at its beginning and its end.
+def insert_typos_generator(password_base):
+    global typos_sofar
+    # Copy a few globals into local for a small speed boost
+    l_max_adjacent_inserts = args.max_adjacent_inserts
+    l_xrange               = xrange
+    l_itertools_product    = itertools.product
+
+    # Start with the unmodified password itself
+    yield password_base
+
+    password_base_len = len(password_base)
+    assert l_max_adjacent_inserts > 0
+    if l_max_adjacent_inserts > 1:
+        # Can select for insertion the same index more than once in a single guess
+        combinations_function = itertools.combinations_with_replacement
+        max_inserts = args.typos - typos_sofar
+    else:
+        # Will select for insertion an index at most once in a single guess
+        combinations_function = itertools.combinations
+        max_inserts = min(args.typos - typos_sofar, password_base_len + 1)
+
+    # First insert a single string, then all combinations of 2 strings, then of 3, etc.
+    for inserts_count in l_xrange(1, max_inserts + 1):
+        typos_sofar += inserts_count
+
+        # Select the indexes (some possibly the same) of exactly inserts_count characters
+        # from the password_base before which new string(s) will be inserted
+        for insert_indexes in combinations_function(l_xrange(password_base_len + 1), inserts_count):
+
+            # If multiple inserts are permitted at a single location, make sure they're
+            # limited to args.max_adjacent_inserts. (If multiple inserts are not permitted,
+            # they are never produced by the combinations_function selected earlier.)
+            if l_max_adjacent_inserts > 1:
+                too_many_adjacent = False
+                last_index = -1
+                for index in insert_indexes:
+                    if index != last_index:
+                        adjacent_count = 1
+                        last_index = index
+                    else:
+                        adjacent_count += 1
+                        too_many_adjacent = adjacent_count > l_max_adjacent_inserts
+                        if too_many_adjacent: break
+                if too_many_adjacent: continue
+
+            # insert_indexes_ has an added sentinel at the end; it's the index of
+            # one-past-the-end of password_base. This is used in the inner loop.
+            insert_indexes_ = insert_indexes + (password_base_len,)
+
+            # For each of the selected insert indexes, select a replacement from
+            # typos_insert_expanded (which is created in parse_arguments() )
+            for one_insertion_set in l_itertools_product(typos_insert_expanded, repeat = inserts_count):
+
+                # Construct a new password, left-to-right, from password_base and the
+                # one_insertion_set. (Note the use of insert_indexes_, not insert_indexes.)
+                password = password_base[0:insert_indexes_[0]]
+                for i, insertion in enumerate(one_insertion_set):
+                    password += insertion + password_base[insert_indexes_[i]:insert_indexes_[i+1]]
+                yield password
+
+        typos_sofar -= inserts_count
+
+
 # A relatively simple generator which produces passwords directly from a file,
 # one per line, optionally with typos applied
 def passwordlist_password_generator():
@@ -1938,7 +2017,6 @@ def passwordlist_password_generator():
         password_dups = DuplicateChecker()
 
     # Copy a few globals into local for a small speed boost
-    l_len               = len
     l_generator_product = generator_product
     l_args_min_typos    = args.min_typos
     l_regex_only        = regex_only
@@ -1954,6 +2032,8 @@ def passwordlist_password_generator():
     if args.typos_capslock:  modification_generators.append( capslock_typos_generator )
     if args.typos_swap:      modification_generators.append( swap_typos_generator     )
     if enabled_simple_typos: modification_generators.append( simple_typos_generator   )
+    if args.typos_insert:    modification_generators.append( insert_typos_generator   )
+    modification_generators_len = len(modification_generators)
 
     if passwordlist_file != sys.stdin:
         passwordlist_file.seek(0)
@@ -1964,8 +2044,8 @@ def passwordlist_password_generator():
         # If any typos have been requested, create an iterator that will
         # loop through all combinations of the requested typos
         # (see tokenlist_password_generator() for more details)
-        if l_len(modification_generators):
-            if l_len(modification_generators) == 1:
+        if modification_generators:
+            if modification_generators == 1:
                 modification_iterator = modification_generators[0](password_base)
             else:
                 modification_iterator = l_generator_product(password_base, *modification_generators)

@@ -160,13 +160,15 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%s`    - a single space
  * `%l`    - a single line feed character
  * `%r`    - a single carriage return character
+ * `%R`    - a single line feed or carriage return character
  * `%t`    - a single tab character
  * `%T`    - a single space or tab character
  * `%w`    - a single space, line feed, or carriage return character
  * `%W`    - a single space, line feed, carriage return, or tab character
  * `%y`    - any single ASCII symbol
+ * `%Y`    - any single ASCII digit or symbol
  * `%p`    - any single ASCII letter, digit, or symbol
- * `%P`    - any single character from either `%p` or `%W` (pretty much everything) 
+ * `%P`    - any single character from either `%p` or `%W` (pretty much everything)
  * `%c`    - a single character from a custom set specified at the command line with `--custom-wild characters`
  * `%C`    - an uppercased version of `%c` (the same as `%c` if `%c` has no lowercase letters)
  * `%ic`   - a case-insensitive version of `%c`
@@ -197,7 +199,7 @@ You may want to note that a contracting wildcard in one token can potentially re
     AAAA%0,10>BBBB
     xxxx%dyyyy
 
-These two tokens each have eight normal letters. The first token has a contracting wildcard which removes up to 10 characters from its right, and the second token has an expanding wildcard which expands to a single digit. One of the passwords generated from these tokens is `AAAABBxxxx5yyyy`, which comes from selecting the first token followed by the second token, and then applying the wildcards with the contracting wildcard removing two characters. Another is `AAAAxx5yyyy` which comes from the same tokens, but the contracting wildcard now is removing six characters, two of which are from the second token. The digit and the `yyyy` will never be removed by the contracting wildcard because other wildcards are never removed or crossed over. Even though the contracting wildcard is set to remove up to 10 characters, `AAAAyyy` will never be produced because the `%d` blocks it.   
+These two tokens each have eight normal letters. The first token has a contracting wildcard which removes up to 10 characters from its right, and the second token has an expanding wildcard which expands to a single digit. One of the passwords generated from these tokens is `AAAABBxxxx5yyyy`, which comes from selecting the first token followed by the second token, and then applying the wildcards with the contracting wildcard removing two characters. Another is `AAAAxx5yyyy` which comes from the same tokens, but the contracting wildcard now is removing six characters, two of which are from the second token. The digit and the `yyyy` will never be removed by the contracting wildcard because other wildcards are never removed or crossed over. Even though the contracting wildcard is set to remove up to 10 characters, `AAAAyyy` will never be produced because the `%d` blocks it.
 
 ## Typos ##
 
@@ -213,11 +215,13 @@ For example, with `--typos 2 --typos-capslock --typos-repeat` options specified 
 
 Here are some additional types of typos that require a bit more explanation:
 
- * `--typos-closecase` - Like `--typos-case`, but it only tries changing the case of a letter if that letter is next to another letter with a different case. This produces fewer combinations to try so it will run faster, and it will still catch the more likely instances of someone holding down shift for too long or for not long enough.
+ * `--typos-closecase` - Like `--typos-case`, but it only tries changing the case of a letter if that letter is next to another letter with a different case, or if it's at the beginning or the end. This produces fewer combinations to try so it will run faster, and it will still catch the more likely instances of someone holding down shift for too long or for not long enough.
 
- * `--typos-insert s`  - This tries inserting the specified string (in the example, an “s”) in between each pair of characters (and also at the end). The string can be a single letter, or some longer string (in which case the string is inserted in its entirety), or even a string with one or more wildcards in it. Of course, using wildcards can drastically increase the total number of combinations...
+ * `--typos-replace s` - This tries replacing each single character with the specified string (in the example, an `s`). The string can be a single character, or some longer string (in which case the character is replaced by the entire string), or even a string with one or more expanding wildcards in it. Using wildcards can drastically increase the total number of combinations.
 
- * `--typos-replace s` - Just like `--typos-insert`, but instead of inserting the string, this removes a single character and puts the string (or the wildcard substitutions) in that character’s place.
+ * `--typos-insert s`  - Just like `--typos-replace`, but instead of replacing a character, this tries inserting a single copy of the string (or the wildcard substitutions) in between each pair of characters, as well as at the beginning and the end.
+
+    Even when `--typos` is greater than 1, `--typos-insert` will not normally try inserting multiple copies of the string at the same position. For example, with `--typos 2 --typos-insert Z` specified, guesses such as `CaiZro` and `CZairoZ` are tried, but `CaiZZro` is not. You can change this by using `--max-adjacent-inserts #` with a number greater than 1.
 
 #### Typos Map ####
 
@@ -363,11 +367,13 @@ In short, Unicode support is something I’d like to add if there’s a signific
 
 #### Memory ####
 
-When *btcrecover* starts, it's first task is to count all the passwords it's about to try, looking for and recording duplicates for future reference (so that no password is tried twice). This duplicate checking can take **a lot** of memory, depending on how many passwords need to be counted. If *btcrecover* appears to hang after displaying the `Counting passwords ...` message, or if it outright crashes, try running it again with the `--no-dupchecks` option. After this initial counting phase, it doesn't use up much RAM as it searches through passwords.
+When *btcrecover* starts, it's first task is to count all the passwords it's about to try, looking for and recording duplicates for future reference (so that no password is tried twice) and also so it can display an ETA. This duplicate checking can take **a lot** of memory, depending on how many passwords need to be counted, but in some circumstances it can also save a lot of time. If *btcrecover* appears to hang after displaying the `Counting passwords ...` message, or if it outright crashes, try running it again with the `--no-dupchecks` option. After this initial counting phase, it doesn't use up much RAM as it searches through passwords.
 
-You may want to always use a single `--no-dupchecks` option when working with MultiBit key files or Electrum wallets because the duplicate checking saves very little time with these in most cases.
+Although this initial counting phase can be skipped by using the `--no-eta` option, it's not recommended. If you do use `--no-eta`, it's highly recommended that you also use `--no-dupchecks` at the same time.
 
-If you specify the `--no-dupchecks` more than once, it will disable even more of the duplicate checks:
+You may want to always use a single `--no-dupchecks` option when working with MultiBit or Electrum wallets because the duplicate checking can actually decrease CPU efficiency (and always decreases memory efficiency) with these wallets in many cases.
+
+If you specify `--no-dupchecks` more than once, it will disable even more of the duplicate checking logic:
 
  * 1 time - disables the most comprehensive and also the most memory intensive duplicate checking
  * 2 times - disables duplicate checking that rarely consumes much memory relative to the time it saves, although it may if the tokenlist file has a large number of tokens on relatively few lines with at least one but relatively few identical tokens
@@ -376,7 +382,9 @@ If you specify the `--no-dupchecks` more than once, it will disable even more of
 
 #### CPU ####
 
-By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of threads if you'd like to decrease CPU usage. Under some circumstances, increasing the `--threads` option a little may improve search performance (usually only with MultiBit or Electrum).
+By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of worker threads (which defaults to the number of logical processors in your system) if you'd like to decrease CPU usage (but also the guess rate).
+
+With MultiBit or Electrum wallets, *btcrecover* may not be able to effeciently use more than four or five CPU cores, sometimes even less depending on the contents of the tokenlist and the chosen typos. Specifying the `--no-dupchecks` option may help improve CPU usage and therefore the password guess rate in many cases with these two wallet types, and using slightly fewer or slightly greater `--threads` might also help. The only way to find out is to experiment.
 
 *btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
 
@@ -396,8 +404,24 @@ None of these issues are intentionally malicious, they should be considered secu
 
 ### Typos Gory Details ###
 
-TODO
+The intent of the typos features is to only apply at most one typo at a time to any single character, even when applying multiple typos to a single password guess. For example, when specifying `--typos 2 --typo-case --typo-repeat`, each password guess can have up to two typos applied (so two case changes, **or** two repeated characters, **or** one case change plus one repeated character, at most). No single character in a guess will have more than one typo applied to it in a single guess, e.g. a single character will never be both repeated and case-changed at the same time.
 
+There are however some exceptions to this one-typo-per-character rule-- one intentional, and one due to limitations in the software.
+
+The `--typos-capslock` typo simulates leaving the caps lock turned on during a guess. It can affect all the letters in a password at once even though it's a single typo. As in exception to the one-typo-per-character rule, a single letter *can* be affected by a caps lock typo plus another typo at the same time.
+
+The `--typos-swap` typo also ignores the one-typo-per-character rule. Two adjacent characters can be swapped (which counts as one typo) and then a second typo can be applied to one (or both) of the swapped characters. This is more a software limitation than a design choice, but it's unlikely to change. You are however guaranteed that a single character will never be swapped more than once per guess.
+
+Finally it should be noted that wildcard substitutions (expansions and contractions) occur before typos are applied, and that typos can be applied to the results of wildcard expansions. The exact order of password creation is:
+
+ 1. Create a "base" password from one or more tokens, following all the token rules (mutual exclusion, anchors, etc.).
+ 2. Apply all wildcard expansions and contractions.
+ 3. Apply up to a single caps lock typo.
+ 4. Apply zero or more swap typos.
+ 5. Apply zero or more character-changing typos (these typos *do* follow the one-typo-per-character rule).
+ 6. Apply zero or more typo insertions (from the `typos-insert` option).
+
+At no time will the total number of typos in a single guess be more than requested with the `--typos #` option (nor will it be less than the `--min-typos` option if it's used).
 
 # Copyright and License #
 

@@ -103,6 +103,9 @@ class Test01Basics(GeneratorTester):
             ["twoone", "onetwo", "threeone", "onethree", "threetwo", "twothree"],
             "--min-tokens 2 --max-tokens 2")
 
+    def test_one_char_file(self):
+        self.do_generator_test(["a"], ["a"], test_passwordlist=True)
+
     def test_z_all(self):
         self.do_generator_test(["1", "2 3", "+ 4 5"], map(str, [
             4,41,14,42,24,421,412,241,214,142,124,43,34,431,413,341,314,143,134,
@@ -114,20 +117,22 @@ class Test02Anchors(GeneratorTester):
     def test_begin(self):
         self.do_generator_test(["^one", "^two", "three"],
             ["one", "two", "three", "onethree", "twothree"])
+    def test_begin_0len(self):
+        self.do_generator_test(["^"], [""])
 
     def test_end(self):
         self.do_generator_test(["one$", "two$", "three"],
             ["one", "two", "three", "threeone", "threetwo"])
+    def test_end_0len(self):
+        self.do_generator_test(["$"], [""])
 
     def test_begin_and_end(self):
         self.expect_syntax_failure(["^one$"], "token on line 1 is anchored with both ^ at the beginning and $ at the end")
 
     def test_positional(self):
         self.do_generator_test(["one", "^2^two", "^3^three"], ["one", "onetwo", "onetwothree"])
-
     def test_positional_old(self):
         self.do_generator_test(["one", "^2$two", "^3$three"], ["one", "onetwo", "onetwothree"])
-
     def test_positional_0len(self):
         self.do_generator_test(["+ ^1^", "^2^two"], ["", "two"])
 
@@ -138,12 +143,10 @@ class Test02Anchors(GeneratorTester):
         self.do_generator_test(["^one", "^2,2^two", "^,3^three", "^,^four", "five$"],
             ["one", "five", "onefive", "onetwofive", "onethreefive", "onetwothreefive", "onefourfive",
             "onetwofourfive", "onefourthreefive", "onethreefourfive", "onetwothreefourfive"])
-
     def test_middle_old(self):
         self.do_generator_test(["^one", "^2,2$two", "^,3$three", "^,$four", "five$"],
             ["one", "five", "onefive", "onetwofive", "onethreefive", "onetwothreefive", "onefourfive",
             "onetwofourfive", "onefourthreefive", "onethreefourfive", "onetwothreefourfive"])
-
     def test_middle_0len(self):
         self.do_generator_test(["one", "+ ^,^", "^3^three"], ["onethree"])
 
@@ -274,20 +277,32 @@ class Test04Typos(GeneratorTester):
             "--typos-closecase --typos 2 -d", test_passwordlist=True)
 
     def test_insert(self):
-        self.do_generator_test(["abc"], ["abc", "aXbc", "abXc", "abcX", "aXbXc", "aXbcX", "abXcX" ],
+        self.do_generator_test(["abc"],
+            ["abc", "Xabc", "aXbc", "abXc", "abcX", "XaXbc", "XabXc", "XabcX", "aXbXc", "aXbcX", "abXcX"],
             "--typos-insert X --typos 2 -d", test_passwordlist=True)
+    def test_insert_adjacent_1(self):
+        self.do_generator_test(["ab"], ["ab", "Xab", "aXb", "abX", "XXab", "XaXb", "XabX", "aXXb", "aXbX", "abXX"],
+            "--typos-insert X --typos 2 --max-adjacent-inserts 2 -d", test_passwordlist=True)
+    def test_insert_adjacent_2(self):
+        self.do_generator_test(["a"], ["a", "Xa", "aX", "XXa", "XaX", "aXX", "XXaX", "XaXX" ],
+            "--typos-insert X --typos 3 --max-adjacent-inserts 2 -d", test_passwordlist=True)
     def test_insert_wildcard(self):
-        self.do_generator_test(["abc"], ["abc", "aXbc", "aYbc", "abXc", "abYc", "abcX", "abcY" ],
+        self.do_generator_test(["abc"], ["abc", "Xabc", "Yabc", "aXbc", "aYbc", "abXc", "abYc", "abcX", "abcY"],
             "--typos-insert %[XY] -d", test_passwordlist=True)
+    def test_insert_wildcard_adjacent(self):
+        self.do_generator_test(["a"],
+            ["a", "Xa", "Ya", "aX", "aY", "XXa", "XYa", "YXa", "YYa",
+            "XaX", "XaY", "YaX", "YaY", "aXX", "aXY", "aYX", "aYY"],
+            "--typos-insert %[XY] --typos 2 --max-adjacent-inserts 2 -d", test_passwordlist=True)
     def test_insert_invalid(self):
         self.expect_syntax_failure(["abc"], "contracting wildcards are not permitted here",
             "--typos-insert %0,1-", test_passwordlist=True)
 
     def test_replace(self):
-        self.do_generator_test(["abc"], ["abc", "Xbc", "aXc", "abX", "XXc", "XbX", "aXX" ],
+        self.do_generator_test(["abc"], ["abc", "Xbc", "aXc", "abX", "XXc", "XbX", "aXX"],
             "--typos-replace X --typos 2 -d", test_passwordlist=True)
     def test_replace_wildcard(self):
-        self.do_generator_test(["abc"], ["abc", "Xbc", "Ybc", "aXc", "aYc", "abX", "abY" ],
+        self.do_generator_test(["abc"], ["abc", "Xbc", "Ybc", "aXc", "aYc", "abX", "abY"],
             "--typos-replace %[X-Y] -d", test_passwordlist=True)
     def test_replace_invalid(self):
         self.expect_syntax_failure(["abc"], "contracting wildcards are not permitted here",
@@ -295,28 +310,34 @@ class Test04Typos(GeneratorTester):
 
     def test_map(self):
         self.do_generator_test(["axb"],
-            ["axb", "Axb", "Bxb", "axA", "axB", "AxA", "AxB", "BxA", "BxB" ],
+            ["axb", "Axb", "Bxb", "axA", "axB", "AxA", "AxB", "BxA", "BxB"],
             "--typos-map __funccall --typos 2 -d",
             typos_map=cStringIO.StringIO(" ab \t AB \n x x \n a aB "))
 
     def test_z_all(self):
-        self.do_generator_test(["ab"],
-            ["ab","aab","b","Ab","aXb","Yb","abb","a","aB","abX","aY","aabb","aa","aaB","aabX",
-            "aaY","bb","","B","bX","Y","Abb","A","AB","AbX","AY","aXbb","aX","aXB","aXbX","aXY",
-            "Ybb","Y","YB","YbX","YY","ba","bba","a","Ba","bXa","Ya","baa","b","bA","baX","bY"],
-            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert X --typos-replace Y --typos 2 -d",
+        self.maxDiff=None
+        self.do_generator_test(["12"],
+            map(str, [12,812,182,128,8812,8182,8128,1882,1828,1288,112,8112,1812,1182,
+                1128,2,82,28,92,892,982,928,122,8122,1822,1282,1228,1,81,18,19,819,189,
+                198,1122,11,119,22,"",9,922,9,99,21,821,281,218,221,1,91,211,2,29]),
+            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert 8 --typos-replace 9 --typos 2 --max-adjacent-inserts 2 -d",
             test_passwordlist=True)
 
     def test_z_min_typos_1(self):
-        self.do_generator_test(["ab"],
-            ["aabb","aa","aaB","aabX","aaY","bb","","B","bX","Y","Abb","A","AB","AbX","AY","aXbb","aX",
-            "aXB","aXbX","aXY","Ybb","Y","YB","YbX","YY","bba","a","Ba","bXa","Ya","baa","b","bA","baX","bY"],
-            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert X --typos-replace Y --typos 2 -d --min-typos 2",
+        self.maxDiff=None
+        self.do_generator_test(["12"],
+            map(str, [88182,88128,81882,81828,81288,18828,18288,88112,81812,81182,81128,
+                18812,18182,18128,11882,11828,11288,882,828,288,8892,8982,8928,9882,9828,
+                9288,88122,81822,81282,81228,18822,18282,18228,12882,12828,12288,881,818,
+                188,8819,8189,8198,1889,1898,1988,81122,18122,11822,11282,11228,811,181,
+                118,8119,1819,1189,1198,822,282,228,8,89,98,8922,9822,9282,9228,89,98,899,
+                989,998,8821,8281,8218,2881,2818,2188,8221,2821,2281,2218,81,18,891,981,
+                918,8211,2811,2181,2118,82,28,829,289,298,2211,22,229,11,"",9,911,9,99]),
+            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert 8 --typos-replace 9 --typos 3 --max-adjacent-inserts 2 --min-typos 3 -d",
             test_passwordlist=True)
-
     def test_z_min_typos_2(self):
-        self.do_generator_test(["ab"], [],
-            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert X --typos-replace Y --typos 4 -d --min-typos 4",
+        self.do_generator_test(["12"], [],
+            "--typos-swap --typos-repeat --typos-delete --typos-case --typos-replace 8 --typos 4 -d --min-typos 4",
             test_passwordlist=True)
 
 class Test05CommandLine(GeneratorTester):
