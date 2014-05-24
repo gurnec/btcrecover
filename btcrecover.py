@@ -259,17 +259,19 @@ def load_armory_library():
     # Temporarily blank out argv before importing the armoryengine, otherwise it attempts to process argv
     old_argv = sys.argv[1:]
     del sys.argv[1:]
+    try:
 
-    # Try up to 10 times to load Armory (there's a race condition on opening the log file in Windows multiprocessing)
-    for i in xrange(10):
-        try: import armoryengine.PyBtcWallet, armoryengine.PyBtcAddress
-        except IOError as e:
-            if i<9 and e.filename.endswith(r"\armorylog.txt"): time.sleep(0.1)
-            else: raise  # unexpected failure
-        else: break  # when it succeeds
-    from CppBlockUtils import SecureBinaryData, KdfRomix  # (also a part of Armory)
-
-    sys.argv[1:] = old_argv  # restore the command line
+        # Try up to 10 times to load Armory (there's a race condition on opening the log file in Windows multiprocessing)
+        for i in xrange(10):
+            try: import armoryengine.PyBtcWallet, armoryengine.PyBtcAddress
+            except IOError as e:
+                if i<9 and e.filename.endswith(r"\armorylog.txt"): time.sleep(0.1)
+                else: raise  # unexpected failure
+            else: break  # when it succeeds
+        from CppBlockUtils import SecureBinaryData, KdfRomix  # (also a part of Armory)
+ 
+    finally:
+        sys.argv[1:] = old_argv  # restore the command line
 
 # Load the Armory wallet file given the filename
 def load_armory_wallet(wallet_filename):

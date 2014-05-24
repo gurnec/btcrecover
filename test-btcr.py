@@ -492,6 +492,11 @@ class Test06AutosaveRestore(unittest.TestCase):
         self.assertEqual(savestate.get("skip"), 0)
 
 
+def can_load_armory():
+    try:   btcrecover.load_armory_library()
+    except ImportError: return False
+    return True
+
 class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
@@ -514,6 +519,7 @@ class Test07WalletDecryption(unittest.TestCase):
         self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
         shutil.rmtree(temp_dir)
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     def test_armory(self):
         self.wallet_tester("armory-wallet.wallet")
 
@@ -553,6 +559,7 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertFalse(btcrecover.return_verified_password_or_false("btcr-wrong-password"))
         self.assertEqual(btcrecover.return_verified_password_or_false("btcr-test-password"), "btcr-test-password")
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     def test_armory(self):
         self.key_tester("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
