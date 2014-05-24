@@ -35,7 +35,7 @@ After downloading the script, **make a copy of your wallet file into a different
     cd \Users\Chris\Downloads\btcrecover-master\extract-privkey
     C:\python27\python extract-armory-privkey.py armory_2dRkxw76K_.wallet extract 1LhkzLtY5drbUxXvsk8LmU1aRFz13EDcp4
 
-Of course, you need to replace the wallet filename with yours, and the Bitcoin address with the one you created earlier. You should get a message which looks like this as a result. You should double-check that the address matches the one you just created (along with the label which you gave to it):
+Of course, you need to replace the wallet file name with yours, and the Bitcoin address with the one you created earlier. You should get a message which looks like this as a result. You should double-check that the address matches the one you just created (along with the label which you gave to it):
 
     1LhkzLtY5drbUxXvsk8LmU1aRFz13EDcp4 First:04/19/14 Last:04/19/14 Recovery address - DO NOT USE
 
@@ -64,7 +64,11 @@ Armory automatically pre-generates 100 addresses and private keys before they ar
 
 ### Usage for MultiBit ###
 
-*extract-multibit-privkey.py* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. Each time you change your wallet password (including the first time you add a password), plus on certain other occasions, MultiBit creates an encrypted private key backup file in a `key-backup` directory (see the link below for more details). These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. Unfortunately, it’s up to you to locate the correct private key backup file for the wallet whose password you need to recover. If you only have one MultiBit wallet, you can just choose the most recent private key backup file. Otherwise, you need to locate a private key backup file that has a date of when you either changed the password of, or added new addresses to the wallet you’d like to recover.
+*btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
+
+    %appdata%\MultiBit\multibit-data\key-backup
+
+The key files have names which look like `walletname-20140407200743.key`. If you've created additional wallets, their `key-backup` directories will be located elsewhere and it's up to you to locate them.
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
 
@@ -73,7 +77,7 @@ Once you've located the correct MultiBit private key backup file, **make a copy 
     cd \Users\Chris\Downloads\btcrecover-master\extract-privkey
     C:\python27\python extract-multibit-privkey.py multibit-20140407200743.key
 
-Of course, you need to replace the private key filename with yours. You should get a message which looks like this as a result:
+Of course, you need to replace the private key file name with yours. You should get a message which looks like this as a result:
 
     MultiBit partial first encrypted private key, salt, and crc in base64:
     bWI6sTaHldcBFFj9zlgNpO1szOwy8elpl20OWgj+lA==

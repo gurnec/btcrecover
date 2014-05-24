@@ -1,9 +1,9 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is an open source, multithreaded Bitcoin wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
-If you find *btcrecover* helpful, please consider a small donation:
+If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
 
 #### Thank You! ####
@@ -13,23 +13,26 @@ If you find *btcrecover* helpful, please consider a small donation:
 
 This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
 
- 1. Jump down to the [Installation](#installation) section to see what you need to download (which differs depending on your operating system and which Bitcoin wallet software you use).
- 2. Once you've unzipped the *btcrecover* download, you'll want to place two (possibly three) other files into the directory that has the `btcrecover.py` script file:
-     * A copy of your wallet file, which you can rename to “wallet.dat”. You'll need to do a bit of searching online to discover where your wallet file is (but if you're using MultiBit, please read the [Finding MultiBit Wallet Files](#finding-multibit-wallet-files) section first).
-     * A text (Notepad) file named “tokens.txt” which you will create. It will contain a list of your password guesses (maybe just one).
-     * Optional, for more complicated typos, a text file named “typos.txt”.
- 3. Next, take a look at [The Token File](#the-token-file) section, at least the beginning, to understand what to put in the tokens.txt file. If you only have one password guess in mind, and you're just interested in trying possible typos of that password, your tokens.txt file will just have a single line with that one password in it.
- 4. Next, take a look at the [Typos](#typos) section, which details different types of common typos you may have made, and shows how to ask *btcrecover* to test for them.
- 5. Finally, after you've created your tokens.txt file and have a list of typo command line options in mind, jump down to the [Running *btcrecover*](#running-btcrecover) section and follow the instructions to run *btcrecover* in a Command Prompt window.
+ 1. Read the [Installation](#installation) section for instructions and download links.
+ 2. If you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
+ 3. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a tokens.txt file you'll need later.
+ 4. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
+     * If you didn't need step 3, read [The Passwordlist](#the-passwordlist) section instead.
+ 5. Read the [Running *btcrecover*](#running-btcrecover) section to see how to put these pieces together and how to run *btcrecover* in a Command Prompt window.
+     * (optional) Read the [Testing your config](#testing-your-config) section to view the passwords that will be tested.
+     * (optional) If you're testing a lot of combinations that will take a long time, use the [Autosave](#autosave) feature to safeguard against losing your progress.
+ 6. (optional, but highly recommended) Donate huge sums of Bitcoin to the donation address above once your password's been found.
 
 
 ## The Token File ##
 
-*btcrecover* accepts as input a text file which has a list of what are called password “tokens”, which are parts of a password, and then it combines these tokens in different ways to create different passwords to try.
+*btcrecover* can accept as input a text file which has a list of what are called password “tokens”. A token is simply a portion of a password which you do remember, even if you don't remember where that portion appears in the actual password. It will combine these tokens in different ways to create different whole password guesses to try.
+
+This plain text file, typically named tokens.txt, can be created in any basic text editor, such as Notepad on Windows or TextEdit on OS X, and should probably be saved into the same folder as the *btcrecover.py* script (just to keep things simple).
 
 ### Basics ###
 
-Let’s say that you remember your password contains 3 parts, you just can’t remember in what order you used them. Here are the contents of an example token file:
+Let’s say that you remember your password contains 3 parts, you just can’t remember in what order you used them. Here are the contents of a simple tokens.txt file:
 
     Cairo
     Beetlejuice
@@ -45,7 +48,9 @@ Maybe you’re not sure about how you spelled or capitalized one of those words.
     Beetlejuice beetlejuice Betelgeuse betelgeuse
     Hotel_california
 
-Tokens listed on the same line, separated by whitespace, are mutually exclusive. *btcrecover* will try `Cairo` and `bettlejuiceCairoHotel_california`, but it will skip over `Betelgeusebetelgeuse`. Had all four Beetlejuice versions been listed out on separate lines, this would have resulted in trying thousands of additional passwords which we know to be incorrect. As is, this token file only needs to try 48 passwords to account for all possible combinations. Had they all been on separate lines, it would have to try 1,956 different combinations. In short, when you’re sure that certain tokens or variations of a token have no chance of appearing together in a password, placing them all on the same line can save a lot of time.
+Tokens listed on the same line, separated by spaces, are mutually exclusive and will never be tried together in a password guess. *btcrecover* will try `Cairo` and `bettlejuiceCairoHotel_california`, but it will skip over `Betelgeusebetelgeuse`. Had all four Beetlejuice versions been listed out on separate lines, this would have resulted in trying thousands of additional passwords which we know to be incorrect. As is, this token file only needs to try 48 passwords to account for all possible combinations. Had they all been on separate lines, it would have had to try 1,956 different combinations.
+
+In short, when you’re sure that certain tokens or variations of a token have no chance of appearing together in a password, placing them all on the same line can save a lot of time.
 
 ### Required Tokens ###
 
@@ -55,13 +60,15 @@ What if you’re certain that `Cairo` appears in the password, but you’re not 
     Beetlejuice beetlejuice Betelgeuse betelgeuse
     Hotel_california
 
-Placing a `+` (and some whitespace after it) at the beginning of a line tells *btcrecover* to only try passwords that include `Cairo` in them. You can also combine these two last features. Here’s a longer example:
+Placing a `+` (and some space after it) at the beginning of a line tells *btcrecover* to only try passwords that include `Cairo` in them. You can also combine these two last features. Here’s a longer example:
 
     Cairo cairo Katmai katmai
     + Beetlejuice beetlejuice Betelgeuse betelgeuse
     Hotel_california hotel_california
 
-In this example above, passwords will be constructed by taking at most one token from the first line, exactly one token from the second line (it’s required), and at most one token from the third line. So `Hotel_californiaBetelgeuse` would be tried, but `cairoKatmaiBetelgeuse` would be skipped (those first two tokens are on the same line, so they’re never tried together) and `katmaiHotel_california` is also skipped (because one token from the second line is required in every try). This file would try a total of 244 different combinations. Listing all ten of those tokens on separate lines and trying every single possible combination would take 9,864,100 tries... quite a bit more painful.
+In this example above, passwords will be constructed by taking at most one token from the first line, exactly one token from the second line (it’s required), and at most one token from the third line. So `Hotel_californiaBetelgeuse` would be tried, but `cairoKatmaiBetelgeuse` would be skipped (`cairo` and `Katmai` are on the same line, so they’re never tried together) and `katmaiHotel_california` is also skipped (because one token from the second line is required in every try).
+
+This file will create a total of just 244 different combinations. Had all ten of those tokens been listed on separate lines, it would have produced 9,864,100 guesses, which could take days longer to test!
 
 ### Anchors ###
 
@@ -91,39 +98,39 @@ Tokens with positional anchors may only appear at one specific position in the p
     Beetlejuice
     Hotel_california
 
-As you can guess, `Second_or_bust`, if it is tried, is only tried as the second token in a password, and `Third_or_bust`, if it is tried, is only tried as the third.
+As you can guess, `Second_or_bust`, if it is tried, is only tried as the second token in a password, and `Third_or_bust`, if it is tried, is only tried as the third. (Neither token is required because there is no `+` at the beginning these of these lines.)
 
 #### Middle Anchors ####
 
 Middle anchors are a bit like positional anchors, only more flexible: the anchored tokens may appear once throughout a specific *range* of positions in the password.
 
-**Note:** Placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.
+**Note** that placing a middle anchor on a token introduces a special restriction: it *forces* the token into the *middle* of a password. A token with a middle anchor (unlike any of the other anchors described above) will *never* be tried as the first or last token of a password.
 
-You specify a middle anchor by adding a comma between two numbers (between the `^` symbols) at the very beginning of a token (all with no spaces):
+You specify a middle anchor by adding a comma and two numbers (between the `^` symbols) at the very beginning of a token (all with no spaces):
 
-    ^2,3^Second_third_(but_never_last)_or_bust
-    ^2,4^Second_to_fourth_(but_never_last)_or_bust
+    ^2,3^Second_or_third_(but_never_last)
+    ^2,4^Second_to_fourth_(but_never_last)
     Cairo
     Beetlejuice
     Hotel_california
 
  As mentioned above, neither of those middle-anchored tokens will ever be tried as the last token in a password, so something (one or more of the non-anchored tokens) will appear after the middle-anchored ones in every guess in which they appear. Since tokens with middle anchors never appear at the beginning either, the smallest value you can use for that first number is 2. Finally, when you specify the range, you can leave out one (or even both) of the numbers, like this:
 
-    ^3,^Third_or_after_(but_never_last)_or_bust
-    ^,3^Second_or_third_(but_never_last)_or_bust
+    ^3,^Third_or_after_(but_never_last)
+    ^,3^Third_or_earlier((but_never_first_or_last)
     ^,^Anywhere_in_the_middle
     Cairo
     Beetlejuice
     Hotel_california
 
-You can't leave out the comma (that's what makes it a middle anchor instead of a positional anchor). Leaving out a number doesn't change the “never at the beginning or the end” rule which always applies to middle anchors. If you do need a token with a middle anchor to also possibly appear at the beginning or end of a password, you can add second copy to the same line with a beginning or end anchor:
+You can't leave out the comma (that's what makes it a middle anchor instead of a positional anchor). Leaving out a number doesn't change the “never at the beginning or the end” rule which always applies to middle anchors. If you do need a token with a middle anchor to also possibly appear at the beginning or end of a password, you can add second copy to the same line with a beginning or end anchor (because at most one token on a line can appear in any guess):
 
     ^,^Anywhere_in_the_middle_or_end        Anywhere_in_the_middle_or_end$
     ^,^Anywhere_in_the_middle_or_beginning ^Anywhere_in_the_middle_or_beginning
 
 ### Token Counts ###
 
-There are a number of command line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from the earlier example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
+There are a number of command-line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from the earlier example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
 
 ### Expanding Wildcards ###
 
@@ -188,22 +195,42 @@ The `%0,2-` contracting wildcard will remove between 0 and 2 adjacent characters
 
     %0,20-A/Long/Password/with/symbols/that/maybe/was/partially/copy/pasted%0,20-
 
-Different versions of this password will be tried removing up to 20 characters from either end. Here are the three types of contracting wildcards:
+Different versions of this password will be tried removing up to 20 characters from either end.
 
- * `%0,2-` - removes between 0 and 2 adjacent characters (total) taken from either side of the wildcard
- * `%0,2<` - removes between 0 and 2 adjacent characters only from the wildcard's left
- * `%0,2>` - removes between 0 and 2 adjacent characters only from the wildcard's right
+Here are the three types of contracting wildcards:
 
-You may want to note that a contracting wildcard in one token can potentially remove characters from other tokens, but it will never remove or cross over another wildcard. Here's an example to fully illustrate this:
+ * `%0,5-` - removes between 0 and 5 adjacent characters (total) taken from either side of the wildcard
+ * `%0,5<` - removes between 0 and 5 adjacent characters only from the wildcard's left
+ * `%0,5>` - removes between 0 and 5 adjacent characters only from the wildcard's right
+
+You may want to note that a contracting wildcard in one token can potentially remove characters from other tokens, but it will never remove or cross over another wildcard. Here's an example to fully illustrate this (feel free to skip to the next section if you're not interested in these specific details):
 
     AAAA%0,10>BBBB
     xxxx%dyyyy
 
-These two tokens each have eight normal letters. The first token has a contracting wildcard which removes up to 10 characters from its right, and the second token has an expanding wildcard which expands to a single digit. One of the passwords generated from these tokens is `AAAABBxxxx5yyyy`, which comes from selecting the first token followed by the second token, and then applying the wildcards with the contracting wildcard removing two characters. Another is `AAAAxx5yyyy` which comes from the same tokens, but the contracting wildcard now is removing six characters, two of which are from the second token. The digit and the `yyyy` will never be removed by the contracting wildcard because other wildcards are never removed or crossed over. Even though the contracting wildcard is set to remove up to 10 characters, `AAAAyyy` will never be produced because the `%d` blocks it.
+These two tokens each have eight normal letters. The first token has a contracting wildcard which removes up to 10 characters from its right, and the second token has an expanding wildcard which expands to a single digit.
+
+One of the passwords generated from these tokens is `AAAABBxxxx5yyyy`, which comes from selecting the first token followed by the second token, and then applying the wildcards with the contracting wildcard removing two characters. Another is `AAAAxx5yyyy` which comes from the same tokens, but the contracting wildcard now is removing six characters, two of which are from the second token.
+
+The digit and the `yyyy` will never be removed by the contracting wildcard because other wildcards are never removed or crossed over. Even though the contracting wildcard is set to remove up to 10 characters, `AAAAyyy` will never be produced because the `%d` blocks it.
+
+
+## The Passwordlist ##
+
+If you already have a simple list of whole passwords you'd like to test, and you don't need any of the features described above, you can use the `--passwordlist` command-line option (instead of the `--tokenlist` option as described later in the [Running *btcrecover*](#running-btcrecover) section).
+
+If you specify `--passwordlist` without a file, *btcrecover* will prompt you to type in a list of passwords, one per line, in the Command Prompt window. If you already have a text file with the passwords in it, you can use `--passwordlist FILE` instead (replacing FILE with the file name).
+
+Be sure not to add any extra spaces, unless those spaces are actually a part of a password.
+
+Each line is used verbatim as a single password when using the `--passwordlist` option (and none of the features from above are applied). You can however use any of the Typos features described below to try different variations of the passwords in the passwordlist.
+
 
 ## Typos ##
 
-This next feature also expands the number of passwords that need to be tried. It’s an attempt to guess possible typos you may have inadvertently made while first typing in the password, although it can be useful for other purposes too. It’s enabled with the `--typos #` command line option (with `#` replaced with a count of typos). With this option, you tell *btcrecover* up to how many typos you’d like it to add to each password (that’s generated from the rules above), along with a list of different types of typos you’d like it to test, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos along with the command line options which enable each:
+*btcrecover* can generate different variations of passwords to find typos or mistakes you may have inadvertently made while typing a password in or writing one down. This feature is enabled by including one or more command-line options when you run *btcrecover*.
+
+With the `--typos #` command-line option (with `#` replaced with a count of typos), you tell *btcrecover* up to how many typos you’d like it to add to each password (that has been either generated from a token file or taken from a passwordlist as described above). You must also specify the types of typos you’d like it to generate, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos along with the command-line options which enable each:
 
  * `--typos-capslock` - tries the whole password with caps lock turned on
  * `--typos-swap`     - swaps two adjacent characters
@@ -211,13 +238,13 @@ This next feature also expands the number of passwords that need to be tried. It
  * `--typos-delete`   - deletes a character
  * `--typos-case`     - changes the case (upper/lower) of a single letter
 
-For example, with `--typos 2 --typos-capslock --typos-repeat` options specified on the command line, all combinations containing up to two typos will be tried, e.g. `Cairo` (no typos), `cAIRO` (one typo: caps lock), `CCairoo` (two typos: both repeats), and `cAIROO` (two typos: one of each type) will be tried. Adding lots of typo types to the command line can significantly increase the number of combinations, and increasing the `--typos` count can be even more dramatic, so it’s best to tread lightly when using this feature unless you have a small token file.
+For example, with `--typos 2 --typos-capslock --typos-repeat` options specified on the command line, all combinations containing up to two typos will be tried, e.g. `Cairo` (no typos), `cAIRO` (one typo: caps lock), `CCairoo` (two typos: both repeats), and `cAIROO` (two typos: one of each type) will be tried. Adding lots of typo types to the command line can significantly increase the number of combinations, and increasing the `--typos` count can be even more dramatic, so it’s best to tread lightly when using this feature unless you have a small token file or passwordlist.
 
 Here are some additional types of typos that require a bit more explanation:
 
  * `--typos-closecase` - Like `--typos-case`, but it only tries changing the case of a letter if that letter is next to another letter with a different case, or if it's at the beginning or the end. This produces fewer combinations to try so it will run faster, and it will still catch the more likely instances of someone holding down shift for too long or for not long enough.
 
- * `--typos-replace s` - This tries replacing each single character with the specified string (in the example, an `s`). The string can be a single character, or some longer string (in which case the character is replaced by the entire string), or even a string with one or more expanding wildcards in it. Using wildcards can drastically increase the total number of combinations.
+ * `--typos-replace s` - This tries replacing each single character with the specified string (in the example, an `s`). The string can be a single character, or some longer string (in which case each single character is replaced by the entire string), or even a string with one or more [expanding wildcards](#expanding-wildcards) in it. For example, `--typos 1 --typos-replace %a` would try replacing each character (one at a time) with a lower-case letter, working through all possible combinations. Using wildcards can drastically increase the total number of combinations.
 
  * `--typos-insert s`  - Just like `--typos-replace`, but instead of replacing a character, this tries inserting a single copy of the string (or the wildcard substitutions) in between each pair of characters, as well as at the beginning and the end.
 
@@ -231,45 +258,38 @@ Here are some additional types of typos that require a bit more explanation:
         ;    [‘/.
 
 
-    In this example, *btcrecover* will try replacing each `.` with one of the three punctuation marks which follow the spaces on the same line, and it will try replacing each `;` with one of the four punctuation marks which follow it. This feature can be used for more than just typos... for example, if you’re a fan of “1337” (leet) speak in your passwords, you could create a typos-map along these lines:
+    In this example, *btcrecover* will try replacing each `.` with one of the three punctuation marks which follow the spaces on the same line, and it will try replacing each `;` with one of the four punctuation marks which follow it.
+
+    This feature can be used for more than just typos. If for example you’re a fan of “1337” (leet) speak in your passwords, you could create a typos-map along these lines:
 
         aA    @
         sS    $5
         oO    0
 
-    This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$$word5` would both be tried because they each have three typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
+    This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$sword5` would both be tried because they each have three or fewer typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
 
 
-## Interrupt and Continue ##
+## Autosave ##
 
-Depending on the number of passwords which need to be tried, running *btcrecover* might take a very long time. If you need to cancel it in the middle of testing, you can do so with Ctrl-C (hold down the Ctrl key and press C) and it will respond with a message such as:
+Depending on the number of passwords which need to be tried, running *btcrecover* might take a very long time. If it is interrupted in the middle of testing (with Ctrl-C (see below), due to a reboot, accidentally closing the Command Prompt, or for any other reason), you might lose your progress and have to start the search over from the beginning. To safeguard against this, you can add the `--autosave savefile` option when you first start *btcrecover*. It will automatically save its progress about every 5 minutes to the file that you specify (in this case, it was named `savefile` – you can just make up any file name, as long as it doesn’t already exist).
+
+If interrupted, you can restart testing by either running it with the exact same options, or by providing this option and nothing else: `--restore savefile`. *btcrecover* will then begin testing exactly where it had left off. (Note that the token file, as well as the typos-map file, if used, must still be present and must be unmodified for this to work. If they are not present or if they’ve been changed, *btcrecover* will refuse to start.)
+
+The autosave feature is not currently supported with passwordlists, only with token files.
+
+
+### Interrupt and Continue ###
+
+If you need to interrupt *btcrecover* in the middle of testing, you can do so with Ctrl-C (hold down the Ctrl key and press C) and it will respond with a message such this and then it will exit:
 
     Interrupted after finishing password # 357449
 
-If you then restart it using the exact same options, and with the exact same token file (and typos-map file if you’re using one), you can add the `--skip 357449` option to the end of the command line and it will start up exactly where it had left off.
-
-### Autosave ###
-
-To make it even safer, you can add the `--autosave savefile` option when you first start *btcrecover*. It will automatically save its progress about every 5 minutes to the file that you specify (in this case, it was named `savefile` – you can just make up any file name, as long as it doesn’t already exist).
-
-If you cancel in the middle of testing (with Ctrl-C, or due to a reboot, or for any other reason), you can restart testing by either running the exact same command with the exact same options, or by providing this option and nothing else: `--restore savefile`. *btcrecover* will check that the token file hasn’t changed, and it will begin testing with the same set of options exactly where it left off. (Note that the token file, as well as the typos-map file, if used, must still be present and must be unmodified for this to work. If they are not present or if they’ve been changed, *btcrecover* will refuse to start.)
-
-
-## Testing your config ##
-
-If you'd just like to test your token file and chosen typos, you can use the `--listpass` option (in which case you don't need to supply a wallet file). *btcrecover* will then list out all the passwords to the screen instead of actually testing them against a wallet file. This can also be useful if you have another tool which can test some other type of wallet, and is capable of taking a list of passwords to test from *btcrecover*.
-
-
-## The Passwordlist File ##
-
-If you already have a simple list of specific passwords you'd like to test, and you don't need any of the features of a token file, you can specify a passwordlist file using the `--passwordlist FILE` command-line option (instead of using the `--tokenlist FILE` option). Passwords will then be taken from this file verbatim, exactly one per line, with no additional processing. Even extra spaces will be considered part of the password (the carriage return / line feed at the end of each line is always removed).
-
-You still can use any of the Typos features if you'd like. The Autosave feature does not currently work with a passwordlist. If you're using a different generator program to create the passwords, you can pipe the output of that generator program directly to *btcrecover* by specifying `--passwordlist -` and the passwords will be read in from stdin.
+If you didn't have the autosave feature enabled, you can still manually start testing where you left off. You need to start *btcrecover* with the *exact same* token file or passwordlist, toypos-map file (if you were using one), and command-line options plus one extra option, `--skip 357449`, and it will start up right where it had left off.
 
 
 ## Installation ##
 
-Just download the latest version from <https://github.com/gurnec/btcrecover/archive/master.zip> and unzip to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements depending on your operating system and the wallet type you’re trying to recover.
+Just download the latest version from <https://github.com/gurnec/btcrecover/archive/master.zip> and unzip it to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements below depending on your operating system and the wallet type you’re trying to recover.
 
 ### Armory (on any OS)###
 
@@ -303,31 +323,56 @@ With this combination, you will also need to download and install:
 
 ## Running *btcrecover* ##
 
-(Also see the [Quick Start](#quick-start) section.) After installation, **make a copy of your wallet file into a different directory** (to make it easy, right into the *btcrecover* directory), create your token file (e.g. with Notepad), and run *btcrecover* with the options you’d like. It is a command-line tool which runs at a command prompt. As a simple example, running it on Windows would involve opening a Command Prompt window and typing something like this:
+(Also see the [Quick Start](#quick-start) section.) After you've installed all of the requirements (above) and have downloaded the latest version:
 
-    cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt
+ 1. Unzip the btcrecover-master.zip file, it contains a single directory named "btcrecover-master". Inside the btcrecover-master directory is the Python script file *btcrecover.py*.
+ 2. **Make a copy of your wallet file** into the directory which contains *btcrecover.py*. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
+     * Armory - `%appdata%\Armory`
+     * Bitcoin Core - `%appdata%\Bitcoin`
+     * Electrum - `%appdata%\Electrum\wallets`
+     * Litecoin-Qt - `%appdata%\Litecoin`
+     * MultiBit - Please see the [Finding MultiBit Wallet Files](#finding-multibit-wallet-files) section below
+ 3. Copy your tokens.txt file, or your passwordlist file if you're using one, into the directory which contains *btcrecover.py*.
+ 4. You will need to run *btcrecover.py* with at least two command-line options, `--wallet FILE` to identify the wallet file name and either `--tokenlist FILE` or `--passwordlist FILE` (the FILE is optional for `--passwordlist`), depending on whether you're using a [Token File](#the-token-file) or [Passwordlist](#the-passwordlist). If you're using [Typos](#typos) or [Autosave](#autosave), please refer the sections above for additional options you'll want to add.
+ 5. What follows is an example on windows. The details for your system will be different, for example the download location may be different, or the wallet file name may differ, so you'll need to make some changes. Any additional options are all placed on the same line.
 
-Locating your wallet file so that you can make a copy is up to you... Google/Bing are your friends (but read below for a [special note about MultiBit](#finding-multibit-wallet-files)). If you insist on running it without making a separate copy of your wallet file (but don’t do that), please be sure to close your Bitcoin wallet software first.
+        cd \Users\Chris\Downloads\btcrecover-master
+        C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt --other-options...
 
-Running with the `--help` option will give you a summary of the available options, most of which are described above, and can be placed after the required `--wallet wallet.dat --tokenlist tokens.txt` options on the command line in any order.
+After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
 
-### Command Line Options inside the tokenlist file ###
+Running `btcrecover.py` with the `--help` option will give you a summary of all of the available command-line options, most of which are described in the sections above.
 
-If you'd prefer, you can also place command line options directly inside the tokenlist file. In order to do this, the very first line of the tokenlist file must begin with exactly `#--`, and the rest of this line (and only this line) is interpreted as additional command line options. For example, if you use the `%c` custom wildcard set, you can put the `--custom-wild` option inside the tokenlist file (along with other options) like this:
+### Testing your config ###
 
-    #--custom-wild abcdABCD --autosave mysave --pause
-    a_password_with_three_letters_from_above_appended_%3c
+If you'd just like to test your token file and/or chosen typos, you can use the `--listpass` option in place of the `--wallet FILE` option as demonstrated below. *btcrecover* will then list out all the passwords to the screen instead of actually testing them against a wallet file. This can also be useful if you have another tool which can test some other type of wallet, and is capable of taking a list of passwords to test from *btcrecover*. Because this option can generate so much output, you may want only use it with short token files and few typo options.
 
-### btcrecover-tokens-auto.txt ###
+        C:\python27\python btcrecover.py --listpass --tokenlist tokens.txt  | more
 
-Normally, when you run *btcrecover* it expects you to run it with at least a few options, such as the location of the token file and of the wallet file. If you run it without specifying the `--tokenlist`, it will check to see if there is a file named `btcrecover-tokens-auto.txt` in the current directory, and if found it will use that for the tokenlist. Because you can specify options inside the tokenlist file if you'd prefer, this allows you to run *btcrecover* without using the command line at all. You may want to consider using the `--pause` option to prevent a command window from immediately closing once it's done running if you decide to run it this way.
+The `| more` at the end (the `|` symbol is a shifted `\` backslash) will introduce a pause after each screenful of passwords.
 
 ### Finding MultiBit Wallet Files ###
 
-*btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. Each time you change your wallet password (including the first time you add a password), plus on certain other occasions, MultiBit creates an encrypted private key backup file in a `key-backup` directory (see the link below for more details). These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. Unfortunately, it’s up to you to locate the correct private key backup file for the wallet whose password you need to recover. If you only have one MultiBit wallet, you can just choose the most recent private key backup file. Otherwise, you need to locate a private key backup file that has a date of when you either changed the password of, or added new addresses to the wallet you’d like to recover.
+*btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
+
+    %appdata%\MultiBit\multibit-data\key-backup
+
+The key files have names which look like `walletname-20140407200743.key`. If you've created additional wallets, their `key-backup` directories will be located elsewhere and it's up to you to locate them. Once you have, choose the most recent `.key` file and copy it into the directory containing `btcrecover.py` for it to use.
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
+
+### command-line options inside the tokens file ###
+
+If you'd prefer, you can also place command-line options directly inside the tokens.txt file. In order to do this, the very first line of the tokens file must begin with exactly `#--`, and the rest of this line (and only this line) is interpreted as additional command-line options. For example, here's a tokens file which enables autosave, pause-before-exit, and one type of typo:
+
+    #--autosave progress.sav --pause --typos 1 --typos-case
+    Cairo
+    Beetlejuice Betelgeuse
+    Hotel_california
+
+### btcrecover-tokens-auto.txt ###
+
+Normally, when you run *btcrecover* it expects you to run it with at least a few options, such as the location of the tokens file and of the wallet file. If you run it without specifying `--tokenlist` or `--passwordlist`, it will check to see if there is a file named `btcrecover-tokens-auto.txt` in the current directory, and if found it will use that for the tokenlist. Because you can specify options inside the tokenlist file if you'd prefer (see above), this allows you to run *btcrecover* without using the command line at all. You may want to consider using the `--pause` option to prevent a Command Prompt window from immediately closing once it's done running if you decide to run it this way.
 
 
 # Limitations / Caveats #
@@ -343,17 +388,19 @@ Mac OS X support is completely untested.
 
 ### Delimiters, Spaces, and Special Symbols in Passwords###
 
-By default, *btcrecover* uses one or more whitespace to separate tokens in the tokenlist file, and to separated to-be-replaced characters from their replacements in the typos-map file. It also ignores any extra whitespace in these files. This makes it impossible to test passwords which include spaces.
+By default, *btcrecover* uses one or more whitespaces to separate tokens in the tokenlist file, and to separated to-be-replaced characters from their replacements in the typos-map file. It also ignores any extra whitespace in these files. This makes it difficult to test passwords which include spaces and certain other symbols.
 
-The `--delimiter` option allows you to change this behavior. If used, whitespace is no longer ignored, nor is extra whitespace stripped. Instead, the new `--delimiter` string must be used *exactly as specified* to separate tokens. Any whitespace becomes a part of a token, so you must take care not to add any inadvertent whitespace to these files.
+One way around this, which only works for the tokenlist file, is to use the `%s` wildcard which will be replaced by a single space. Another option, which works both for the tokenlist file and a typos-map file, is using the `--delimiter` which option allows you to change this behavior. If used, whitespace is no longer ignored, nor is extra whitespace stripped. Instead, the new `--delimiter` string must be used *exactly as specified* to separate tokens or typos-map columns. Any whitespace becomes a part of a token, so you must take care not to add any inadvertent whitespace to these files.
 
 Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file (and for the `#` symbol, also in the typos-map file). A special symbol is part of the syntax, and not part of a password.
 
  * `%` - always considered special; `%%` in a token will be replaced by `%` during searches
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command line options
+ * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command-line options
  * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
+
+None of this applies to passwordlist files, which always treat spaces and symbols (except for carriage-returns and line-feeds) verbatim, treating them as parts of a password.
 
 ### Unicode Support ###
 
