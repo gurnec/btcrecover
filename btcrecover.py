@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.4"
+__version__          = "0.6.5"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -701,7 +701,7 @@ def parse_arguments(effective_argv, **kwds):
     parser._add_container_actions(parser_common)
     parser.add_argument("--autosave",    metavar="FILE", help="autosaves (5 min) progress to/ restores it from a file")
     parser.add_argument("--restore",     metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
-    parser.add_argument("--passwordlist",metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
+    parser.add_argument("--passwordlist",metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
     args = parser.parse_args(effective_argv)
 
     # Do this as early as possible so user doesn't miss any error messages
@@ -711,7 +711,7 @@ def parse_arguments(effective_argv, **kwds):
     # (--help is handled by directly argparse in this case)
     if args.passwordlist:
         parser = argparse.ArgumentParser(add_help=True)
-        parser.add_argument("--passwordlist", required=True, metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file")
+        parser.add_argument("--passwordlist", required=True, nargs="?", const="-", metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
         parser._add_container_actions(parser_common)
         # Add these in as non-options so that args gets a copy of their values
         parser.set_defaults(autosave=False, restore=False)
@@ -721,6 +721,7 @@ def parse_arguments(effective_argv, **kwds):
     elif args.help:
         parser.print_help()
         sys.exit(0)
+
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
@@ -751,6 +752,7 @@ def parse_arguments(effective_argv, **kwds):
                 args = parser.parse_args(effective_argv)          # reparse the arguments
                 # Check this again as early as possible so user doesn't miss any error messages
                 if args.pause: enable_pause()
+
 
     # There are two ways to restore from an autosave file: either specify --restore (alone)
     # on the command line in which case the saved arguments completely replace everything else,
@@ -819,33 +821,22 @@ def parse_arguments(effective_argv, **kwds):
                 # create an initial savestate that is populated throughout the rest of parse_arguments()
                 savestate = dict(argv = effective_argv, ordering_version = __ordering_version__)
 
-    # If we're using a passwordlist file, open it and set which password_generator to use
-    global passwordlist_file, password_generator
-    passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"), permit_stdin=True)
-    if passwordlist_file:
-        if passwordlist_file == sys.stdin and not args.no_eta:
-            # ETA calculations require that the passwordlist file is seekable
-            error_exit("--no-eta option is required if --passwordlist is stdin")
-        password_generator = passwordlist_password_generator
 
-    # Else we're using a tokenlist file, make sure it's been found and opened above
-    # (possibly following a restore) and set which password_generator to use
-    else:
-        if not tokenlist_file:
-            error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
-        password_generator = tokenlist_password_generator
-        #
-        # Sanity check this (which is only present for tokenlist files)
-        if args.max_tokens < args.min_tokens:
-            error_exit("--max-tokens is less than --min-tokens")
+    # Do a bunch of argument sanity checking
+
+    # Either we're using a passwordlist file (though it's not yet opened), or
+    # we're using a tokenlist file it it should have been found and opened by now.
+    if not args.passwordlist and not tokenlist_file:
+        error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
+
+    if tokenlist_file and args.max_tokens < args.min_tokens:
+        error_exit("--max-tokens is less than --min-tokens")
 
     # Build an ordered list of enabled simple typo generators. This list MUST be in the same relative
     # order as the items in simple_typos to prevent the breakage of --skip and --restore features
     global enabled_simple_typos
     enabled_simple_typos = \
         [generator for name,generator in simple_typos.items() if args.__dict__.get("typos_"+name)]
-
-    # Do a bunch of argument sanity checking
 
     # Have _any_ (simple or otherwise) typo types been specified?
     any_typo_types_specified = enabled_simple_typos or \
@@ -885,6 +876,7 @@ def parse_arguments(effective_argv, **kwds):
             args.typos_insert = None
         elif args.max_adjacent_inserts > args.typos:
             print(prog+": warning: --max-adjacent-inserts is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
+
 
     # Parse the custom wildcard set option
     if args.custom_wild:
@@ -964,6 +956,7 @@ def parse_arguments(effective_argv, **kwds):
         # With --passwordlist, --delimiter is only used for a --typos-map
         print(prog+": warning: ignoring unused --delimiter", file=sys.stderr)
 
+    # Compile the regex options
     global regex_only, regex_never
     try:   regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
     except re.error as e: error_exit("invalid --regex-only",  args.regex_only, ":", e)
@@ -998,11 +991,6 @@ def parse_arguments(effective_argv, **kwds):
         except ImportError:
             have_progress = False
 
-    if args.no_eta:
-        if not args.no_dupchecks:
-            print(prog+": warning: --no-eta without --no-dupchecks can cause out-of-memory failures while searching", file=sys.stderr)
-        if args.max_eta != parser.get_default("max_eta"):
-            print(prog+": warning: --max-eta is ignored with --no-eta", file=sys.stderr)
 
     required_args = 0
     if args.wallet:   required_args += 1
@@ -1029,13 +1017,13 @@ def parse_arguments(effective_argv, **kwds):
         if not key_crc_base64:
             if tokenlist_file == sys.stdin:
                 print(prog+": warning: order of data on stdin is: optional extra command-line arguments, key data, rest of tokenlist", file=sys.stderr)
-            elif passwordlist_file == sys.stdin:
+            elif args.passwordlist == "-" and not sys.stdin.isatty():  # if isatty, friendly prompts are provided instead
                 print(prog+": warning: order of data on stdin is: key data, password list", file=sys.stderr)
             if args.privkey:
                 # We could warn about wallet files too, but hopefully that's already obvious...
                 print("WARNING: a complete private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
             #
-            # Has the first character of the key data already been read in?
+            # Has the first character of the key data already been read in from stdin?
             need_to_prepend = tokenlist_file == sys.stdin and char1_of_tokenlist_file != ""
             if sys.stdin.isatty() and not need_to_prepend:
                 print("Please enter the encrypted key data from the extract script\n> ", end="")
@@ -1065,12 +1053,65 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 savestate["key_crc"] = key_crc
 
-    # Parse the tokens
-    if tokenlist_file: parse_tokenlist(tokenlist_file, char1_of_tokenlist_file)
 
-    # If stdin was used for any input, and it was redirected from elsewhere,
-    # close it so we don't keep a redirected file alive while running
-    if (tokenlist_file == sys.stdin or args.mkey or args.privkey) and not sys.stdin.isatty():
+    # If we're just doing a --listpass, this only affects the sanity checking below
+    if args.listpass:
+        args.no_eta = True
+
+    # If we're using a passwordlist file, open it and then set which password_generator
+    # to use. If we're opening stdin, read in at least an initial portion. If we manage
+    # to read up until EOF, then we won't need to disable ETA features.
+    global passwordlist_file, password_generator, initial_passwordlist, passwordlist_allcached
+    passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"), permit_stdin=True)
+    if passwordlist_file:
+        password_generator     = passwordlist_password_generator
+        initial_passwordlist   = []
+        passwordlist_allcached = False
+        #
+        if passwordlist_file == sys.stdin:
+            passwordlist_isatty = sys.stdin.isatty()
+            if passwordlist_isatty:  # be user friendly
+                print("Please enter your password guesses, one per line (with no extra spaces)")
+                print(exit)  # os-specific version of "Use exit() or Ctrl-D (i.e. EOF) to exit"
+            else:
+                print("Reading passwordlist from stdin")
+            #
+            for i in xrange(1000000):
+                line = passwordlist_file.readline()
+                if not line or passwordlist_isatty and line.rstrip("\r\n") == "exit()":
+                    passwordlist_allcached = True
+                    break
+                initial_passwordlist.append(line)
+            #
+            if not passwordlist_allcached and not args.no_eta:
+                # ETA calculations require that the passwordlist file is seekable or all in RAM
+                print(prog+": warning: --no-eta has been enabled because --passwordlist is stdin and is large", file=sys.stderr)
+                args.no_eta = True
+
+    # Some final sanity checking, now that args.no_eta's value is known
+    if args.no_eta:
+        if not args.no_dupchecks and not args.listpass:
+            print(prog+": warning: --no-eta without --no-dupchecks can cause out-of-memory failures while searching", file=sys.stderr)
+        if args.max_eta != parser.get_default("max_eta"):
+            print(prog+": warning: --max-eta is ignored with --no-eta or --listpass", file=sys.stderr)
+
+
+    # If we're using a tokenlist file, parse it and then set which password_generator to use.
+    if tokenlist_file:
+        if tokenlist_file == sys.stdin:
+            if sys.stdin.isatty() and char1_of_tokenlist_file == "":
+                print("Please enter your tokenlist")   # be a little user friendly
+            else:
+                print("Reading tokenlist from stdin")  # unless we've already started reading it...
+        parse_tokenlist(tokenlist_file, char1_of_tokenlist_file)
+        password_generator = tokenlist_password_generator
+
+    # If something has been redirected to stdin and we've been reading from it, close
+    # stdin now so we don't keep the redirected files alive while running, but only
+    # if we're done with it (done reading the passwordlist_file and no --pause option)
+    if (    not sys.stdin.isatty() and
+            (args.mkey or args.privkey or tokenlist_file == sys.stdin or passwordlist_file == sys.stdin) and
+            (passwordlist_file != sys.stdin or passwordlist_allcached) and not pause_registered):
         sys.stdin.close()   # this doesn't really close the fd
         try:   os.close(0)  # but this should, where supported
         except StandardError: pass
@@ -2006,7 +2047,7 @@ def insert_typos_generator(password_base):
 # A relatively simple generator which produces passwords directly from a file,
 # one per line, optionally with typos applied
 def passwordlist_password_generator():
-    global typos_sofar
+    global typos_sofar, initial_passwordlist
     typos_sofar  = 0  # see tokenlist_password_generator() for details
     worker_count = 0  # only used if --worker is specified
 
@@ -2035,9 +2076,17 @@ def passwordlist_password_generator():
     if args.typos_insert:    modification_generators.append( insert_typos_generator   )
     modification_generators_len = len(modification_generators)
 
-    if passwordlist_file != sys.stdin:
-        passwordlist_file.seek(0)
-    for password_base in passwordlist_file:
+    if password_dups and password_dups.run_number > 0:
+        assert passwordlist_file != sys.stdin or passwordlist_allcached, \
+            "passwordlist can be replayed (because it's seekable or all in RAM)"
+
+    # Construct a single passwordlist that iterates through both cached and unread passwords
+    if initial_passwordlist and not passwordlist_allcached:
+        assert not passwordlist_file.closed
+        passwordlist = itertools.chain(initial_passwordlist, passwordlist_file)
+    else:
+        passwordlist = initial_passwordlist if passwordlist_allcached else passwordlist_file
+    for password_base in passwordlist:
         # Remove the trailing newline
         password_base = password_base.rstrip("\r\n")
 
@@ -2079,6 +2128,11 @@ def passwordlist_password_generator():
 
     if l_password_dups: l_password_dups.run_finished()
 
+    # Prepare for a potential future run
+    if passwordlist_file != sys.stdin:
+        passwordlist_file.seek(0)
+        initial_passwordlist = ()  # these will be re-read from the file, if necessary
+
 
 ################################### Main ###################################
 
@@ -2104,22 +2158,6 @@ def set_process_priority_idle():
         else:
             os.nice(19)
     except StandardError: pass
-
-# If an out-of-memory error occurs which can be handled, free up some memory, display
-# an informative error message, and then return, otherwise re-raise the exception
-def handle_oom():
-    global password_dups, token_combination_dups  # these are the memory-hogging culprits
-    if password_dups and password_dups.run_number == 0:
-        del password_dups, token_combination_dups
-        gc.collect(2)
-        print(prog+": error: out of memory", file=sys.stderr)
-        print(prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
-    elif token_combination_dups and token_combination_dups.run_number == 0:
-        del token_combination_dups
-        gc.collect(2)
-        print(prog+": error: out of memory", file=sys.stderr)
-        print(prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
-    else: raise
 
 # Saves progress by overwriting the older (of two) slots in the autosave file
 # (autosave_nextslot can be initialized by load_savestate() )
@@ -2163,6 +2201,28 @@ def do_autosave(skip, inside_interrupt_handler = False):
 
 
 def main():
+
+    # If an out-of-memory error occurs which can be handled, free up some memory, display
+    # an informative error message, and then return, otherwise re-raise the exception
+    # (this is defined inside main so it can access the passwords_count local)
+    def handle_oom():
+        global password_dups, token_combination_dups  # these are the memory-hogging culprits
+        #
+        # If passwords_count is equal to what it starts off as, then we haven't even
+        # started counting yet, so this is an unexpected OOM condition.
+        if passwords_count == 0 or passwords_count == -args.skip: raise
+        #
+        if password_dups and password_dups.run_number == 0:
+            del password_dups, token_combination_dups
+            gc.collect(2)
+            print(prog+": error: out of memory", file=sys.stderr)
+            print(prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
+        elif token_combination_dups and token_combination_dups.run_number == 0:
+            del token_combination_dups
+            gc.collect(2)
+            print(prog+": error: out of memory", file=sys.stderr)
+            print(prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
+        else: raise
 
     # Once installed, performs cleanup prior to a requested process shutdown on Windows
     # (this is defined inside main so it can access the passwords_tried local)
