@@ -14,8 +14,8 @@ If you find *btcrecover* helpful, please consider a small donation to help suppo
 This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
 
  1. Read the [Installation](#installation) section for instructions and download links.
- 2. If you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
- 3. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a tokens.txt file you'll need later.
+ 2. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
+ 3. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a `tokens.txt` file you'll need later.
  4. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
      * If you didn't need step 3, read [The Passwordlist](#the-passwordlist) section instead.
  5. Read the [Running *btcrecover*](#running-btcrecover) section to see how to put these pieces together and how to run *btcrecover* in a Command Prompt window.
@@ -28,11 +28,11 @@ This tutorial is pretty long... you don't have to read the whole thing. Here are
 
 *btcrecover* can accept as input a text file which has a list of what are called password “tokens”. A token is simply a portion of a password which you do remember, even if you don't remember where that portion appears in the actual password. It will combine these tokens in different ways to create different whole password guesses to try.
 
-This plain text file, typically named tokens.txt, can be created in any basic text editor, such as Notepad on Windows or TextEdit on OS X, and should probably be saved into the same folder as the *btcrecover.py* script (just to keep things simple).
+This plain text file, typically named `tokens.txt`, can be created in any basic text editor, such as Notepad on Windows or TextEdit on OS X, and should probably be saved into the same folder as the `btcrecover.py` script (just to keep things simple).
 
 ### Basics ###
 
-Let’s say that you remember your password contains 3 parts, you just can’t remember in what order you used them. Here are the contents of a simple tokens.txt file:
+Let’s say that you remember your password contains 3 parts, you just can’t remember in what order you used them. Here are the contents of a simple `tokens.txt` file:
 
     Cairo
     Beetlejuice
@@ -219,7 +219,7 @@ The digit and the `yyyy` will never be removed by the contracting wildcard becau
 
 If you already have a simple list of whole passwords you'd like to test, and you don't need any of the features described above, you can use the `--passwordlist` command-line option (instead of the `--tokenlist` option as described later in the [Running *btcrecover*](#running-btcrecover) section).
 
-If you specify `--passwordlist` without a file, *btcrecover* will prompt you to type in a list of passwords, one per line, in the Command Prompt window. If you already have a text file with the passwords in it, you can use `--passwordlist FILE` instead (replacing FILE with the file name).
+If you specify `--passwordlist` without a file, *btcrecover* will prompt you to type in a list of passwords, one per line, in the Command Prompt window. If you already have a text file with the passwords in it, you can use `--passwordlist FILE` instead (replacing `FILE` with the file name).
 
 Be sure not to add any extra spaces, unless those spaces are actually a part of a password.
 
@@ -325,16 +325,17 @@ With this combination, you will also need to download and install:
 
 (Also see the [Quick Start](#quick-start) section.) After you've installed all of the requirements (above) and have downloaded the latest version:
 
- 1. Unzip the btcrecover-master.zip file, it contains a single directory named "btcrecover-master". Inside the btcrecover-master directory is the Python script file *btcrecover.py*.
- 2. **Make a copy of your wallet file** into the directory which contains *btcrecover.py*. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
+ 1. Unzip the `btcrecover-master.zip` file, it contains a single directory named "btcrecover-master". Inside the btcrecover-master directory is the Python script (program) file `btcrecover.py`.
+ 2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
      * Armory - `%appdata%\Armory`
      * Bitcoin Core - `%appdata%\Bitcoin`
      * Electrum - `%appdata%\Electrum\wallets`
      * Litecoin-Qt - `%appdata%\Litecoin`
      * MultiBit - Please see the [Finding MultiBit Wallet Files](#finding-multibit-wallet-files) section below
- 3. Copy your tokens.txt file, or your passwordlist file if you're using one, into the directory which contains *btcrecover.py*.
- 4. You will need to run *btcrecover.py* with at least two command-line options, `--wallet FILE` to identify the wallet file name and either `--tokenlist FILE` or `--passwordlist FILE` (the FILE is optional for `--passwordlist`), depending on whether you're using a [Token File](#the-token-file) or [Passwordlist](#the-passwordlist). If you're using [Typos](#typos) or [Autosave](#autosave), please refer the sections above for additional options you'll want to add.
- 5. What follows is an example on windows. The details for your system will be different, for example the download location may be different, or the wallet file name may differ, so you'll need to make some changes. Any additional options are all placed on the same line.
+ 3. If you have a `btcrecover-tokens-auto.txt` file, you're almost done. Copy it into the directory which contains `btcrecover.py`, and then simply double-click the `btcrecover.py` file, and *btcrecover* should begin testing passwords. (You may need to rename your wallet file if it doesn't match the file name listed insided the `btcrecover-tokens-auto.txt` file.) If you don't have a `btcrecover-tokens-auto.txt` file, continue reading below.
+ 4. Copy your `tokens.txt` file, or your passwordlist file if you're using one, into the directory which contains `btcrecover.py`.
+ 5. You will need to run `btcrecover.py` with at least two command-line options, `--wallet FILE` to identify the wallet file name and either `--tokenlist FILE` or `--passwordlist FILE` (the FILE is optional for `--passwordlist`), depending on whether you're using a [Token File](#the-token-file) or [Passwordlist](#the-passwordlist). If you're using [Typos](#typos) or [Autosave](#autosave), please refer the sections above for additional options you'll want to add.
+ 6. What follows is an example on windows. The details for your system will be different, for example the download location may be different, or the wallet file name may differ, so you'll need to make some changes. Any additional options are all placed on the same line.
 
         cd \Users\Chris\Downloads\btcrecover-master
         C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt --other-options...
@@ -363,7 +364,7 @@ For more details on locating your MultiBit private key backup files, see: <https
 
 ### command-line options inside the tokens file ###
 
-If you'd prefer, you can also place command-line options directly inside the tokens.txt file. In order to do this, the very first line of the tokens file must begin with exactly `#--`, and the rest of this line (and only this line) is interpreted as additional command-line options. For example, here's a tokens file which enables autosave, pause-before-exit, and one type of typo:
+If you'd prefer, you can also place command-line options directly inside the `tokens.txt` file. In order to do this, the very first line of the tokens file must begin with exactly `#--`, and the rest of this line (and only this line) is interpreted as additional command-line options. For example, here's a tokens file which enables autosave, pause-before-exit, and one type of typo:
 
     #--autosave progress.sav --pause --typos 1 --typos-case
     Cairo
