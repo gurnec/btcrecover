@@ -163,7 +163,7 @@ class Test01Basics(GeneratorTester):
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO(""))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 0)
-    # a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
+    # the size of a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
     def test_count_one_chunk(self):
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("%5d"))
@@ -426,6 +426,10 @@ class Test04Typos(GeneratorTester):
             "--typos-swap --typos-repeat --typos-delete --typos-case --typos-replace 8 --typos 4 -d --min-typos 4",
             True)
 
+
+LARGE_TOKENLIST_LEN = btcrecover.PASSWORDS_BETWEEN_UPDATES
+LARGE_TOKENLIST     = " ".join(str(i) for i in xrange(LARGE_TOKENLIST_LEN))
+LARGE_LAST_TOKEN    = str(LARGE_TOKENLIST_LEN - 1)
 class Test05CommandLine(GeneratorTester):
 
     def test_regex_only(self):
@@ -442,7 +446,7 @@ class Test05CommandLine(GeneratorTester):
             "--delimiter ** --typos-map __funccall --typos 2 -d",
             True, typos_map=StringIONonClosing(" ab **A \n x **x"))
 
-    # Try to test the myriad of boundary conditions in password_generator_factory()
+    # Try to test the myriad of --skip related boundary conditions in password_generator_factory()
     def test_skip(self):
         self.do_generator_test(["one", "two"], ["twoone", "onetwo"], "--skip 2", False, sys.maxint, 2)
     def test_skip_all_exact(self):
@@ -455,24 +459,61 @@ class Test05CommandLine(GeneratorTester):
         self.do_generator_test([], [], "--skip 1", True, sys.maxint, 0)
     def test_skip_empty_2(self):
         self.do_generator_test([], [], "--skip 2000000", True, sys.maxint, 0)
-    # "large_1" is of length btcrecover.PASSWORDS_BEFORE_DISPLAY * 1.5 + 2
     def test_skip_large_1(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], ["4500001"], "--skip 4500001 -d", False, sys.maxint, 4500001)
+        self.do_generator_test([LARGE_TOKENLIST], [LARGE_LAST_TOKEN], "-d --skip "+str(LARGE_TOKENLIST_LEN-1), False, sys.maxint, LARGE_TOKENLIST_LEN-1)
     def test_skip_large_1_all_exact(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], [],          "--skip 4500002 -d", False, sys.maxint, 4500002)
+        self.do_generator_test([LARGE_TOKENLIST], [],                 "-d --skip "+str(LARGE_TOKENLIST_LEN  ), False, sys.maxint, LARGE_TOKENLIST_LEN)
     def test_skip_large_1_all_pastend(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], [],          "--skip 4500003 -d", False, sys.maxint, 4500002)
-    # "large_2" is of length btcrecover.PASSWORDS_BEFORE_DISPLAY * 1.5 + btcrecover.PASSWORDS_BETWEEN_UPDATES + 1
+        self.do_generator_test([LARGE_TOKENLIST], [],                 "-d --skip "+str(LARGE_TOKENLIST_LEN+1), False, sys.maxint, LARGE_TOKENLIST_LEN)
     def test_skip_large_2(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], ["4600000"], "--skip 4600000 -d", False, sys.maxint, 4600000)
+        self.do_generator_test([LARGE_TOKENLIST + " last"], ["last"], "-d --skip "+str(LARGE_TOKENLIST_LEN  ), False, sys.maxint, LARGE_TOKENLIST_LEN)
     def test_skip_large_2_all_exact(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], [],          "--skip 4600001 -d", False, sys.maxint, 4600001)
+        self.do_generator_test([LARGE_TOKENLIST + " last"], [],       "-d --skip "+str(LARGE_TOKENLIST_LEN+1), False, sys.maxint, LARGE_TOKENLIST_LEN+1)
     def test_skip_large_2_all_pastend(self):
-        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], [],          "--skip 4600002 -d", False, sys.maxint, 4600001)
-    def test_skip_end_to_end(self):
+        self.do_generator_test([LARGE_TOKENLIST + " last"], [],       "-d --skip "+str(LARGE_TOKENLIST_LEN+2), False, sys.maxint, LARGE_TOKENLIST_LEN+1)
+    def test_skip_end2end(self):
         btcrecover.parse_arguments(("--skip 2 --tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main())
+    def test_skip_end2end_all_exact(self):
+        btcrecover.parse_arguments(("--skip 4 --tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("one \n two"))
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
+    def test_skip_end2end_all_pastend(self):
+        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("one \n two"))
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
+    def test_skip_end2end_all_noeta(self):
+        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --no-eta --privkey").split(),
+            tokenlist = cStringIO.StringIO("one \n two"),
+            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        self.assertIn("Skipped all 4 passwords", btcrecover.main())
+
+    def test_max_eta(self):
+        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --privkey").split(),
+            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11"),
+            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        with self.assertRaises(SystemExit) as cm:
+            btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
+        self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
+    def test_max_eta_ok(self):
+        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --privkey").split(),
+            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10"),
+            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        self.assertEqual(btcrecover.count_and_check_eta(360.0), 10)  # 360s * 10 passwords <= 1 hour
+    def test_max_eta_skip(self):
+        btcrecover.parse_arguments(("--max-eta 1 --skip 4 --tokenlist __funccall --privkey").split(),
+            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
+            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        with self.assertRaises(SystemExit) as cm:
+            btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
+        self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
+    def test_max_eta_skip_ok(self):
+        btcrecover.parse_arguments(("--max-eta 1 --skip 5 --tokenlist __funccall --privkey").split(),
+            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
+            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        # 360s * 10 passwords <= 1 hour, but count_and_check_eta still returns the total count of 15
+        self.assertEqual(btcrecover.count_and_check_eta(360.0), 15)
 
     def test_worker(self):
         self.do_generator_test(["one two three four five six seven eight"], ["one", "four", "seven"],
