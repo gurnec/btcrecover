@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.5"
+__version__          = "0.6.6"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -100,8 +100,8 @@ def init_wildcards():
 # They are called with the full password and an index into that password of the
 # character which will be replaced.
 #
-def typo_repeat(p, i): return (2 * p[i],)  # a single replacement of len 2
-def typo_delete(p, i): return ("",)        # s single replacement of len 0
+def typo_repeat(p, i): return 2 * p[i],  # a single replacement of len 2
+def typo_delete(p, i): return "",        # s single replacement of len 0
 def typo_case(p, i):
     swapped = p[i].swapcase()
     return (swapped,) if swapped != p[i] else ()
@@ -111,7 +111,7 @@ def typo_closecase(p, i):  # (case_id functions defined in the Password Generati
     if i==0 or i+1==len(p) or \
             case_id_changed(case_id_of(p[i-1]), cur_case_id) or \
             case_id_changed(case_id_of(p[i+1]), cur_case_id):
-        return (p[i].swapcase(),)
+        return p[i].swapcase(),
     return ()
 def typo_replace_wildcard(p, i): return [e      for e in typos_replace_expanded if e != p[i]]
 def typo_map(p, i):              return typos_map.get(p[i], ())
@@ -269,7 +269,7 @@ def load_armory_library():
                 else: raise  # unexpected failure
             else: break  # when it succeeds
         from CppBlockUtils import SecureBinaryData, KdfRomix  # (also a part of Armory)
- 
+
     finally:
         sys.argv[1:] = old_argv  # restore the command line
 
@@ -279,11 +279,13 @@ def load_armory_wallet(wallet_filename):
     load_armory_library()
     wallet = armoryengine.PyBtcWallet.PyBtcWallet().readWalletFile(wallet_filename)
 
-# This is the time-consuming function executed by worker thread(s):
-# if a password is correct, return it, else return false
-def return_armory_verified_password_or_false(p):
-    if wallet.verifyPassphrase(SecureBinaryData(p)): return p
-    else: return False
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_armory_verified_password_or_false(passwords):
+    for count, password in enumerate(passwords, 1):
+        if wallet.verifyPassphrase(SecureBinaryData(password)):
+            return password, count
+    return False, count
 
 # Import an Armory private key that was extracted by extract-armory-privkey.py
 def load_armory_from_privkey(privkey_data):
@@ -298,14 +300,16 @@ def load_armory_from_privkey(privkey_data):
     kdf = KdfRomix(bytes_reqd, iter_count, SecureBinaryData(privkey_data[76:]))  # kdf args and seed
     wallet = address, kdf
 
-# This is the time-consuming function executed by worker thread(s):
-# if a password is correct, return it, else return false
-def return_armorypk_verified_password_or_false(p):
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_armorypk_verified_password_or_false(passwords):
     address, kdf = wallet
-    if address.verifyEncryptionKey(kdf.DeriveKey(SecureBinaryData(p))): return p
-    else:
+    for count, password in enumerate(passwords, 1):
+        if address.verifyEncryptionKey(kdf.DeriveKey(SecureBinaryData(password))):
+            return password, count
         address.binPublicKey65 = SecureBinaryData()  # work around bug in verifyEncryptionKey in Armory 0.91
-        return False
+    else:
+        return False, count
 
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
@@ -340,19 +344,21 @@ def load_bitcoincore_from_mkey(mkey_data):
     # These are the same encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
     wallet = struct.unpack("< 48s 8s I", mkey_data)
 
-# This is the time-consuming function executed by worker thread(s):
-# if a password is correct, return it, else return false
-def return_bitcoincore_verified_password_or_false(p):
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_bitcoincore_verified_password_or_false(passwords):
     # Copy a global into local for a small speed boost
     l_sha512 = hashlib.sha512
     encrypted_master_key, salt, iter_count = wallet
-    derived_key_iv = p + salt
-    for i in xrange(iter_count):
-        derived_key_iv = l_sha512(derived_key_iv).digest()
-    master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
-    # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-    if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
-    else: return False
+    for count, password in enumerate(passwords, 1):
+        derived_key_iv = password + salt
+        for i in xrange(iter_count):
+            derived_key_iv = l_sha512(derived_key_iv).digest()
+        master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
+        # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+        if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            return password, count
+    return False, count
 
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
@@ -378,23 +384,24 @@ def load_multibit_from_privkey(privkey_data):
     load_aes256_library()
     wallet = privkey_data
 
-# This is the function executed by worker thread(s):
-# if a password is correct, return it, else return false
-def return_multibitpk_verified_password_or_false(p):
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_multibitpk_verified_password_or_false(passwords):
     # Copy a global into local for a small speed boost
-    l_md5  = hashlib.md5
-    salted = p + wallet[:8]
-    key1   = l_md5(salted).digest()
-    key2   = l_md5(key1 + salted).digest()
-    iv     = l_md5(key2 + salted).digest()
-    b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
-    # If it looks like a base58 private key, we've found it
-    # (there's a 1 in 600 billion chance this hits but the password is wrong)
-    # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
-    if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
-        re.match(r"[LK][1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
-            return p
-    return False
+    l_md5 = hashlib.md5
+    for count, password in enumerate(passwords, 1):
+        salted = password + wallet[:8]
+        key1   = l_md5(salted).digest()
+        key2   = l_md5(key1 + salted).digest()
+        iv     = l_md5(key2 + salted).digest()
+        b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
+        # If it looks like a base58 private key, we've found it
+        # (there's a 1 in 600 billion chance this hits but the password is wrong)
+        # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
+        if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
+            re.match(br".[1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
+                return password, count
+    return False, count
 
 
 # Load an Electrum wallet file (the part of it we need) given an opened file object
@@ -410,14 +417,18 @@ def load_electrum_wallet(wallet_file):
     wallet = base64.b64decode(wallet["seed"])
     if len(wallet) != 64:                raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
 
-# This is the function executed by worker thread(s):
-# if a password is correct, return it, else return false
-def return_electrum_verified_password_or_false(p):
-    key  = hashlib.sha256( hashlib.sha256( p ).digest() ).digest()
-    seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
-    # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-    if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"): return p
-    else: return False
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_electrum_verified_password_or_false(passwords):
+    # Copy a global into local for a small speed boost
+    l_sha256 = hashlib.sha256
+    for count, password in enumerate(passwords, 1):
+        key  = l_sha256( l_sha256( password ).digest() ).digest()
+        seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
+        # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+        if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            return password, count
+    return False, count
 
 
 # Loads PyCrypto if available, else falls back to the pure python version (30x slower)
@@ -590,7 +601,7 @@ def load_savestate(autosave_file):
 #   (These are "soft" fails which don't raise exceptions.)
 # * Tries to open (if not already opened) and return the file, letting any exception
 #   raised by open (a "hard" fail) to pass up.
-def open_or_use(filename, mode="r", funccall_file="None", **kwds):
+def open_or_use(filename, mode="r", funccall_file=None, **kwds):
     permit_stdin     = kwds.get("permit_stdin")      # filename of "-" opens stdin
     default_filename = kwds.get("default_filename")  # may open this if it exists
     require_data     = kwds.get("require_data")      # open only if non-empty
@@ -677,10 +688,10 @@ parser_common.add_argument("--listpass",    action="store_true", help="just list
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
 parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
 
-# Once parse_arguments() has completed, password_generator() will be a generator function
-# configured to generate all the passwords requested by the command-line options (except
-# --skip), and return_verified_password_or_false() will be configured to check passwords
-# against the wallet or key if one was specified. (typically called with sys.argv[1:])
+# Once parse_arguments() has completed, password_generator_factory() will return an iterator
+# (actually a generator object) configured to generate all the passwords requested by the
+# command-line options, and return_verified_password_or_false() will be configured to check
+# passwords against the wallet or key if one was specified. (typically called with sys.argv[1:])
 # TODO: document kwds usage (as used by unit tests)
 def parse_arguments(effective_argv, **kwds):
     # Do some basic globals initialization; the rest are all done below
@@ -965,8 +976,13 @@ def parse_arguments(effective_argv, **kwds):
     try:   regex_never = re.compile(args.regex_never) if args.regex_never else None
     except re.error as e: error_exit("invalid --regex-never", args.regex_only, ":", e)
 
-    global worker_threads
-    worker_threads = max(args.threads, 1)
+    if args.skip < 0:
+        print(prog+": warning: --skip must be >= 0, assuming 0", file=sys.stderr)
+        args.skip == 0
+
+    if args.threads < 1:
+        print(prog+": warning: --threads must be >= 1, assuming 1", file=sys.stderr)
+        args.threads = 1
 
     if args.worker:  # worker servers
         global worker_id, workers_total
@@ -1060,15 +1076,14 @@ def parse_arguments(effective_argv, **kwds):
     if args.listpass:
         args.no_eta = True
 
-    # If we're using a passwordlist file, open it and then set which password_generator
-    # to use. If we're opening stdin, read in at least an initial portion. If we manage
-    # to read up until EOF, then we won't need to disable ETA features.
-    global passwordlist_file, password_generator, initial_passwordlist, passwordlist_allcached
+    # If we're using a passwordlist file, open it here. If we're opening stdin, read in at least an
+    # initial portion. If we manage to read up until EOF, then we won't need to disable ETA features.
+    global passwordlist_file, initial_passwordlist, passwordlist_allcached, has_any_wildcards
     passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"), permit_stdin=True)
     if passwordlist_file:
-        password_generator     = passwordlist_password_generator
         initial_passwordlist   = []
         passwordlist_allcached = False
+        has_any_wildcards      = False  # currently not supported for passwordlists
         #
         if passwordlist_file == sys.stdin:
             passwordlist_isatty = sys.stdin.isatty()
@@ -1098,7 +1113,7 @@ def parse_arguments(effective_argv, **kwds):
             print(prog+": warning: --max-eta is ignored with --no-eta or --listpass", file=sys.stderr)
 
 
-    # If we're using a tokenlist file, parse it and then set which password_generator to use.
+    # If we're using a tokenlist file, call parse_tokenlist() to parse it.
     if tokenlist_file:
         if tokenlist_file == sys.stdin:
             if sys.stdin.isatty() and char1_of_tokenlist_file == "":
@@ -1106,7 +1121,6 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 print("Reading tokenlist from stdin")  # unless we've already started reading it...
         parse_tokenlist(tokenlist_file, char1_of_tokenlist_file)
-        password_generator = tokenlist_password_generator
 
     # If something has been redirected to stdin and we've been reading from it, close
     # stdin now so we don't keep the redirected files alive while running, but only
@@ -1392,27 +1406,164 @@ class DuplicateChecker:
         self.run_number += 1
 
 
-# The main generator function produces all possible requested password permutations with
-# no duplicates from the token_lists global as constructed above plus wildcard expansion
-# and up to a certain number of requested typos
+# The main generator function produces all possible requested password permutations with no
+# duplicates from the token_lists global as constructed above plus wildcard expansion or from
+# the passwordlist file, plus up to a certain number of requested typos. Results are produced
+# in lists of length chunksize, which can be changed by calling iterator.send((new_chunksize,
+# only_yield_count)) (which does not itself return any passwords). If only_yield_count, then
+# instead of producing lists, for each iteration single integers <= chunksize are produced
+# (only the last integer might be < than chunksize), useful for counting or skipping passwords.
 def init_password_generator():
     global password_dups, token_combination_dups
     password_dups = token_combination_dups = None
 #
-def tokenlist_password_generator():
+def password_generator(chunksize = 1, only_yield_count = False):
+    assert chunksize > 0, "password_generator: chunksize > 0"
     # Used to communicate between typo generators the number of typos that have been
     # created so far during each password generated so that later generators know how
     # many additional typos, at most, they are permitted to add
     global typos_sofar
     typos_sofar = 0
-    # Only used if --worker is specified
-    worker_count = 0
 
-    # Initialize these two globals if not already initialized but only
-    # if they will be used; see their usage below for more details
-    global password_dups, token_combination_dups
+    passwords_gathered = []
+    passwords_count    = 0  # == len(passwords_gathered)
+    worker_count = 0  # Only used if --worker is specified
+    new_args = None
+
+    # Initialize this global if not already initialized but only
+    # if they should be used; see its usage below for more details
+    global password_dups
     if password_dups is None and args.no_dupchecks < 1:
         password_dups = DuplicateChecker()
+
+    # Copy a few globals into local for a small speed boost
+    l_generator_product = generator_product
+    l_args_min_typos    = args.min_typos
+    l_regex_only        = regex_only
+    l_regex_never       = regex_never
+    l_password_dups     = password_dups
+    l_args_worker       = args.worker
+    if l_args_worker:
+        l_workers_total = workers_total
+        l_worker_id     = worker_id
+
+    # Build up the modification_generators list; see the inner loop below for more details
+    modification_generators = []
+    if has_any_wildcards:    modification_generators.append( expand_wildcards_generator )
+    if args.typos_capslock:  modification_generators.append( capslock_typos_generator   )
+    if args.typos_swap:      modification_generators.append( swap_typos_generator       )
+    if enabled_simple_typos: modification_generators.append( simple_typos_generator     )
+    if args.typos_insert:    modification_generators.append( insert_typos_generator     )
+    modification_generators_len = len(modification_generators)
+
+    # Select the base password generator which produces base passwords based
+    # on either a tokenlist file (as parsed above) or a passwordlist file.
+    if args.passwordlist:
+        base_password_iterator = passwordlist_base_password_generator()
+    else:
+        base_password_iterator = tokenlist_base_password_generator()
+    for password_base in base_password_iterator:
+
+        # The for loop below takes the password_base and applies zero or more modifications
+        # to it to produce a number of different possible variations of password_base (e.g.
+        # different wildcard expansions, typos, etc.)
+
+        # modification_generators is a list of function generators each of which takes a
+        # string and produces one or more password variations based on that string. It is
+        # built just above, and is built differently depending on the token_lists (are any
+        # wildcards present?) and the program options (were any typos requested?).
+        #
+        # If any modifications have been requested, create an iterator that will
+        # loop through all combinations of the requested modifications
+        if modification_generators_len:
+            if modification_generators_len == 1:
+                modification_iterator = modification_generators[0](password_base)
+            else:
+                modification_iterator = l_generator_product(password_base, *modification_generators)
+        #
+        # Otherwise just produce the unmodified password itself
+        else:
+            modification_iterator = (password_base,)
+
+        for password in modification_iterator:
+
+            if typos_sofar < l_args_min_typos: continue
+
+            # Check the password against the --regex-only and --regex-never options
+            if l_regex_only  and not l_regex_only .search(password): continue
+            if l_regex_never and     l_regex_never.search(password): continue
+
+            # This duplicate check can be disabled via --no-dupchecks
+            # because it can take up a lot of memory, sometimes needlessly
+            if l_password_dups and l_password_dups.is_duplicate(password): continue
+
+            # Workers in a server pool ignore passwords not assigned to them
+            if l_args_worker:
+                if worker_count % l_workers_total != l_worker_id:
+                    worker_count += 1
+                    continue
+                worker_count += 1
+
+            # Produce the password(s) or the count once enough of them have been accumulated
+            passwords_count += 1
+            if only_yield_count:
+                if passwords_count >= chunksize:
+                    new_args = yield passwords_count
+                    passwords_count = 0
+            else:
+                passwords_gathered.append(password)
+                if passwords_count >= chunksize:
+                    new_args = yield passwords_gathered
+                    passwords_gathered = []
+                    passwords_count    = 0
+
+            # Process new arguments received from .send(), yielding nothing back to send()
+            if new_args:
+                chunksize, only_yield_count = new_args
+                assert chunksize > 0, "password_generator.send: chunksize > 0"
+                new_args = None
+                yield
+
+        assert typos_sofar == 0, "password_generator: typos_sofar == 0 after all typo generators have finished"
+
+    if l_password_dups:          l_password_dups.run_finished()
+
+    # Produce the remaining passwords that have been accumulated
+    if passwords_count > 0:
+        yield passwords_count if only_yield_count else passwords_gathered
+
+
+# This generator utility is a bit like itertools.product. It takes a list of iterators
+# and invokes them in (the equivalent of) a nested for loop, except instead of a list
+# of simple iterators it takes a list of generators each of which expects to be called
+# with a single argument. generator_product calls the first generator with the passed
+# initial_value, and then takes each value it produces and calls the second generator
+# with each, and then takes each value the second generator produces and calls the
+# third generator with each, etc., until there are no generators left, at which point
+# it produces all the values generated by the last generator.
+#
+# This can be useful in the case you have a list of generators, each of which is
+# designed to produce a number of variations of an initial value, and you'd like to
+# string them together to get all possible (product-wise) variations.
+#
+# TODO: implement without recursion?
+def generator_product(initial_value, generator, *other_generators):
+    if other_generators == ():
+        for final_value in generator(initial_value):
+            yield final_value
+    else:
+        for intermediate_value in generator(initial_value):
+            for final_value in generator_product(intermediate_value, *other_generators):
+                yield final_value
+
+
+# The tokenlist generator function produces all possible password permutations from the
+# token_lists global as constructed by parse_tokenlist(). These passwords are then used
+# by password_generator() as base passwords that can undergo further modifications.
+def tokenlist_base_password_generator():
+    # Initialize this global if not already initialized but only
+    # if they should be used; see its usage below for more details
+    global token_combination_dups
     if token_combination_dups is None and args.no_dupchecks < 2 and has_any_duplicate_tokens:
         token_combination_dups = DuplicateChecker()
 
@@ -1426,32 +1577,14 @@ def tokenlist_password_generator():
     l_tuple                  = tuple
     l_sorted                 = sorted
     l_list                   = list
-    l_generator_product      = generator_product
-    l_args_min_typos         = args.min_typos
-    l_regex_only             = regex_only
-    l_regex_never            = regex_never
-    l_password_dups          = password_dups
-    l_args_worker            = args.worker
-    if l_args_worker:
-        l_workers_total      = workers_total
-        l_worker_id          = worker_id
 
     # Choose between the custom duplicate-checking and the standard itertools permutation
-    # functions unless the custom one has been specifically disabled with three (or more)
-    # --no-dupcheck options.
+    # functions for the outer loop unless the custom one has been specifically disabled
+    # with three (or more) --no-dupcheck options.
     if args.no_dupchecks < 3 and has_any_duplicate_tokens:
         permutations_function = permutations_nodups
     else:
         permutations_function = itertools.permutations
-
-    # Build up the modification_generators list; see the inner loop below for more details
-    modification_generators = []
-    if has_any_wildcards:    modification_generators.append( expand_wildcards_generator )
-    if args.typos_capslock:  modification_generators.append( capslock_typos_generator   )
-    if args.typos_swap:      modification_generators.append( swap_typos_generator       )
-    if enabled_simple_typos: modification_generators.append( simple_typos_generator     )
-    if args.typos_insert:    modification_generators.append( insert_typos_generator     )
-    modification_generators_len = l_len(modification_generators)
 
     # The outer loop iterates through all possible (unordered) combinations of tokens
     # taking into account the at-most-one-token-per-line rule. Note that lines which
@@ -1533,7 +1666,7 @@ def tokenlist_password_generator():
         if l_token_combination_dups and \
            l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, None, str))): continue
 
-        # The middle loop iterates through all valid permutations (orderings) of one
+        # The inner loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
         # Because positionally anchored tokens can only appear in one position, they
         # are not passed to the permutations_function.
@@ -1566,54 +1699,8 @@ def tokenlist_password_generator():
                             break
                 if invalid_anchors: continue
 
-            password_base = "".join(ordered_token_guess)
+            yield "".join(ordered_token_guess)
 
-            # The inner loop takes the password_base and applies zero or more modifications
-            # to it to produce a number of different possible variations of password_base
-            # (e.g. different wildcard expansions, typos, etc.)
-
-            # modification_generators is a list of function generators each of which takes a
-            # string and produces one or more password variations based on that string. It is
-            # built at the beginning of this function, and is built differently depending on
-            # the token_lists (are any wildcards present?) and the program options (were any
-            # typos requested?).
-            #
-            # If any modifications have been requested, create an iterator that will
-            # loop through all combinations of the requested modifications
-            if modification_generators_len:
-                if modification_generators_len == 1:
-                    modification_iterator = modification_generators[0](password_base)
-                else:
-                    modification_iterator = l_generator_product(password_base, *modification_generators)
-            #
-            # Otherwise just produce the unmodified password itself
-            else:
-                modification_iterator = (password_base,)
-
-            for password in modification_iterator:
-
-                if typos_sofar < l_args_min_typos: continue
-
-                # Check the password against the --regex-only and --regex-never options
-                if l_regex_only  and not l_regex_only .search(password): continue
-                if l_regex_never and     l_regex_never.search(password): continue
-
-                # This duplicate check can be disabled via --no-dupchecks
-                # because it can take up a lot of memory, sometimes needlessly
-                if l_password_dups and l_password_dups.is_duplicate(password): continue
-
-                # Workers in a server pool ignore passwords not assigned to them
-                if l_args_worker:
-                    if worker_count % l_workers_total != l_worker_id:
-                        worker_count += 1
-                        continue
-                    worker_count += 1
-
-                yield password
-
-            assert typos_sofar == 0, "typos_sofar == 0 after all typo generators have finished"
-
-    if l_password_dups:          l_password_dups.run_finished()
     if l_token_combination_dups: l_token_combination_dups.run_finished()
 
 
@@ -1708,28 +1795,28 @@ def permutations_nodups(sequence):
         return
 
 
-# This generator utility is a bit like itertools.product. It takes a list of iterators
-# and invokes them in (the equivalent of) a nested for loop, except instead of a list
-# of simple iterators it takes a list of generators each of which expects to be called
-# with a single argument. generator_product calls the first generator with the passed
-# initial_value, and then takes each value it produces and calls the second generator
-# with each, and then takes each value the second generator produces and calls the
-# third generator with each, etc., until there are no generators left, at which point
-# it produces all the values generated by the last generator.
-#
-# This can be useful in the case you have a list of generators, each of which is
-# designed to produce a number of variations of an initial value, and you'd like to
-# string them together to get all possible (product-wise) variations.
-#
-# TODO: implement without recursion?
-def generator_product(initial_value, generator, *other_generators):
-    if other_generators == ():
-        for final_value in generator(initial_value):
-            yield final_value
-    else:
-        for intermediate_value in generator(initial_value):
-            for final_value in generator_product(intermediate_value, *other_generators):
-                yield final_value
+# Produces whole passwords from a file, exactly one per line, or from the file's cache
+# (which is created by parse_arguments if the file is stdin). These passwords are then
+# used by password_generator() as base passwords that can undergo further modifications.
+def passwordlist_base_password_generator():
+    global initial_passwordlist
+
+    for password_base in initial_passwordlist:
+        yield password_base.rstrip("\r\n")
+
+    if not passwordlist_allcached:
+        assert not passwordlist_file.closed
+        for password_base in passwordlist_file:
+            yield password_base.rstrip("\r\n")
+
+    # Prepare for a potential future run
+    if passwordlist_file != sys.stdin:
+        passwordlist_file.seek(0)
+
+    # Data from stdin can't be reused if it hasn't been fully cached
+    elif not passwordlist_allcached:
+        initial_passwordlist = ()
+        passwordlist_file.close()
 
 
 # This generator function expands (or contracts) all wildcards in the string passed
@@ -2046,96 +2133,6 @@ def insert_typos_generator(password_base):
         typos_sofar -= inserts_count
 
 
-# A relatively simple generator which produces passwords directly from a file,
-# one per line, optionally with typos applied
-def passwordlist_password_generator():
-    global typos_sofar, initial_passwordlist
-    typos_sofar  = 0  # see tokenlist_password_generator() for details
-    worker_count = 0  # only used if --worker is specified
-
-    # Initialize this global if not already initialized but only
-    # if it will be used; see its usage below for more details
-    global password_dups, token_combination_dups
-    if password_dups is None and args.no_dupchecks < 1:
-        password_dups = DuplicateChecker()
-
-    # Copy a few globals into local for a small speed boost
-    l_generator_product = generator_product
-    l_args_min_typos    = args.min_typos
-    l_regex_only        = regex_only
-    l_regex_never       = regex_never
-    l_password_dups     = password_dups
-    l_args_worker       = args.worker
-    if l_args_worker:
-        l_workers_total = workers_total
-        l_worker_id     = worker_id
-
-    # Build up the modification_generators list; see tokenlist_password_generator() for more details
-    modification_generators = []
-    if args.typos_capslock:  modification_generators.append( capslock_typos_generator )
-    if args.typos_swap:      modification_generators.append( swap_typos_generator     )
-    if enabled_simple_typos: modification_generators.append( simple_typos_generator   )
-    if args.typos_insert:    modification_generators.append( insert_typos_generator   )
-    modification_generators_len = len(modification_generators)
-
-    if password_dups and password_dups.run_number > 0:
-        assert passwordlist_file != sys.stdin or passwordlist_allcached, \
-            "passwordlist can be replayed (because it's seekable or all in RAM)"
-
-    # Construct a single passwordlist that iterates through both cached and unread passwords
-    if initial_passwordlist and not passwordlist_allcached:
-        assert not passwordlist_file.closed
-        passwordlist = itertools.chain(initial_passwordlist, passwordlist_file)
-    else:
-        passwordlist = initial_passwordlist if passwordlist_allcached else passwordlist_file
-    for password_base in passwordlist:
-        # Remove the trailing newline
-        password_base = password_base.rstrip("\r\n")
-
-        # If any typos have been requested, create an iterator that will
-        # loop through all combinations of the requested typos
-        # (see tokenlist_password_generator() for more details)
-        if modification_generators:
-            if modification_generators == 1:
-                modification_iterator = modification_generators[0](password_base)
-            else:
-                modification_iterator = l_generator_product(password_base, *modification_generators)
-        #
-        # Otherwise just produce the unmodified password itself
-        else:
-            modification_iterator = (password_base,)
-
-        for password in modification_iterator:
-
-            if typos_sofar < l_args_min_typos: continue
-
-            # Check the password against the --regex-only and --regex-never options
-            if l_regex_only  and not l_regex_only .search(password): continue
-            if l_regex_never and     l_regex_never.search(password): continue
-
-            # This duplicate check can be disabled via --no-dupchecks
-            # because it can take up a lot of memory, sometimes needlessly
-            if l_password_dups and l_password_dups.is_duplicate(password): continue
-
-            # Workers in a server pool ignore passwords not assigned to them
-            if l_args_worker:
-                if worker_count % l_workers_total != l_worker_id:
-                    worker_count += 1
-                    continue
-                worker_count += 1
-
-            yield password
-
-        assert typos_sofar == 0, "typos_sofar == 0 after all typo generators have finished"
-
-    if l_password_dups: l_password_dups.run_finished()
-
-    # Prepare for a potential future run
-    if passwordlist_file != sys.stdin:
-        passwordlist_file.seek(0)
-        initial_passwordlist = ()  # these will be re-read from the file, if necessary
-
-
 ################################### Main ###################################
 
 
@@ -2161,8 +2158,25 @@ def set_process_priority_idle():
             os.nice(19)
     except StandardError: pass
 
+# If an out-of-memory error occurs which can be handled, free up some memory, display
+# an informative error message, and then return, otherwise re-raise the exception
+def handle_oom():
+    global password_dups, token_combination_dups  # these are the memory-hogging culprits
+    if password_dups and password_dups.run_number == 0:
+        del password_dups, token_combination_dups
+        gc.collect(2)
+        print(prog+": error: out of memory", file=sys.stderr)
+        print(prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
+    elif token_combination_dups and token_combination_dups.run_number == 0:
+        del token_combination_dups
+        gc.collect(2)
+        print(prog+": error: out of memory", file=sys.stderr)
+        print(prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
+    else: raise
+
+
 # Saves progress by overwriting the older (of two) slots in the autosave file
-# (autosave_nextslot can be initialized by load_savestate() )
+# (autosave_nextslot is initialized in load_savestate() or parse_arguments() )
 def do_autosave(skip, inside_interrupt_handler = False):
     global autosave_nextslot
     assert autosave_file and not autosave_file.closed,          "do_autosave: autosave_file is open"
@@ -2202,29 +2216,116 @@ def do_autosave(skip, inside_interrupt_handler = False):
             signal.signal(signal.SIGHUP, sighup_handler)
 
 
-def main():
+# Given an est_secs_per_password, counts the number of passwords generated by password_generator(), and returns
+# the result, checking the --max-eta constraint along the way (and exiting if it's violated). Displays messages
+# to the user if the process is taking a while.
+def count_and_check_eta(est):
+    assert est > 0.0, "count_and_check_eta: est_secs_per_password > 0.0"
+    return password_generator_factory(est_secs_per_password = est)[1]
 
-    # If an out-of-memory error occurs which can be handled, free up some memory, display
-    # an informative error message, and then return, otherwise re-raise the exception
-    # (this is defined inside main so it can access the passwords_count local)
-    def handle_oom():
-        global password_dups, token_combination_dups  # these are the memory-hogging culprits
-        #
-        # If passwords_count is equal to what it starts off as, then we haven't even
-        # started counting yet, so this is an unexpected OOM condition.
-        if passwords_count == 0 or passwords_count == -args.skip: raise
-        #
-        if password_dups and password_dups.run_number == 0:
-            del password_dups, token_combination_dups
-            gc.collect(2)
-            print(prog+": error: out of memory", file=sys.stderr)
-            print(prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
-        elif token_combination_dups and token_combination_dups.run_number == 0:
-            del token_combination_dups
-            gc.collect(2)
-            print(prog+": error: out of memory", file=sys.stderr)
-            print(prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
-        else: raise
+# Creates a password iterator from the chosen password_generator() and advances it past skipped passwords (as
+# per args.skip), returning a tuple: new_iterator, #_of_passwords_skipped. Displays messages to the user if the
+# process is taking a while. (Or does the work of count_and_check_eta() when passed est_secs_per_password.)
+PASSWORDS_BEFORE_DISPLAY  = 3000000  # on my CPU takes between 2 and 15 seconds depending on complexity, YMMV
+PASSWORDS_BETWEEN_UPDATES = 100000
+def password_generator_factory(chunksize = 1, **kwds):
+    est_secs_per_password = kwds.get("est_secs_per_password", 0)
+    # If not counting all passwords (if only skipping)
+    if not est_secs_per_password:
+        # The simple case where there's nothing to skip, just return an unmodified password_generator()
+        if args.skip <= 0:
+            return password_generator(chunksize), 0
+        # The still fairly simple case where there's not much to skip, just skip it all at once
+        elif args.skip <= PASSWORDS_BEFORE_DISPLAY + PASSWORDS_BEFORE_DISPLAY/2:  # 1.5 times it
+            passwords_count_iterator = password_generator(args.skip, True)
+            passwords_counted = 0
+            try:
+                # Skip it all in a single iteration (or raise StopIteration if it's empty)
+                passwords_counted = passwords_count_iterator.next()
+                passwords_count_iterator.send( (chunksize, False) )
+            except StopIteration: pass
+            return passwords_count_iterator, passwords_counted
+
+    assert args.skip >= 0
+    sys_stderr_isatty = sys.stderr.isatty()
+    max_seconds = args.max_eta * 3600  # max_eta is in hours
+    passwords_count_iterator = password_generator(PASSWORDS_BETWEEN_UPDATES, True)  # only_yield_count==True
+    passwords_counted = 0
+    try:
+        # Iterate though the password counts in increments of size PASSWORDS_BETWEEN_UPDATES
+        for passwords_counted_last in passwords_count_iterator:
+            passwords_counted += passwords_counted_last
+            unskipped_passwords_counted = passwords_counted - args.skip
+
+            # If it's taking a while, display/update the on-screen message
+            if passwords_counted >= PASSWORDS_BEFORE_DISPLAY and sys_stderr_isatty:
+                if passwords_counted == PASSWORDS_BEFORE_DISPLAY:
+                    print("Counting passwords ..." if est_secs_per_password else "Skipping passwords ...", file=sys.stderr)
+                #
+                # If ETAs were requested, calculate and possibly display one
+                if est_secs_per_password:
+                    # Only display an ETA once unskipped passwords are being counted
+                    if unskipped_passwords_counted > 0:
+                        eta = unskipped_passwords_counted * est_secs_per_password / 60
+                        if eta < 90:     eta = str(int(eta)+1) + " minutes"  # round up
+                        else:
+                            eta /= 60
+                            if eta < 48: eta = str(int(round(eta))) + " hours"
+                            else:        eta = str(round(eta / 24, 1)) + " days"
+                        msg = "\r  {:,}".format(passwords_counted)
+                        if args.skip: msg += " (includes {:,} skipped)".format(args.skip)
+                        msg += "  ETA: " + eta + " and counting   "
+                        print(msg, end="", file=sys.stderr)
+                    # Else just indicate that all the passwords counted so far are skipped
+                    else:
+                        print("\r  {:,} (all skipped)".format(passwords_counted), end="", file=sys.stderr)
+                #
+                # Else no ETAs were requested, just display the count ("Skipping passwords ..." was already printed)
+                else:
+                    print("\r  {:,}".format(passwords_counted), end="", file=sys.stderr)
+
+            # If the ETA is past its max permitted limit, exit
+            if unskipped_passwords_counted * est_secs_per_password > max_seconds:
+                print("\r", file=sys.stderr)
+                error_exit("at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
+                    .format(passwords_counted - args.skip, args.max_eta))
+
+            # If not counting all the passwords, then break out of this loop before it's gone past args.skip
+            # (actually it must leave at least one password left to count before the args.skip limit)
+            if not est_secs_per_password and passwords_counted >= args.skip - PASSWORDS_BETWEEN_UPDATES:
+                break
+
+        # Erase the on-screen counter if it was being displayed
+        if passwords_counted >= PASSWORDS_BEFORE_DISPLAY and sys_stderr_isatty:
+            print("\r" + " "*78 + "\r", end="")
+
+        # If all passwords were being/have been counted
+        if est_secs_per_password:
+            return None, passwords_counted
+
+        # Else finish counting the final (probably partial) iteration of skipped passwords
+        # (which will be in the range [1, PASSWORDS_BETWEEN_UPDATES] )
+        else:
+            try:
+                passwords_count_iterator.send( (args.skip - passwords_counted, True) )  # the remaining count
+                passwords_counted += passwords_count_iterator.next()
+                passwords_count_iterator.send( (chunksize, False) )
+            except StopIteration: pass
+            return passwords_count_iterator, passwords_counted
+
+    except BaseException as e:
+        if isinstance(e, SystemExit): raise  # happens when error_exit is called above
+        counting_or_skipping = "counting" if est_secs_per_password else "skipping"
+        including_skipped    = "(including skipped ones)" if est_secs_per_password and args.skip else ""
+        print("\nInterrupted after", counting_or_skipping, passwords_counted, "passwords", including_skipped, file=sys.stderr)
+        if isinstance(e, MemoryError) and passwords_counted > 0:
+            handle_oom()  # will re-raise if not handled
+            sys.exit(1)
+        if isinstance(e, KeyboardInterrupt): sys.exit(0)
+        raise
+
+
+def main():
 
     # Once installed, performs cleanup prior to a requested process shutdown on Windows
     # (this is defined inside main so it can access the passwords_tried local)
@@ -2248,47 +2349,51 @@ def main():
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
     if args.listpass:
+        password_iterator, skipped_count = password_generator_factory()
         try:
-            for password in password_generator():
+            for password in password_iterator:
                 passwords_count += 1
-                if passwords_count > args.skip: print(password)
+                print(password[0])
         except BaseException as e:
-            print("\nInterrupted after generating", passwords_count, "passwords", "(including skipped ones)" if args.skip else "", file=sys.stderr)
-            if isinstance(e, MemoryError):
+            skipped_msg = " (plus "+str(skipped_count)+" skipped)" if skipped_count else ""
+            print("\nInterrupted after generating", passwords_count, "passwords"+skipped_msg, file=sys.stderr)
+            if isinstance(e, MemoryError) and passwords_count > 0:
                 handle_oom()  # will re-raise if not handled
                 sys.exit(1)
             if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
-        msg = str(max(passwords_count - args.skip, 0))+" password combinations"
-        if args.skip:
-            msg += " (plus "+str(min(args.skip, passwords_count))+" skipped)"
-        print("\n", msg, file=sys.stderr)
+        skipped_msg = " (plus "+str(skipped_count)+" skipped)" if skipped_count else ""
+        msg = "\n "+str(passwords_count)+" password combinations"+skipped_msg
+        print(msg, file=sys.stderr)
         return msg
+
+    # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
+    # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
+    CHUNKSIZE_SECONDS = 1.0 / 100.0
 
     # Measure the performance of the verification function
     # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
     assert measure_performance_iterations, "measure_performance_iterations has been set"
+    outer_iterations = int(round(0.5 / CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
+    inner_iterations = int(round(measure_performance_iterations / outer_iterations)) or 1
     start = time.clock()
-    for i in xrange(measure_performance_iterations):
-        return_verified_password_or_false("measure performance passphrase "+str(i))
-    est_secs_per_password = (time.clock() - start) / float(measure_performance_iterations)
-    assert est_secs_per_password > 0.0
+    for o in xrange(outer_iterations):
+        return_verified_password_or_false(["measure performance "+str(i) for i in xrange(inner_iterations)])
+    est_secs_per_password = (time.clock() - start) / measure_performance_iterations
+    assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
+
+    chunksize = int(round(CHUNKSIZE_SECONDS / est_secs_per_password)) or 1
 
     # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
     if est_secs_per_password < 1.0 / 20000.0:
         main_thread_is_worker = True
-        spawned_threads   = worker_threads - 1       # spawn 1 fewer than requested (might be 0)
+        spawned_threads   = args.threads - 1      # spawn 1 fewer than requested (might be 0)
         verifying_threads = spawned_threads or 1
     else:
         main_thread_is_worker = False
-        spawned_threads   = worker_threads if worker_threads > 1 else 0
-        verifying_threads = worker_threads
-
-    # The chunksize for multiprocessing.imap: enough passwords to last for about 1/200th of a second.
-    # (this was determined experimentally to be about the best I could do, YMMV)
-    if spawned_threads:
-        imap_chunksize = int(1.0 / (200.0*est_secs_per_password)) or 1
+        spawned_threads   = args.threads if args.threads > 1 else 0
+        verifying_threads = args.threads
 
     # Adjust estimate for the number of verifying threads (final estimate is probably an underestimate)
     est_secs_per_password /= min(verifying_threads, cpus)
@@ -2296,50 +2401,10 @@ def main():
     # Count how many passwords there are (excluding skipped ones) so we can display and conform to ETAs
     if not args.no_eta:
 
-        # If requested, subtract out skipped passwords from the count (calculated just below)
-        if args.skip > 0:
-            passwords_count = -args.skip
-
-        max_seconds = args.max_eta * 3600  # max_eta is in hours
-        tot_passwords_counted = 0
+        assert args.skip >= 0
         start = time.clock()
-        try:
-            for password in password_generator():
-                passwords_count       += 1
-                tot_passwords_counted += 1
-                if passwords_count * est_secs_per_password > max_seconds:
-                    print()
-                    error_exit("at least {:,} passwords to try, ETA > max_eta option ({} hours), exiting" \
-                        .format(passwords_count, args.max_eta))
-                # Display/update a best-case ETA once we're past a certain point
-                if tot_passwords_counted >= 2000000 and tot_passwords_counted % 100000 == 0:
-                    if tot_passwords_counted == 2000000:  # takes about 15 seconds on my CPU w/a complex tokenlist, YMMV
-                        print("Counting passwords ...")
-                    if passwords_count > 0:
-                        eta = passwords_count * est_secs_per_password / 60
-                        if eta < 90:     eta = str(int(eta)+1) + " minutes"  # round up
-                        else:
-                            eta /= 60
-                            if eta < 48: eta = str(int(round(eta))) + " hours"
-                            else:        eta = str(round(eta / 24, 1)) + " days"
-                        msg = "\r  {:,}".format(tot_passwords_counted)
-                        if args.skip: msg += " (includes {:,} skipped)".format(args.skip)
-                        msg += "  ETA: " + eta + " and counting   "
-                        print(msg, end="")
-                    else:
-                        print("\r  {:,} (all skipped)".format(tot_passwords_counted), end="")
-        except BaseException as e:
-            if isinstance(e, SystemExit): raise
-            print("\nInterrupted after counting", passwords_count + args.skip, "passwords", "(including skipped ones)" if args.skip else "", file=sys.stderr)
-            if isinstance(e, MemoryError):
-                handle_oom()  # will re-raise if not handled
-                sys.exit(1)
-            if isinstance(e, KeyboardInterrupt): sys.exit(0)
-            raise
+        passwords_count = count_and_check_eta(est_secs_per_password) - args.skip
         iterate_time = time.clock() - start
-        # Erase the bast-case ETA if it was being displayed
-        if tot_passwords_counted >= 2000000:
-            print("\r" + " "*78 + "\r", end="")
 
         if passwords_count <= 0:
             msg = "Skipped all "+str(passwords_count + args.skip)+" passwords, exiting"
@@ -2360,21 +2425,19 @@ def main():
         est_passwords_per_5min = int(round(300.0 / est_secs_per_password))
         assert est_passwords_per_5min > 0
 
-    # Create an iterator which produces the desired password permutations, skipping some if so instructed
-    password_iterator = password_generator()
+    # If there aren't many passwords, give each of the N workers 1/Nth of the passwords
+    # (rounding up) and also don't bother spawning more threads than there are passwords
+    if not args.no_eta and spawned_threads * chunksize > passwords_count:
+        if spawned_threads > passwords_count:
+            spawned_threads = passwords_count
+        chunksize = (passwords_count-1) // spawned_threads + 1
+
+    # Create an iterator which produces the password permutations in chunks, skipping some if so instructed
     if args.skip > 0:
         print("Starting with password #", args.skip + 1)
-        try:
-            for i in xrange(args.skip): password_iterator.next()
-        except BaseException as e:
-            print("\nInterrupted after skipping", passwords_count + args.skip, "passwords", file=sys.stderr)
-            if isinstance(e, MemoryError):
-                handle_oom()  # will re-raise if not handled
-                sys.exit(1)
-            if isinstance(e, KeyboardInterrupt): sys.exit(0)
-            raise
+    password_iterator, skipped_count = password_generator_factory(chunksize)
 
-    print("Using", worker_threads, "worker", "threads" if worker_threads > 1 else "thread")  # (they're actually worker processes)
+    print("Using", args.threads, "worker", "threads" if args.threads > 1 else "thread")  # (they're actually worker processes)
 
     if have_progress:
         if args.no_eta:
@@ -2406,10 +2469,6 @@ def main():
             if eta_hours  == 0: print(eta_seconds, "seconds ", end="")
             print("...")
 
-    # If there aren't many passwords, give each of the N workers 1/Nth of the passwords
-    if not args.no_eta and spawned_threads and spawned_threads * imap_chunksize > passwords_count:
-        imap_chunksize = (passwords_count-1) // spawned_threads + 1
-
     # Autosave the starting state now that we're just about ready to start
     if l_savestate: do_autosave(args.skip)
 
@@ -2424,7 +2483,7 @@ def main():
         set_process_priority_idle()  # this, the only thread, should be nice
     else:
         pool = multiprocessing.Pool(spawned_threads, init_worker, [args.wallet, key_data])
-        password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator, imap_chunksize)
+        password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator)
         if main_thread_is_worker: set_process_priority_idle()  # if this thread is cpu-intensive, be nice
 
     # Try to catch all types of intentional program shutdowns so we can
@@ -2439,24 +2498,30 @@ def main():
             win32api.SetConsoleCtrlHandler(windows_ctrl_handler, True)
     except StandardError: pass
 
+    # Make est_passwords_per_5min evenly divisible by chunksize
+    # (so that passwords_tried % est_passwords_per_5min will eventually == 0)
+    if l_savestate:
+        assert isinstance(est_passwords_per_5min, int)
+        est_passwords_per_5min = int(round(est_passwords_per_5min / chunksize)) * chunksize
+
     # Iterate through password_found_iterator looking for a successful guess
-    if l_savestate: assert isinstance(est_passwords_per_5min, int)
     msg = ""
     passwords_tried = 0
     if progress: progress.start()
     try:
-        for password_found in password_found_iterator:
+        for password_found, passwords_tried_last in password_found_iterator:
+            passwords_tried += passwords_tried_last
+            if progress: progress.update(passwords_tried)
             if password_found:
-                if have_progress: print()  # move down to the line below the progress bar
+                if progress: print()  # move down to the line below the progress bar
                 msg = "Password found: " + repr(password_found)
                 print(msg)
+                passwords_tried -= 1  # adjusted so it's autosaved just before this password
                 break
-            passwords_tried += 1
-            if progress: progress.update(passwords_tried)
             if l_savestate and passwords_tried % est_passwords_per_5min == 0:
                 do_autosave(args.skip + passwords_tried)
         else:  # if the for loop exits normally (without breaking)
-            if have_progress:
+            if progress:
                 if args.no_eta:
                     progress.maxval = passwords_tried
                 progress.finish()

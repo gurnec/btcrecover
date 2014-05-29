@@ -42,23 +42,42 @@ class GeneratorTester(unittest.TestCase):
     # tokenlist == a list of lines (w/o "\n") which will become the tokenlist file
     # expected_passwords == a list of passwords which should be produced from the tokenlist
     # extra_cmd_line == a single string of additional command-line options
+    # test_passwordlist == whether or not to also test --passwordlist
+    # chunksize == the password generator chunksize
+    # expected_skipped == the expected # of skipped passwords, if any
     # extra_kwds == additional StringIO objects to act as file stand-ins
-    def do_generator_test(self, tokenlist, expected_passwords, extra_cmd_line = "", **extra_kwds):
+    def do_generator_test(self, tokenlist, expected_passwords, extra_cmd_line = "", test_passwordlist = False,
+                          chunksize = sys.maxint, expected_skipped = None, **extra_kwds):
         assert isinstance(tokenlist, list)
         assert isinstance(expected_passwords, list)
-        test_passwordlist = extra_kwds.get("test_passwordlist")
-        if test_passwordlist: del extra_kwds["test_passwordlist"]
-        btcrecover.parse_arguments(
-            ("--tokenlist __funccall --listpass "+extra_cmd_line).split(),
-            tokenlist = cStringIO.StringIO("\n".join(tokenlist)),
-            **extra_kwds)
-        self.assertEqual(list(btcrecover.password_generator()), expected_passwords)
-        if test_passwordlist:
-            btcrecover.parse_arguments(
-                ("--passwordlist __funccall --listpass "+extra_cmd_line).split(),
-                passwordlist = cStringIO.StringIO("\n".join(tokenlist)),
-                **extra_kwds)
-            self.assertEqual(list(btcrecover.password_generator()), expected_passwords)
+        tokenlist_str = "\n".join(tokenlist)
+        args          = (" __funccall --listpass "+extra_cmd_line).split()
+
+        btcrecover.parse_arguments(["--tokenlist"] + args,
+            tokenlist = cStringIO.StringIO(tokenlist_str), **extra_kwds)
+        tok_it, skipped = btcrecover.password_generator_factory(chunksize)
+        if expected_skipped is not None:
+            self.assertEqual(skipped, expected_skipped)
+        try:
+            self.assertEqual(tok_it.next(), expected_passwords)
+        except StopIteration:
+            self.assertEqual([], expected_passwords)
+        if not test_passwordlist: return (tok_it,)
+
+        # Reset any files passed in as extra parameters
+        for sio in filter(lambda s: isinstance(s, StringIONonClosing), extra_kwds.values()):
+            sio.seek(0)
+
+        btcrecover.parse_arguments(["--passwordlist"] + args,
+            passwordlist = cStringIO.StringIO(tokenlist_str), **extra_kwds)
+        pwl_it, skipped = btcrecover.password_generator_factory(chunksize)
+        if expected_skipped is not None:
+            self.assertEqual(skipped, expected_skipped)
+        try:
+            self.assertEqual(pwl_it.next(), expected_passwords)
+        except StopIteration:
+            self.assertEqual([], expected_passwords)
+        return (tok_it, pwl_it)
 
     # tokenlist == a list of lines (w/o "\n") which will become the tokenlist file
     # expected_error == a (partial) error message that should be produced from the tokenlist
@@ -87,6 +106,73 @@ class Test01Basics(GeneratorTester):
             ["threetwo", "twothree", "threetwoone", "threeonetwo",
             "twothreeone", "twoonethree", "onethreetwo", "onetwothree"])
 
+    def test_chunksize_divisible(self):
+        tok_it, = self.do_generator_test(["one two three four five six"], ["one", "two", "three"], "", False, 3)
+        self.assertEqual(tok_it.next(), ["four", "five", "six"])
+        self.assertRaises(StopIteration, tok_it.next)
+    def test_chunksize_indivisible(self):
+        tok_it, = self.do_generator_test(["one two three four five"], ["one", "two", "three"], "", False, 3)
+        self.assertEqual(tok_it.next(), ["four", "five"])
+        self.assertRaises(StopIteration, tok_it.next)
+    def test_chunksize_modified(self):
+        tok_it, = self.do_generator_test(["one two three four five six"], ["one", "two"], "", False, 2)
+        self.assertIsNone(tok_it.send( (3, False) ))
+        self.assertEqual(tok_it.next(), ["three", "four", "five"])
+        self.assertEqual(tok_it.next(), ["six"])
+        self.assertRaises(StopIteration, tok_it.next)
+
+    def test_only_yield_count(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("one two three four five six"))
+        tok_it = btcrecover.password_generator(2, True)
+        self.assertEqual(tok_it.next(), 2)
+        self.assertIsNone(tok_it.send( (3, True) ))
+        self.assertEqual(tok_it.next(), 3)
+        self.assertIsNone(tok_it.send( (3, False) ))
+        self.assertEqual(tok_it.next(), ["six"])
+        self.assertRaises(StopIteration, tok_it.next)
+
+        btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
+            passwordlist = cStringIO.StringIO("one two three four five six".replace(" ", "\n")))
+        pwl_it = btcrecover.password_generator(2, True)
+        self.assertEqual(pwl_it.next(), 2)
+        self.assertIsNone(pwl_it.send( (3, True) ))
+        self.assertEqual(pwl_it.next(), 3)
+        self.assertIsNone(pwl_it.send( (3, False) ))
+        self.assertEqual(pwl_it.next(), ["six"])
+        self.assertRaises(StopIteration, pwl_it.next)
+
+    def test_only_yield_count_all(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("one two three"))
+        tok_it = btcrecover.password_generator(4, True)
+        self.assertEqual(tok_it.next(), 3)
+        self.assertRaises(StopIteration, tok_it.next)
+
+        btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
+            passwordlist = cStringIO.StringIO("one two three".replace(" ", "\n")))
+        pwl_it = btcrecover.password_generator(4, True)
+        self.assertEqual(pwl_it.next(), 3)
+        self.assertRaises(StopIteration, pwl_it.next)
+
+    def test_count(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("one two three"))
+        self.assertEqual(btcrecover.count_and_check_eta(1.0), 3)
+    def test_count_zero(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO(""))
+        self.assertEqual(btcrecover.count_and_check_eta(1.0), 0)
+    # a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
+    def test_count_one_chunk(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("%5d"))
+        self.assertEqual(btcrecover.count_and_check_eta(1.0), 100000)
+    def test_count_two_chunks(self):
+        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+            tokenlist = cStringIO.StringIO("%5d 100000"))
+        self.assertEqual(btcrecover.count_and_check_eta(1.0), 100001)
+
     def test_token_counts_min_0(self):
         self.do_generator_test(["one"], ["", "one"], "--min-tokens 0")
     def test_token_counts_min_2(self):
@@ -103,8 +189,10 @@ class Test01Basics(GeneratorTester):
             ["twoone", "onetwo", "threeone", "onethree", "threetwo", "twothree"],
             "--min-tokens 2 --max-tokens 2")
 
+    def test_empty_file(self):
+        self.do_generator_test([], [], "", True)
     def test_one_char_file(self):
-        self.do_generator_test(["a"], ["a"], test_passwordlist=True)
+        self.do_generator_test(["a"], ["a"], "", True)
 
     def test_z_all(self):
         self.do_generator_test(["1", "2 3", "+ 4 5"], map(str, [
@@ -249,82 +337,80 @@ class Test04Typos(GeneratorTester):
 
     def test_capslock(self):
         self.do_generator_test(["One2Three"], ["One2Three", "oNE2tHREE"],
-            "--typos-capslock --typos 2 -d", test_passwordlist=True)
+            "--typos-capslock --typos 2 -d", True)
     def test_capslock_nocaps(self):
         self.do_generator_test(["123"], ["123"],
-            "--typos-capslock --typos 2 -d", test_passwordlist=True)
+            "--typos-capslock --typos 2 -d", True)
 
     def test_swap(self):
         self.do_generator_test(["abcdd"], ["abcdd", "bacdd", "acbdd", "abdcd", "badcd"],
-            "--typos-swap --typos 2 -d", test_passwordlist=True)
+            "--typos-swap --typos 2 -d", True)
 
     def test_repeat(self):
         self.do_generator_test(["abc"], ["abc", "aabc", "abbc", "abcc", "aabbc", "aabcc", "abbcc"],
-            "--typos-repeat --typos 2 -d", test_passwordlist=True)
+            "--typos-repeat --typos 2 -d", True)
 
     def test_delete(self):
         self.do_generator_test(["abc"], ["abc", "bc", "ac", "ab", "c", "b", "a"],
-            "--typos-delete --typos 2 -d", test_passwordlist=True)
+            "--typos-delete --typos 2 -d", True)
 
     def test_case(self):
         self.do_generator_test(["abC1"], ["abC1", "AbC1", "aBC1", "abc1", "ABC1", "Abc1", "aBc1"],
-            "--typos-case --typos 2 -d", test_passwordlist=True)
+            "--typos-case --typos 2 -d", True)
 
     def test_closecase(self):
         self.do_generator_test(["one2Three"],
             ["one2Three", "One2Three", "one2three", "one2THree", "one2ThreE", "One2three",
             "One2THree", "One2ThreE", "one2tHree", "one2threE", "one2THreE"],
-            "--typos-closecase --typos 2 -d", test_passwordlist=True)
+            "--typos-closecase --typos 2 -d", True)
 
     def test_insert(self):
         self.do_generator_test(["abc"],
             ["abc", "Xabc", "aXbc", "abXc", "abcX", "XaXbc", "XabXc", "XabcX", "aXbXc", "aXbcX", "abXcX"],
-            "--typos-insert X --typos 2 -d", test_passwordlist=True)
+            "--typos-insert X --typos 2 -d", True)
     def test_insert_adjacent_1(self):
         self.do_generator_test(["ab"], ["ab", "Xab", "aXb", "abX", "XXab", "XaXb", "XabX", "aXXb", "aXbX", "abXX"],
-            "--typos-insert X --typos 2 --max-adjacent-inserts 2 -d", test_passwordlist=True)
+            "--typos-insert X --typos 2 --max-adjacent-inserts 2 -d", True)
     def test_insert_adjacent_2(self):
         self.do_generator_test(["a"], ["a", "Xa", "aX", "XXa", "XaX", "aXX", "XXaX", "XaXX" ],
-            "--typos-insert X --typos 3 --max-adjacent-inserts 2 -d", test_passwordlist=True)
+            "--typos-insert X --typos 3 --max-adjacent-inserts 2 -d", True)
     def test_insert_wildcard(self):
         self.do_generator_test(["abc"], ["abc", "Xabc", "Yabc", "aXbc", "aYbc", "abXc", "abYc", "abcX", "abcY"],
-            "--typos-insert %[XY] -d", test_passwordlist=True)
+            "--typos-insert %[XY] -d", True)
     def test_insert_wildcard_adjacent(self):
         self.do_generator_test(["a"],
             ["a", "Xa", "Ya", "aX", "aY", "XXa", "XYa", "YXa", "YYa",
             "XaX", "XaY", "YaX", "YaY", "aXX", "aXY", "aYX", "aYY"],
-            "--typos-insert %[XY] --typos 2 --max-adjacent-inserts 2 -d", test_passwordlist=True)
+            "--typos-insert %[XY] --typos 2 --max-adjacent-inserts 2 -d", True)
     def test_insert_invalid(self):
         self.expect_syntax_failure(["abc"], "contracting wildcards are not permitted here",
-            "--typos-insert %0,1-", test_passwordlist=True)
+            "--typos-insert %0,1-")
 
     def test_replace(self):
         self.do_generator_test(["abc"], ["abc", "Xbc", "aXc", "abX", "XXc", "XbX", "aXX"],
-            "--typos-replace X --typos 2 -d", test_passwordlist=True)
+            "--typos-replace X --typos 2 -d", True)
     def test_replace_wildcard(self):
         self.do_generator_test(["abc"], ["abc", "Xbc", "Ybc", "aXc", "aYc", "abX", "abY"],
-            "--typos-replace %[X-Y] -d", test_passwordlist=True)
+            "--typos-replace %[X-Y] -d", True)
     def test_replace_invalid(self):
         self.expect_syntax_failure(["abc"], "contracting wildcards are not permitted here",
-            "--typos-replace %>", test_passwordlist=True)
+            "--typos-replace %>")
 
     def test_map(self):
         self.do_generator_test(["axb"],
             ["axb", "Axb", "Bxb", "axA", "axB", "AxA", "AxB", "BxA", "BxB"],
-            "--typos-map __funccall --typos 2 -d",
-            typos_map=cStringIO.StringIO(" ab \t AB \n x x \n a aB "))
+            "--typos-map __funccall --typos 2 -d", True,
+            typos_map=StringIONonClosing(" ab \t AB \n x x \n a aB "))
 
     def test_z_all(self):
-        self.maxDiff=None
         self.do_generator_test(["12"],
             map(str, [12,812,182,128,8812,8182,8128,1882,1828,1288,112,8112,1812,1182,
                 1128,2,82,28,92,892,982,928,122,8122,1822,1282,1228,1,81,18,19,819,189,
                 198,1122,11,119,22,"",9,922,9,99,21,821,281,218,221,1,91,211,2,29]),
             "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert 8 --typos-replace 9 --typos 2 --max-adjacent-inserts 2 -d",
-            test_passwordlist=True)
+            True)
 
     def test_z_min_typos_1(self):
-        self.maxDiff=None
         self.do_generator_test(["12"],
             map(str, [88182,88128,81882,81828,81288,18828,18288,88112,81812,81182,81128,
                 18812,18182,18128,11882,11828,11288,882,828,288,8892,8982,8928,9882,9828,
@@ -334,11 +420,11 @@ class Test04Typos(GeneratorTester):
                 989,998,8821,8281,8218,2881,2818,2188,8221,2821,2281,2218,81,18,891,981,
                 918,8211,2811,2181,2118,82,28,829,289,298,2211,22,229,11,"",9,911,9,99]),
             "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert 8 --typos-replace 9 --typos 3 --max-adjacent-inserts 2 --min-typos 3 -d",
-            test_passwordlist=True)
+            True)
     def test_z_min_typos_2(self):
         self.do_generator_test(["12"], [],
             "--typos-swap --typos-repeat --typos-delete --typos-case --typos-replace 8 --typos 4 -d --min-typos 4",
-            test_passwordlist=True)
+            True)
 
 class Test05CommandLine(GeneratorTester):
 
@@ -346,17 +432,44 @@ class Test05CommandLine(GeneratorTester):
         self.do_generator_test(["one", "two"], ["one", "twoone", "onetwo"], "--regex-only o.e")
 
     def test_regex_never(self):
-        self.do_generator_test(["one", "two"], ["two"], "--regex-never o.e")
+        self.do_generator_test(["one", "two"], ["two"], "--regex-never o.e", True)
 
-    def test_delimiter_1(self):
+    def test_delimiter_tokenlist(self):
         self.do_generator_test([" one ** two **** "], [" one ", " two ", "", " "], "--delimiter **")
 
-    def test_delimiter_2(self):
+    def test_delimiter_typosmap(self):
         self.do_generator_test(["axb"], ["axb", "Axb", " xb", "axA", "ax ", "AxA", "Ax ", " xA", " x " ],
             "--delimiter ** --typos-map __funccall --typos 2 -d",
-            typos_map=cStringIO.StringIO(" ab **A \n x **x"))
+            True, typos_map=StringIONonClosing(" ab **A \n x **x"))
 
+    # Try to test the myriad of boundary conditions in password_generator_factory()
     def test_skip(self):
+        self.do_generator_test(["one", "two"], ["twoone", "onetwo"], "--skip 2", False, sys.maxint, 2)
+    def test_skip_all_exact(self):
+        self.do_generator_test(["one"], [], "--skip 1", True, sys.maxint, 1)
+    def test_skip_all_pastend_1(self):
+        self.do_generator_test(["one"], [], "--skip 2", True, sys.maxint, 1)
+    def test_skip_all_pastend_2(self):
+        self.do_generator_test(["one"], [], "--skip 2000000", True, sys.maxint, 1)
+    def test_skip_empty_1(self):
+        self.do_generator_test([], [], "--skip 1", True, sys.maxint, 0)
+    def test_skip_empty_2(self):
+        self.do_generator_test([], [], "--skip 2000000", True, sys.maxint, 0)
+    # "large_1" is of length btcrecover.PASSWORDS_BEFORE_DISPLAY * 1.5 + 2
+    def test_skip_large_1(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], ["4500001"], "--skip 4500001 -d", False, sys.maxint, 4500001)
+    def test_skip_large_1_all_exact(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], [],          "--skip 4500002 -d", False, sys.maxint, 4500002)
+    def test_skip_large_1_all_pastend(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-4]%5d 450000%[01]"], [],          "--skip 4500003 -d", False, sys.maxint, 4500002)
+    # "large_2" is of length btcrecover.PASSWORDS_BEFORE_DISPLAY * 1.5 + btcrecover.PASSWORDS_BETWEEN_UPDATES + 1
+    def test_skip_large_2(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], ["4600000"], "--skip 4600000 -d", False, sys.maxint, 4600000)
+    def test_skip_large_2_all_exact(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], [],          "--skip 4600001 -d", False, sys.maxint, 4600001)
+    def test_skip_large_2_all_pastend(self):
+        self.do_generator_test(["%[0-3]%6d 4%[0-5]%5d 4600000"], [],          "--skip 4600002 -d", False, sys.maxint, 4600001)
+    def test_skip_end_to_end(self):
         btcrecover.parse_arguments(("--skip 2 --tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main())
@@ -376,31 +489,33 @@ class Test05CommandLine(GeneratorTester):
     def test_no_dupchecks_2(self):
         self.do_generator_test(["one", "one"], ["one", "oneone"], "-d")
         # Duplicate code works differently the second time around; test it also
-        self.assertEqual(list(btcrecover.password_generator()), ["one", "oneone"])
+        self.assertEqual(btcrecover.password_generator(3).next(), ["one", "oneone"])
 
     def test_no_dupchecks_3(self):
         self.do_generator_test(["%[ab] %[a-b]"], ["a", "b", "a", "b"], "-d")
         self.do_generator_test(["%[ab] %[a-b]"], ["a", "b"])
         # Duplicate code works differently the second time around; test it also
-        self.assertEqual(list(btcrecover.password_generator()), ["a", "b"])
+        self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
 
 SAVESLOT_SIZE = 4096
+AUTOSAVE_ARGS = ("--autosave __funccall --tokenlist __funccall --privkey --no-progress --threads 1").split()
+AUTOSAVE_TOKENLIST = "^one \n two \n three \n"
+AUTOSAVE_PRIVKEY   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test06AutosaveRestore(unittest.TestCase):
 
     autosave_file = StringIONonClosing()
 
     def run_autosave_parse_arguments(self, autosave_file):
-        btcrecover.parse_arguments(
-            ("--autosave __funccall --tokenlist __funccall --privkey --no-progress --threads 1").split(),
+        btcrecover.parse_arguments(AUTOSAVE_ARGS,
             autosave  = autosave_file,
-            tokenlist = cStringIO.StringIO("^one \n two \n three"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
+            tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+            privkey   = AUTOSAVE_PRIVKEY)
 
     def run_restore_parse_arguments(self, restore_file):
         btcrecover.parse_arguments("--restore __funccall".split(),
             restore   = restore_file,
-            tokenlist = cStringIO.StringIO("^one \n two \n three"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
+            tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+            privkey   = AUTOSAVE_PRIVKEY)
 
     # These test_ functions are in alphabetical order (the same order they're executed in)
 
@@ -438,33 +553,30 @@ class Test06AutosaveRestore(unittest.TestCase):
     # but change the arguments to generate an error
     def test_restore_changed_args(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(
-                ("--autosave __funccall --tokenlist __funccall --privkey --no-progress --threads 1 --max-tokens 1").split(),
+            btcrecover.parse_arguments(AUTOSAVE_ARGS + ["--typos-capslock"],
                 autosave  = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO("^one \n two \n three"),
-                privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
+                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+                privkey   = AUTOSAVE_PRIVKEY)
         self.assertIn("can't restore previous session: the command line options have changed", cm.exception.code)
 
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
     # but change the tokenlist file to generate an error
     def test_restore_changed_tokenlist(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(
-                ("--autosave __funccall --tokenlist __funccall --privkey --no-progress --threads 1").split(),
+            btcrecover.parse_arguments(AUTOSAVE_ARGS,
                 autosave  = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO("three \n two \n ^one"),
-                privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
+                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST + "four"),
+                privkey   = AUTOSAVE_PRIVKEY)
         self.assertIn("can't restore previous session: the tokenlist file has changed", cm.exception.code)
 
     # Using --restore, restore (a copy of) the autosave data created by test_autosave(),
     # but change the privkey data to generate an error
     def test_restore_changed_privkey(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(
-                ("--restore __funccall").split(),
+            btcrecover.parse_arguments(("--restore __funccall").split(),
                 restore   = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO("^one \n two \n three"),
-                privkey   = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")
+                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+                privkey   = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
         self.assertIn("can't restore previous session: the encrypted key entered is not the same", cm.exception.code)
 
     # Using --restore, restore the autosave data created by test_autosave(),
@@ -479,17 +591,17 @@ class Test06AutosaveRestore(unittest.TestCase):
         # back to slot 0 with the initial save, so the passwords should be tried again.
         self.assertIn("Password search exhausted", btcrecover.main())
         #
-        # Because slot 1 was invalid, it is the first slot overwritten. Load slot 0
-        # (the second slot overwritten), and verify it was written to after all
-        # passwords were tested
-        autosave_file.seek(0)
-        savestate = cPickle.load(autosave_file)
-        self.assertEqual(savestate.get("skip"), 9)
-        #
-        # Load slot 1, and verify it was written to before any passwords were tested
+        # Because slot 1 was invalid, it is the first slot overwritten. Load it, and
+        # verify it was written to before any passwords were tested
         autosave_file.seek(SAVESLOT_SIZE)
         savestate = cPickle.load(autosave_file)
         self.assertEqual(savestate.get("skip"), 0)
+        #
+        # Load slot 0 (the second slot overwritten), and verify it was written to
+        # after all passwords were tested
+        autosave_file.seek(0)
+        savestate = cPickle.load(autosave_file)
+        self.assertEqual(savestate.get("skip"), 9)
 
 
 def can_load_armory():
@@ -512,8 +624,10 @@ class Test07WalletDecryption(unittest.TestCase):
         btcrecover.load_wallet(temp_wallet_filename)
         if force_purepython: btcrecover.load_aes256_library(True)
 
-        self.assertFalse(btcrecover.return_verified_password_or_false("btcr-wrong-password"))
-        self.assertEqual(btcrecover.return_verified_password_or_false("btcr-test-password"), "btcr-test-password")
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
         btcrecover.unload_wallet()
         self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
@@ -556,8 +670,10 @@ class Test08KeyDecryption(unittest.TestCase):
         btcrecover.load_from_base64_key(key_crc_base64)
         if force_purepython: btcrecover.load_aes256_library(True)
 
-        self.assertFalse(btcrecover.return_verified_password_or_false("btcr-wrong-password"))
-        self.assertEqual(btcrecover.return_verified_password_or_false("btcr-test-password"), "btcr-test-password")
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
     @unittest.skipUnless(can_load_armory(), "requires Armory")
     def test_armory(self):
@@ -583,29 +699,30 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertIn("encrypted key data is corrupted (failed CRC check)", cm.exception.code)
 
 
+E2E_ARGS = "--tokenlist __funccall --privkey --autosave __funccall --typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
+E2E_TOKENLIST = "+ ^%0,1[b-c]tcr--  \n  + ^,$%0,1<Test-  \n  ^3$pas  \n  + wrod$"
+E2E_PRIVKEY   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test09EndToEnd(unittest.TestCase):
 
     autosave_file = StringIONonClosing()
 
     # These test_ functions are in alphabetical order (the same order they're executed in)
 
+    # A test of multiple features at once
     def test_end_to_end(self):
         autosave_file = self.__class__.autosave_file
-        btcrecover.parse_arguments(
-            "--tokenlist __funccall --privkey --autosave __funccall --typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split(),
-            tokenlist = cStringIO.StringIO("\n".join(
-                ["+ ^%0,1[b-c]tcr--", "+ ^,$%0,1<Test-", "^3$pas", "+ wrod$"]
-            )),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==",
+        btcrecover.parse_arguments(E2E_ARGS,
+            tokenlist = cStringIO.StringIO(E2E_TOKENLIST),
+            privkey   = E2E_PRIVKEY,
             autosave  = autosave_file)
-
         self.assertIn("Password found: 'btcr-test-password'", btcrecover.main())
 
-        # Verify the exact password number where it was found
+        # Verify the exact password number where it was found to ensure password ordering hasn't changed
         autosave_file.seek(SAVESLOT_SIZE)
         savestate = cPickle.load(autosave_file)
         self.assertEqual(savestate.get("skip"), 103764)
 
+    # Repeat the test above using the same autosave file, starting off just before the password was found
     def test_restore(self):
         self.test_end_to_end()
 
@@ -614,6 +731,25 @@ class Test09EndToEnd(unittest.TestCase):
         autosave_file.seek(0)
         savestate = cPickle.load(autosave_file)
         self.assertEqual(savestate.get("skip"), 103764)
+
+    # Repeat the first test with a new autosave file, using --skip to start just after the password is located
+    def test_skip(self):
+        autosave_file = StringIONonClosing()
+        btcrecover.parse_arguments(E2E_ARGS + ["--skip=103765"],
+            tokenlist = cStringIO.StringIO(E2E_TOKENLIST),
+            privkey   = E2E_PRIVKEY,
+            autosave  = autosave_file)
+        self.assertIn("Password search exhausted", btcrecover.main())
+
+        # Verify the password number where the search started
+        autosave_file.seek(0)
+        savestate = cPickle.load(autosave_file)
+        self.assertEqual(savestate.get("skip"), 103765)
+
+        # Verify the total count of passwords
+        autosave_file.seek(SAVESLOT_SIZE)
+        savestate = cPickle.load(autosave_file)
+        self.assertEqual(savestate.get("skip"), 139655)
 
 
 if __name__ == '__main__':
