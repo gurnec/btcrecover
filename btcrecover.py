@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.6.7"
+__version__          = "0.7.0"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -360,6 +360,57 @@ def return_bitcoincore_verified_password_or_false(passwords):
             return password, count
     return False, count
 
+pyopencl = None
+def load_bitcoincore_opencl_library():
+    global pyopencl, numpy, cl_queue, cl_kernel, cl_hashes_buf, \
+           return_verified_password_or_false, iter_count_chunksize
+    if not pyopencl:
+        import pyopencl, numpy
+        # TODO: provide interface or options for selecting the GPU(s)?
+        cl_context = pyopencl.create_some_context()
+        cl_queue   = pyopencl.CommandQueue(cl_context)
+        cl_program = pyopencl.Program(cl_context,
+            open(os.path.join(os.path.dirname(__file__), "sha512-ng-bc_kernel.cl")).read()).build()
+        cl_kernel  = cl_program.kernel_sha512_bc
+        cl_kernel.set_scalar_arg_dtypes([None, numpy.uint32])
+
+    cl_hashes_buf = pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, args.global_ws * 64)
+
+    # Calculate the best iter_count chunksize which minimizes wasted time in the last iteration
+    assert isinstance(wallet, tuple) and len(wallet) == 3, "load_bitcoincore_opencl_library: bitcoin core wallet or mkey has been loaded"
+    iter_count = wallet[2]
+    iter_count_chunksize = iter_count // args.int_rate or 1
+    if iter_count_chunksize % args.int_rate != 0:  # if not evenly divisible,
+        iter_count_chunksize += 1                  # then round up
+
+    return_verified_password_or_false = return_bitcoincore_opencl_verified_password_or_false
+
+def return_bitcoincore_opencl_verified_password_or_false(passwords):
+    encrypted_master_key, salt, iter_count = wallet
+
+    hashes = numpy.empty([args.global_ws, 64], numpy.uint8)
+    for i, password in enumerate(passwords):  # the first iter_count iteration
+        hashes[i] = numpy.fromstring(hashlib.sha512(password + salt).digest(), numpy.uint8)
+    pyopencl.enqueue_copy(cl_queue, cl_hashes_buf, hashes)
+
+    # all but the last (iter_count_chunksize sized) set of iterations:
+    for i in xrange(1, iter_count - iter_count_chunksize, iter_count_chunksize):
+        cl_done = cl_kernel(cl_queue, (args.global_ws,), (args.local_ws,) if args.local_ws else None,
+            cl_hashes_buf, iter_count_chunksize)
+        cl_done.wait()
+    # the (usually smaller than iter_count_chunksize) set of iterations:
+    cl_done = cl_kernel(cl_queue, (args.global_ws,), (args.local_ws,) if args.local_ws else None,
+        cl_hashes_buf, iter_count - iter_count_chunksize - i)
+
+    pyopencl.enqueue_copy(cl_queue, hashes, cl_hashes_buf, wait_for=[cl_done])
+    for i, password in enumerate(passwords):
+        derived_key_iv = hashes[i].tostring()
+        master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
+        # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+        if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            return password, i + 1
+    return False, i + 1
+
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
 def load_multibit_privkey_file(privkey_file):
@@ -685,8 +736,14 @@ parser_common.add_argument("--no-progress", action="store_true",   default=not s
 parser_common.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
 parser_common.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
 parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
+parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
 parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
+gpu_group = parser_common.add_argument_group("GPU")
+gpu_group.add_argument("--enable-gpu", action="store_true", help="enable experimental GPU-based searching (only supports Bitcoin Core wallets and mkeys)")
+gpu_group.add_argument("--global-ws",  type=int, default=4096, metavar="PASSWORD-COUNT", help="OpenCL global work size (default: 4096)")
+gpu_group.add_argument("--local-ws",   type=int,               metavar="PASSWORD-COUNT", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
+gpu_group.add_argument("--int-rate",   type=int, default=200,  metavar="RATE",           help="interrupt rate: raise to improve PC's responsiveness, lower to increase search performance (default: 30)")
 
 # Once parse_arguments() has completed, password_generator_factory() will return an iterator
 # (actually a generator object) configured to generate all the passwords requested by the
@@ -736,9 +793,12 @@ def parse_arguments(effective_argv, **kwds):
         sys.exit(0)
 
 
+    if args.performance and (args.tokenlist or args.passwordlist):
+        error_exit("--performance cannot be used with --tokenlist or --passwordlist")
+
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
-    if not args.restore and not args.passwordlist:
+    if not args.restore and not args.passwordlist and not args.performance:
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
             default_filename="btcrecover-tokens-auto.txt", permit_stdin=True)
     else:
@@ -761,6 +821,8 @@ def parse_arguments(effective_argv, **kwds):
                         error_exit("the --tokenlist option is not permitted inside a tokenlist file")
                     elif arg.startswith("--pas"):     # --passwordlist
                         error_exit("the --passwordlist option is not permitted inside a tokenlist file")
+                    elif arg.startswith("--pe"):     # --performance
+                        error_exit("the --performance option is not permitted inside a tokenlist file")
                 effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
                 args = parser.parse_args(effective_argv)          # reparse the arguments
                 # Check this again as early as possible so user doesn't miss any error messages
@@ -830,6 +892,8 @@ def parse_arguments(effective_argv, **kwds):
         else:
             if args.listpass:
                 print(prog+": warning: --autosave is ignored with --listpass", file=sys.stderr)
+            elif args.performance:
+                print(prog+": warning: --autosave is ignored with --performance", file=sys.stderr)
             else:
                 # create an initial savestate that is populated throughout the rest of parse_arguments()
                 savestate = dict(argv = effective_argv, ordering_version = __ordering_version__)
@@ -837,9 +901,10 @@ def parse_arguments(effective_argv, **kwds):
 
     # Do a bunch of argument sanity checking
 
-    # Either we're using a passwordlist file (though it's not yet opened), or
-    # we're using a tokenlist file it it should have been found and opened by now.
-    if not args.passwordlist and not tokenlist_file:
+    # Either we're using a passwordlist file (though it's not yet opened),
+    # or we're using a tokenlist file it it should have been found and opened by now,
+    # or we're running a performance test (and neither is open; already checked above).
+    if not args.passwordlist and not tokenlist_file and not args.performance:
         error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
 
     if tokenlist_file and args.max_tokens < args.min_tokens:
@@ -1071,14 +1136,44 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 savestate["key_crc"] = key_crc
 
+    if args.enable_gpu:
+        # TODO: fix this fragile check
+        if not isinstance(wallet, tuple) or len(wallet) != 3:
+            error_exit("GPU searching is only supported for Bitcoin Core wallets and mkeys")
+        if args.int_rate <= 0:
+            error_exit("--int-rate must be > 0")
+        if args.local_ws:
+            if args.global_ws % args.local_ws != 0:
+                error_exit("--global-ws ("+str(args.global_ws)+") must be evenly divisible by --local-ws ("+str(args.local_ws)+")")
+            if args.local_ws % 32 != 0:
+                print(prog+": warning: --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
+        if args.global_ws % 32 != 0:
+            print(prog+": warning: --global-ws should probably be divisible by 32 for good performance", file=sys.stderr)
+        load_bitcoincore_opencl_library()
+        if args.threads != parser.get_default("threads"):
+            print(prog+": warning: --threads is ignored with --enable-gpu", file=sys.stderr)
+        args.threads = 1
+    else:
+        if args.global_ws != parser.get_default("global_ws"):
+            print(prog+": warning: --global-ws is ignored without --enable-gpu", file=sys.stderr)
+        if args.local_ws:
+            print(prog+": warning: --local-ws is ignored without --enable-gpu", file=sys.stderr)
+        if args.int_rate != parser.get_default("int_rate"):
+            print(prog+": warning: --int-rate is ignored without --enable-gpu", file=sys.stderr)
 
-    # If we're just doing a --listpass, this only affects the sanity checking below
-    if args.listpass:
+    global has_any_wildcards
+    if args.performance:
+        has_any_wildcards = False
+        if args.listpass:
+            error_exit("--performance tests require a wallet or key")
+
+    # ETAs are always disabled with --listpass or --performance
+    if args.listpass or args.performance:
         args.no_eta = True
 
     # If we're using a passwordlist file, open it here. If we're opening stdin, read in at least an
     # initial portion. If we manage to read up until EOF, then we won't need to disable ETA features.
-    global passwordlist_file, initial_passwordlist, passwordlist_allcached, has_any_wildcards
+    global passwordlist_file, initial_passwordlist, passwordlist_allcached
     passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"), permit_stdin=True)
     if passwordlist_file:
         initial_passwordlist   = []
@@ -1106,11 +1201,14 @@ def parse_arguments(effective_argv, **kwds):
                 args.no_eta = True
 
     # Some final sanity checking, now that args.no_eta's value is known
-    if args.no_eta:
-        if not args.no_dupchecks and not args.listpass:
-            print(prog+": warning: --no-eta without --no-dupchecks can cause out-of-memory failures while searching", file=sys.stderr)
+    if args.no_eta:  # always true for --listpass and --performance
+        if not args.no_dupchecks:
+            if args.performance:
+                print(prog+": warning: --performance without --no-dupchecks will eventually cause an out-of-memory error", file=sys.stderr)
+            elif not args.listpass:
+                print(prog+": warning: --no-eta without --no-dupchecks can cause out-of-memory failures while searching", file=sys.stderr)
         if args.max_eta != parser.get_default("max_eta"):
-            print(prog+": warning: --max-eta is ignored with --no-eta or --listpass", file=sys.stderr)
+            print(prog+": warning: --max-eta is ignored with --no-eta, --listpass, or --performance", file=sys.stderr)
 
 
     # If we're using a tokenlist file, call parse_tokenlist() to parse it.
@@ -1460,6 +1558,8 @@ def password_generator(chunksize = 1, only_yield_count = False):
     # on either a tokenlist file (as parsed above) or a passwordlist file.
     if args.passwordlist:
         base_password_iterator = passwordlist_base_password_generator()
+    elif args.performance:
+        base_password_iterator = performance_base_password_generator()
     else:
         base_password_iterator = tokenlist_base_password_generator()
     for password_base in base_password_iterator:
@@ -1817,6 +1917,13 @@ def passwordlist_base_password_generator():
     elif not passwordlist_allcached:
         initial_passwordlist = ()
         passwordlist_file.close()
+
+
+# Produces an infinite number of base passwords for performance measurements. These passwords
+# are then used by password_generator() as base passwords that can undergo further modifications.
+def performance_base_password_generator():
+    for i in itertools.count(0):
+        yield "Measure Performance " + str(i)
 
 
 # This generator function expands (or contracts) all wildcards in the string passed
@@ -2373,22 +2480,30 @@ def main():
         print("\n", msg, file=sys.stderr)
         return msg
 
-    # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
-    # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
-    CHUNKSIZE_SECONDS = 1.0 / 100.0
-
     # Measure the performance of the verification function
-    # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
-    assert measure_performance_iterations, "measure_performance_iterations has been set"
-    inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
-    outer_iterations = int(round(measure_performance_iterations / inner_iterations))
+    if args.enable_gpu:
+        inner_iterations = args.global_ws
+        outer_iterations = 1
+    else:
+        # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
+        # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
+        CHUNKSIZE_SECONDS = 1.0 / 100.0
+        # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
+        assert measure_performance_iterations, "measure_performance_iterations has been set"
+        inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
+        outer_iterations = int(round(measure_performance_iterations / inner_iterations))
+    #
     start = time.clock()
     for o in xrange(outer_iterations):
         return_verified_password_or_false(["measure performance "+str(i) for i in xrange(inner_iterations)])
     est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
     assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
 
-    chunksize = int(round(CHUNKSIZE_SECONDS / est_secs_per_password)) or 1
+    if args.enable_gpu:
+        chunksize = args.global_ws
+    else:
+        # (see CHUNKSIZE_SECONDS above)
+        chunksize = int(round(CHUNKSIZE_SECONDS / est_secs_per_password)) or 1
 
     # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
@@ -2420,7 +2535,8 @@ def main():
         # If additional ETA calculations are required
         if l_savestate or not have_progress:
             eta_seconds = passwords_count * est_secs_per_password
-            if (spawned_threads == 0 or spawned_threads >= cpus):  # if the main thread is sharing CPU time with a verifying thread
+            # if the main thread is sharing CPU time with a verifying thread
+            if (spawned_threads == 0 and not args.enable_gpu or spawned_threads >= cpus):
                 eta_seconds += iterate_time
             eta_seconds = int(round(eta_seconds)) or 1
             if l_savestate:
@@ -2449,7 +2565,11 @@ def main():
         return msg
     assert skipped_count == args.skip
 
-    print("Using", args.threads, "worker", "threads" if args.threads > 1 else "thread")  # (they're actually worker processes)
+    if args.enable_gpu:
+        # TODO: be more descriptive
+        print("Using GPU")
+    else:
+        print("Using", args.threads, "worker", "threads" if args.threads > 1 else "thread")  # (they're actually worker processes)
 
     if have_progress:
         if args.no_eta:
