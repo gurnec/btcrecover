@@ -427,7 +427,7 @@ class Test04Typos(GeneratorTester):
             True)
 
 
-LARGE_TOKENLIST_LEN = btcrecover.PASSWORDS_BETWEEN_UPDATES
+LARGE_TOKENLIST_LEN = 2 * btcrecover.PASSWORDS_BETWEEN_UPDATES
 LARGE_TOKENLIST     = " ".join(str(i) for i in xrange(LARGE_TOKENLIST_LEN))
 LARGE_LAST_TOKEN    = str(LARGE_TOKENLIST_LEN - 1)
 class Test05CommandLine(GeneratorTester):
@@ -454,11 +454,11 @@ class Test05CommandLine(GeneratorTester):
     def test_skip_all_pastend_1(self):
         self.do_generator_test(["one"], [], "--skip 2", True, sys.maxint, 1)
     def test_skip_all_pastend_2(self):
-        self.do_generator_test(["one"], [], "--skip 2000000", True, sys.maxint, 1)
+        self.do_generator_test(["one"], [], "--skip " + str(LARGE_TOKENLIST_LEN), True, sys.maxint, 1)
     def test_skip_empty_1(self):
         self.do_generator_test([], [], "--skip 1", True, sys.maxint, 0)
     def test_skip_empty_2(self):
-        self.do_generator_test([], [], "--skip 2000000", True, sys.maxint, 0)
+        self.do_generator_test([], [], "--skip " + str(LARGE_TOKENLIST_LEN), True, sys.maxint, 0)
     def test_skip_large_1(self):
         self.do_generator_test([LARGE_TOKENLIST], [LARGE_LAST_TOKEN], "-d --skip "+str(LARGE_TOKENLIST_LEN-1), False, sys.maxint, LARGE_TOKENLIST_LEN-1)
     def test_skip_large_1_all_exact(self):
