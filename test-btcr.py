@@ -645,10 +645,18 @@ class Test06AutosaveRestore(unittest.TestCase):
         self.assertEqual(savestate.get("skip"), 9)
 
 
+is_armory_loadable = None
 def can_load_armory():
-    try:   btcrecover.load_armory_library()
-    except ImportError: return False
-    return True
+    global is_armory_loadable
+    # Don't call the load function more than once
+    # (calling more than once on success is OK though)
+    if is_armory_loadable is None:
+        try:
+            btcrecover.load_armory_library()
+            is_armory_loadable = True
+        except ImportError:
+            is_armory_loadable = False
+    return is_armory_loadable
 
 class Test07WalletDecryption(unittest.TestCase):
 
@@ -733,6 +741,56 @@ class Test08KeyDecryption(unittest.TestCase):
 
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", True)
+
+    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    def test_bitcoincore_cl(self):
+        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+
+        dev_names_tested = set()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in dev_names_tested: continue
+            dev_names_tested.add(dev.name)
+            btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 200)
+
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+
+    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
+    def test_bitcoincore_cl_no_interrupts(self):
+        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+
+        dev_names_tested = set()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in dev_names_tested: continue
+            dev_names_tested.add(dev.name)
+            btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 1)
+
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+
+    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    def test_bitcoincore_cl_sli(self):
+        devices_by_name = dict()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in devices_by_name: break
+            else: devices_by_name[dev.name] = dev
+        else:
+            self.skipTest("requires two identical OpenCL devices")
+
+        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+        btcrecover.init_bitcoincore_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [None, None], 200)
+
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4"]), (False, 4))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-5", "btcr-test-password", "btcr-wrong-password-6"]), ("btcr-test-password", 2))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-test-password"]), ("btcr-test-password", 3))
 
     def test_invalid_crc(self):
         with self.assertRaises(SystemExit) as cm:

@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.0"
+__version__          = "0.7.1"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -360,49 +360,114 @@ def return_bitcoincore_verified_password_or_false(passwords):
             return password, count
     return False, count
 
-pyopencl = None
-def load_bitcoincore_opencl_library():
-    global pyopencl, numpy, cl_queue, cl_kernel, cl_hashes_buf, \
-           return_verified_password_or_false, iter_count_chunksize
-    if not pyopencl:
+# Load the OpenCL libraries and return a list of available devices
+cl_devices_avail = None
+def get_opencl_devices():
+    global pyopencl, numpy, cl_devices_avail
+    if not cl_devices_avail:
         import pyopencl, numpy
-        # TODO: provide interface or options for selecting the GPU(s)?
-        cl_context = pyopencl.create_some_context()
-        cl_queue   = pyopencl.CommandQueue(cl_context)
-        cl_program = pyopencl.Program(cl_context,
-            open(os.path.join(os.path.dirname(__file__), "sha512-ng-bc_kernel.cl")).read()).build()
-        cl_kernel  = cl_program.kernel_sha512_bc
-        cl_kernel.set_scalar_arg_dtypes([None, numpy.uint32])
+        cl_devices_avail = filter(lambda d: d.available==1 and d.profile=="FULL_PROFILE" and d.endian_little==1,
+            itertools.chain(*[p.get_devices() for p in pyopencl.get_platforms()]))
+    return cl_devices_avail
 
-    cl_hashes_buf = pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, args.global_ws * 64)
+# Load and initialize the OpenCL kernel for Bitcoin Core, given:
+#   devices - a list of one or more of the devices returned by get_opencl_devices()
+#   global_ws - a list of global work sizes, exactly one per device
+#   local_ws  - a list of local work sizes (or Nones), exactly one per device
+#   int_rate  - number of times to interrupt calculations to prevent hanging
+#               the GPU driver per call to return_verified_password_or_false()
+def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
+    global cl_devices, cl_global_ws, cl_local_ws, cl_kernel, cl_queues, cl_hashes_buffers, \
+           return_verified_password_or_false, iter_count_chunksize
 
-    # Calculate the best iter_count chunksize which minimizes wasted time in the last iteration
-    assert isinstance(wallet, tuple) and len(wallet) == 3, "load_bitcoincore_opencl_library: bitcoin core wallet or mkey has been loaded"
+    # Need to save these for return_bitcoincore_opencl_verified_password_or_false()
+    assert devices, "init_bitcoincore_opencl_kernel: at least one device is selected in cl_devices"
+    assert len(devices) == len(global_ws) == len(local_ws), "init_bitcoincore_opencl_kernel: one global_ws and one local_ws specified for each device"
+    cl_devices   = devices
+    cl_global_ws = global_ws
+    cl_local_ws  = local_ws
+
+    cl_context = cl_kernel = cl_queues = cl_hashes_buffers = None  # clear any previously loaded
+    cl_context = pyopencl.Context(devices)
+    #
+    # Load and compile the OpenCL program
+    cl_program = pyopencl.Program(cl_context,
+        open(os.path.join(os.path.dirname(__file__), "sha512-ng-bc_kernel.cl")).read()).build("-w")
+    #
+    # Configure and store for later the OpenCL kernel (the entrance function)
+    cl_kernel  = cl_program.kernel_sha512_bc
+    cl_kernel.set_scalar_arg_dtypes([None, numpy.uint32])
+
+    # Create one command queue and one I/O buffer per device
+    cl_queues         = []
+    cl_hashes_buffers = []
+    for i, device in enumerate(devices):
+        cl_queues.append(pyopencl.CommandQueue(cl_context, device))
+        # Each buffer is of len --global-ws * (size-of-sha152-hash-in-bytes == 512 bits / 8 == 64)
+        cl_hashes_buffers.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, global_ws[i] * 64))
+
+    # Doing all iter_count iterations at once will hang the GPU, so instead calculate how
+    # many iterations should be done at a time based on iter_count and the requested int_rate,
+    # trying to maximize the number of iterations done in the last set to optimize performance
+    assert isinstance(wallet, tuple) and len(wallet) == 3, "init_bitcoincore_opencl_kernel: bitcoin core wallet or mkey has been loaded"
     iter_count = wallet[2]
-    iter_count_chunksize = iter_count // args.int_rate or 1
-    if iter_count_chunksize % args.int_rate != 0:  # if not evenly divisible,
-        iter_count_chunksize += 1                  # then round up
+    iter_count_chunksize = iter_count // int_rate or 1
+    if iter_count_chunksize % int_rate != 0:  # if not evenly divisible,
+        iter_count_chunksize += 1             # then round up
 
     return_verified_password_or_false = return_bitcoincore_opencl_verified_password_or_false
 
 def return_bitcoincore_opencl_verified_password_or_false(passwords):
+    assert len(passwords) <= sum(cl_global_ws), "return_bitcoincore_opencl_verified_password_or_false: at most --global-ws passwords"
     encrypted_master_key, salt, iter_count = wallet
 
-    hashes = numpy.empty([args.global_ws, 64], numpy.uint8)
-    for i, password in enumerate(passwords):  # the first iter_count iteration
+    # The first iter_count iteration is done by the CPU
+    hashes = numpy.empty([sum(cl_global_ws), 64], numpy.uint8)
+    for i, password in enumerate(passwords):
         hashes[i] = numpy.fromstring(hashlib.sha512(password + salt).digest(), numpy.uint8)
-    pyopencl.enqueue_copy(cl_queue, cl_hashes_buf, hashes)
 
-    # all but the last (iter_count_chunksize sized) set of iterations:
+    # Divide up and copy the starting hashes into the OpenCL buffer(s) (one per device) in parallel
+    done   = []  # a list of OpenCL event objects
+    offset = 0
+    for devnum, ws in enumerate(cl_global_ws):
+        done.append(pyopencl.enqueue_copy(cl_queues[devnum], cl_hashes_buffers[devnum], hashes[offset : offset + ws], is_blocking=False))
+        cl_queues[devnum].flush()  # Starts the copy operation
+        offset += ws
+    pyopencl.wait_for_events(done)
+
+    # Doing all iter_count iterations at once will hang the GPU, so instead do iter_count_chunksize
+    # iterations at a time, pausing briefly while waiting for them to complete, and then continuing.
+    # Because iter_count is probably not evenly divisible by iter_count_chunksize, the loop below
+    # performs all but the last of these iter_count_chunksize sets of iterations.
+
+    i = 1 - iter_count_chunksize  # used if the loop below doesn't run (when --int-rate == 1)
     for i in xrange(1, iter_count - iter_count_chunksize, iter_count_chunksize):
-        cl_done = cl_kernel(cl_queue, (args.global_ws,), (args.local_ws,) if args.local_ws else None,
-            cl_hashes_buf, iter_count_chunksize)
-        cl_done.wait()
-    # the (usually smaller than iter_count_chunksize) set of iterations:
-    cl_done = cl_kernel(cl_queue, (args.global_ws,), (args.local_ws,) if args.local_ws else None,
-        cl_hashes_buf, iter_count - iter_count_chunksize - i)
+        done = []  # a list of OpenCL event objects
+        # Start up a kernel for each device to do one set of iter_count_chunksize iterations
+        for devnum in xrange(len(cl_devices)):
+            done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+                cl_hashes_buffers[devnum], iter_count_chunksize))
+            cl_queues[devnum].flush()  # Starts the kernel
+        pyopencl.wait_for_events(done)
 
-    pyopencl.enqueue_copy(cl_queue, hashes, cl_hashes_buf, wait_for=[cl_done])
+    # Perform the last remaining set of iterations (usually fewer then iter_count_chunksize)
+    done = []  # a list of OpenCL event objects
+    for devnum in xrange(len(cl_devices)):
+        done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+            cl_hashes_buffers[devnum], iter_count - iter_count_chunksize - i))
+        cl_queues[devnum].flush()  # Starts the kernel
+    pyopencl.wait_for_events(done)
+
+    # Copy the resulting fully computed hashes back to RAM in parallel
+    done   = []  # a list of OpenCL event objects
+    offset = 0
+    for devnum, ws in enumerate(cl_global_ws):
+        done.append(pyopencl.enqueue_copy(cl_queues[devnum], hashes[offset : offset + ws], cl_hashes_buffers[devnum], is_blocking=False))
+        offset += ws
+        cl_queues[devnum].flush()  # Starts the copy operation
+    pyopencl.wait_for_events(done)
+
+    # Using the computed hashes, try to decrypt the master key (in CPU)
     for i, password in enumerate(passwords):
         derived_key_iv = hashes[i].tostring()
         master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
@@ -705,6 +770,17 @@ def enable_pause():
             pause_registered = False
 
 
+# argparse type functions
+def strings_list(argval):
+    return argval.split(",")
+#
+def positive_ints_list(argval):
+    try:   result = map(int, argval.split(","))
+    except ValueError: raise argparse.ArgumentTypeError("items in this comma-separated list must be positive integers")
+    for i in result:
+        if i < 1: raise argparse.ArgumentTypeError("integers in this list must be > 0")
+    return result
+
 # can raise an exception on some platforms
 try:                  cpus = multiprocessing.cpu_count()
 except StandardError: cpus = 1
@@ -739,11 +815,13 @@ parser_common.add_argument("--listpass",    action="store_true", help="just list
 parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
 parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
-gpu_group = parser_common.add_argument_group("GPU")
-gpu_group.add_argument("--enable-gpu", action="store_true", help="enable experimental GPU-based searching (only supports Bitcoin Core wallets and mkeys)")
-gpu_group.add_argument("--global-ws",  type=int, default=4096, metavar="PASSWORD-COUNT", help="OpenCL global work size (default: 4096)")
-gpu_group.add_argument("--local-ws",   type=int,               metavar="PASSWORD-COUNT", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
-gpu_group.add_argument("--int-rate",   type=int, default=200,  metavar="RATE",           help="interrupt rate: raise to improve PC's responsiveness, lower to increase search performance (default: 30)")
+gpu_group = parser_common.add_argument_group("GPU acceleration")
+gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and mkeys)")
+gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: 4096)")
+gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
+gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="Choose GPU(s) on multi-GPU systems (default: auto)")
+gpu_group.add_argument("--list-gpus",  action="store_true",     help="List available GPU names and IDs, then exit")
+gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: 200)")
 
 # Once parse_arguments() has completed, password_generator_factory() will return an iterator
 # (actually a generator object) configured to generate all the passwords requested by the
@@ -795,6 +873,11 @@ def parse_arguments(effective_argv, **kwds):
 
     if args.performance and (args.tokenlist or args.passwordlist):
         error_exit("--performance cannot be used with --tokenlist or --passwordlist")
+
+    if args.list_gpus:
+        for i, dev in enumerate(get_opencl_devices(), 1):
+            print("#"+str(i), dev.name.strip())
+        exit(0)
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
@@ -977,7 +1060,7 @@ def parse_arguments(effective_argv, **kwds):
 
     # Syntax check and expand --typos-insert/--typos-replace wildcards
     global typos_insert_expanded, typos_replace_expanded
-    for arg_name, arg_val in (("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace)):
+    for arg_name, arg_val in ("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace):
         if arg_val:
             error_msg = count_valid_wildcards(arg_val)
             if isinstance(error_msg, basestring):
@@ -1136,34 +1219,98 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 savestate["key_crc"] = key_crc
 
+
+    # Parse and syntax check all of the GPU related options
     if args.enable_gpu:
         # TODO: fix this fragile check
         if not isinstance(wallet, tuple) or len(wallet) != 3:
             error_exit("GPU searching is only supported for Bitcoin Core wallets and mkeys")
+        devices_avail = get_opencl_devices()  # all available OpenCL device objects
+        if devices_avail == []:
+            error_exit("no supported GPUs found")
         if args.int_rate <= 0:
             error_exit("--int-rate must be > 0")
-        if args.local_ws:
-            if args.global_ws % args.local_ws != 0:
-                error_exit("--global-ws ("+str(args.global_ws)+") must be evenly divisible by --local-ws ("+str(args.local_ws)+")")
-            if args.local_ws % 32 != 0:
-                print(prog+": warning: --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
-        if args.global_ws % 32 != 0:
-            print(prog+": warning: --global-ws should probably be divisible by 32 for good performance", file=sys.stderr)
-        load_bitcoincore_opencl_library()
+        #
+        # If specific devices were requested by name, build a list of devices from those available
+        if args.gpu_names:
+            # Create a list of names of available devices, exactly the same way as --list-gpus except all lower case
+            avail_names = []  # will be the *names* of available devices
+            for i, dev in enumerate(devices_avail, 1):
+                avail_names.append("#"+str(i)+" "+dev.name.strip().lower())
+            #
+            devices = []  # will be the list of devices to actually use, taken from devices_avail
+            for device_name in args.gpu_names:  # for each name specified at the command line
+                if device_name == "":
+                    error_exit("empty name in --gpus")
+                device_name = device_name.lower()
+                for i, avail_name in enumerate(avail_names):
+                    if device_name in avail_name:  # if the name at the command line matches an available one
+                        devices.append(devices_avail[i])
+                        avail_names[i] = ""  # this device isn't available a second time
+                        break
+                else:  # if for loop exits normally, and not via the break above
+                    error_exit("can't find GPU whose name contains '"+device_name+"' (use --list-gpus to display available GPUs)")
+        #
+        # Else if specific devices weren't requested, try to build a good default list
+        else:
+            best_score_sofar = -1
+            for dev in devices_avail:
+                cur_score = 0
+                if   dev.type & pyopencl.device_type.ACCELERATOR: cur_score += 8  # always best
+                elif dev.type & pyopencl.device_type.GPU:         cur_score += 4  # better than CPU
+                if   "nvidia" in dev.vendor.lower():              cur_score += 2  # is never an IGP: very good
+                elif "amd"    in dev.vendor.lower():              cur_score += 1  # sometimes an IGP: good
+                if cur_score >= best_score_sofar:
+                    if cur_score > best_score_sofar:
+                        best_score_sofar = cur_score
+                        devices = []
+                    devices.append(dev)
+            #
+            # Multiple best devices are only permitted if they seem to be identical
+            device_name = devices[0].name
+            for dev in devices[1:]:
+                if dev.name != device_name:
+                    error_exit("can't automatically determine best GPU(s), please use the --gpus option")
+        #
+        # --global-ws and --local-ws lists must be the same length as the number of devices to use, unless
+        # they are of length one in which case they are repeated until they are the correct length
+        for argname, arglist in ("--global-ws", args.global_ws), ("--local-ws", args.local_ws):
+            if len(arglist) == len(devices): continue
+            if len(arglist) != 1:
+                error_exit("number of", argname, "integers must be either one or be the number of GPUs utilized")
+            arglist.extend(arglist * (len(devices) - 1))
+        #
+        # Check the values of --global-ws and --local-ws (already known to be positive ints)
+        local_ws_warning = False
+        if args.local_ws[0] is not None:  # if one is specified, they're all specified
+            for i in xrange(len(args.local_ws)):
+                if args.local_ws[i] > devices[i].max_work_group_size:
+                    error_exit("--local-ws of", args.local_ws[i], "exceeds max of", devices[i].max_work_group_size, "for GPU '"+devices[i].name.strip()+"'")
+                if args.global_ws[i] % args.local_ws[i] != 0:
+                    error_exit("each --global-ws ("+str(args.global_ws[i])+") must be evenly divisible by its --local-ws ("+str(args.local_ws[i])+")")
+                if args.local_ws[i] % 32 != 0 and not local_ws_warning:
+                    print(prog+": warning: each --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
+                    local_ws_warning = True
+        for ws in args.global_ws:
+            if ws % 32 != 0:
+                print(prog+": warning: each --global-ws should probably be divisible by 32 for good performance", file=sys.stderr)
+                break
+        #
+        init_bitcoincore_opencl_kernel(devices, args.global_ws, args.local_ws, args.int_rate)
         if args.threads != parser.get_default("threads"):
             print(prog+": warning: --threads is ignored with --enable-gpu", file=sys.stderr)
         args.threads = 1
+    #
+    # if not --enable-gpu: sanity checks
     else:
-        if args.global_ws != parser.get_default("global_ws"):
-            print(prog+": warning: --global-ws is ignored without --enable-gpu", file=sys.stderr)
-        if args.local_ws:
-            print(prog+": warning: --local-ws is ignored without --enable-gpu", file=sys.stderr)
-        if args.int_rate != parser.get_default("int_rate"):
-            print(prog+": warning: --int-rate is ignored without --enable-gpu", file=sys.stderr)
+        for argname, argkey in ("--gpu-names", "gpu_names"), ("--global-ws", "global_ws"), ("--local-ws", "local_ws"), ("--int-rate", "int_rate"):
+            if args.__dict__[argkey] != parser.get_default(argkey):
+                print(prog+": warning:", argname, "is ignored without --enable-gpu", file=sys.stderr)
+
 
     global has_any_wildcards
     if args.performance:
-        has_any_wildcards = False
+        has_any_wildcards = False  # Need to initialize this to something
         if args.listpass:
             error_exit("--performance tests require a wallet or key")
 
@@ -2482,7 +2629,7 @@ def main():
 
     # Measure the performance of the verification function
     if args.enable_gpu:
-        inner_iterations = args.global_ws
+        inner_iterations = sum(args.global_ws)
         outer_iterations = 1
     else:
         # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
@@ -2500,7 +2647,7 @@ def main():
     assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
 
     if args.enable_gpu:
-        chunksize = args.global_ws
+        chunksize = sum(args.global_ws)
     else:
         # (see CHUNKSIZE_SECONDS above)
         chunksize = int(round(CHUNKSIZE_SECONDS / est_secs_per_password)) or 1
@@ -2566,8 +2713,12 @@ def main():
     assert skipped_count == args.skip
 
     if args.enable_gpu:
-        # TODO: be more descriptive
-        print("Using GPU")
+        if len(cl_devices) == 1:
+            print("Using OpenCL", pyopencl.device_type.to_string(cl_devices[0].type), cl_devices[0].name.strip())
+        else:
+            print("Using", len(cl_devices), "OpenCL devices:")
+            for dev in cl_devices:
+                print(" ", pyopencl.device_type.to_string(dev.type), dev.name.strip())
     else:
         print("Using", args.threads, "worker", "threads" if args.threads > 1 else "thread")  # (they're actually worker processes)
 

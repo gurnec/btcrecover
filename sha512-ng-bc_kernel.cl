@@ -12,9 +12,9 @@
 #define _OPENCL_COMPILER
 
 
-//From opencl_device_info.h
+// From opencl_device_info.h
 
-//Copied from common-opencl.h
+// Copied from common-opencl.h
 #define DEV_UNKNOWN                 0
 #define DEV_CPU                     1
 #define DEV_GPU                     2
@@ -43,7 +43,7 @@
 #define platform_apple(p)           (get_platform_vendor_id(p) == PLATFORM_APPLE)
 
 
-//From opencl_sha2_common.h
+// From opencl_sha2_common.h
 
 // Type names definition.
 // NOTE: long is always 64-bit in OpenCL, and long long is 128 bit.
@@ -73,9 +73,9 @@
 #endif
 
 
-//From opencl_sha512.h
+// From opencl_sha512.h
 
-//Macros.
+// Macros
 #define SWAP(n) \
             (((n)             << 56)   | (((n) & 0xff00)     << 40) |   \
             (((n) & 0xff0000) << 24)   | (((n) & 0xff000000) << 8)  |   \
@@ -98,7 +98,7 @@
 #define sigma0(x)               ((ror(x,1UL))  ^ (ror(x,8UL))  ^ (x>>7))
 #define sigma1(x)               ((ror(x,19UL)) ^ (ror(x,61UL)) ^ (x>>6))
 
-//SHA512 constants.
+// SHA512 constants
 #define H0      0x6a09e667f3bcc908UL
 #define H1      0xbb67ae8584caa73bUL
 #define H2      0x3c6ef372fe94f82bUL
@@ -154,9 +154,9 @@ __constant uint64_t clear_mask[] = {
 #endif
 
 
-//From opencl_rawsha512-ng.h
+// From opencl_rawsha512-ng.h
 
-//Data types.
+// Data types
 typedef union {
     uint8_t                     mem_08[8];
     uint16_t                    mem_16[4];
@@ -171,26 +171,28 @@ typedef struct {
 } sha512_ctx;
 
 
-//From sha512-ng_kernel.cl
+// From sha512-ng_kernel.cl
 
 inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
     uint64_t a, b, c, d, e, f, g, h;
     uint64_t t1, t2;
     uint64_t w[16], w8;
 
+    // Copy input arg into local input variable and convert endianness
     #pragma unroll
     for (int i = 0; i < 8; i++)
 	w[i] = SWAP64(ctx->buffer[i].mem_64[0]);
 
-    //Has been set correctly in finish_ctx()
-    w[8] = w8 = SWAP64(ctx->buffer[8].mem_64[0]);
-    w[15] = ctx->buffer[15].mem_64[0];
+    // Has been set correctly by finish_ctx()
+    w[8] = w8 = SWAP64(ctx->buffer[8].mem_64[0]);  // The appended 1
+    w[15] = ctx->buffer[15].mem_64[0];             // The length
 
-    //Assumes len==64 bytes
+    // Assumes length is 64 bytes
     #pragma unroll
     for (int i = 9; i < 15; i++)
 	w[i] = 0;
 
+    // Do a complete SHA512 hash for each requested iteration
     for (size_t iter_count = 0; iter_count < iterations; iter_count++) {
 
 	a = H0;
@@ -233,6 +235,7 @@ inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
 	    a = t1 + t2;
 	}
 
+	// Copy resulting SHA512 hash into the local input variable
 	w[0] = a + H0;
 	w[1] = b + H1;
 	w[2] = c + H2;
@@ -242,14 +245,14 @@ inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
 	w[6] = g + H6;
 	w[7] = h + H7;
 
-	//Assumes orig len==64 bytes
-	w[8] = w8;
+	// Assumes original input length was 64 bytes
+	w[8] = w8;                          // The appended 1
 	for (int i = 9; i < 15; i++)
 	    w[i] = 0;
-	w[15] = ctx->buffer[15].mem_64[0];
+	w[15] = ctx->buffer[15].mem_64[0];  // The length
     }
 
-    /* Put checksum in context given as argument. */
+    // Copy resulting SHA512 hash into the output arg and convert endianness
     #pragma unroll
     for (int i = 0; i < 8; i++)
 	ctx->H[i] = SWAP64(w[i]);
@@ -282,25 +285,24 @@ inline void sha512_crypt(sha512_ctx * ctx, uint32_t iterations) {
 }
 
 __kernel
-void kernel_sha512_bc(__global   uint32_t  * hashes_buffer,
-		                 uint32_t    iterations) {
-
-    //Compute buffers (on CPU and NVIDIA, better private)
+void kernel_sha512_bc(__global uint32_t* hashes_buffer,
+		               uint32_t  iterations)
+{
     sha512_ctx ctx;
 
-    //Get offset for buffer
+    // Get location of the hash to work on for this kernel
     hashes_buffer += (get_global_id(0) << 4);
 
-    //Get input hash
+    // Copy the initial hash from the I/O buffer into ctx
     #pragma unroll
     for (uint32_t i = 0; i < 16; i++)
 	ctx.buffer->mem_32[i] = hashes_buffer[i];
     ctx.buflen = 64;
 
-    //Do the job
+    // Perform SHA512 iterations
     sha512_crypt(&ctx, iterations);
 
-    //Save results
+    // Copy the result back into the I/O buffer
     #pragma unroll
     for (uint32_t i = 0; i < 16; i++)
 	hashes_buffer[i] = ((uint32_t*)ctx.H)[i];
