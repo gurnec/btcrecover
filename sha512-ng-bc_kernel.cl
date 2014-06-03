@@ -9,6 +9,16 @@
  * http://www.gnu.org/licenses/gpl-2.0.html
  */
 
+/*
+ * This software is originally attributed to the authors of the JohnTheRipper
+ * software package, and in particular to Claudio André who developed all of
+ * the core SHA512 functionality. It was pieced together from files downloaded
+ * from the JohnTheRipper source repository at the link below, and then
+ * lightly modified to suit the purposes of this software package, btcrecover.
+ *
+ * https://github.com/magnumripper/JohnTheRipper/tree/bleeding-jumbo/src/opencl
+ */
+
 #define _OPENCL_COMPILER
 
 

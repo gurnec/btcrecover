@@ -305,11 +305,21 @@ In addition to requiring Armory 0.91, you will also need to download and install
 
 With this combination, you will also need to download and install:
 
- * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows), both available here: <https://www.python.org/download/>
+ * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows and don't plan on using GPU acceleration), both available here: <https://www.python.org/download/>
 
  * Optional, but highly recommended for MultiBit or Electrum (for a 30x speed improvement): The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
 
- * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU and slightly improves autosave safety: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-218.win32-py2.7.exe” for the 32-bit version or “pywin32-218.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 218” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
+ * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU and slightly improves autosave safety: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-219.win32-py2.7.exe” for the 32-bit version or “pywin32-219.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 219” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
+
+#### Windows GPU acceleration for Bitcoin Core or Litecoin-Qt ####
+
+To enable the experimental GPU acceleration features in Windows, you will need to download and install the 32-bit version of Python 2.7 plus the optional components you'd like as detailed above (and *only* this version, no other version of Python can be installed except the 32-bit version of Python 2.7 plus any optional libraries), and you will also need to download and install:
+
+ * The latest binary version of PyOpenCL for Python 2 & Python(x,y) available here: <https://code.google.com/p/pythonxy/wiki/AdditionalPlugins>. (The download link on that page is a button to the right of “pyopencl” which has an arrow pointing downwards.)
+
+ * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.8.1-win32-superpack-python2.7.exe”, available next to “Looking for the latest version?” here: <http://sourceforge.net/projects/numpy/files/NumPy/>
+
+If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
 
 ### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, or Litecoin-Qt ###
 
@@ -361,6 +371,24 @@ The `| more` at the end (the `|` symbol is a shifted `\` backslash) will introdu
 The key files have names which look like `walletname-20140407200743.key`. If you've created additional wallets, their `key-backup` directories will be located elsewhere and it's up to you to locate them. Once you have, choose the most recent `.key` file and copy it into the directory containing `btcrecover.py` for it to use.
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
+
+### GPU acceleration for Bitcoin Core and Litecoin-Qt wallets###
+
+*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance with Bitcoin Core and Litecoin-Qt wallets. This can offer on the order of *100x* better performance when enabled.
+
+In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](#windows-gpu-acceleration-for-bitcoin-core-or-litecoin-qt) section. GPU acceleration should also work on Linux and OS X, however instruction for installing the required Python libraries are not currently included in this tutorial.
+
+To enable GPU support, add the `--enable-gpu` option to the command line. There are two other options, `--global-ws` and `--local-ws`, which should also be provided along with specific values to improve the search speed. Unfortunately, the specific values for these options can only be determined by trial and error. A good starting point is:
+
+    C:\python27\python btcrecover.py --wallet wallet.dat --performance --enable-gpu --global-ws 4096 --local-ws 512
+
+The `--performance` option tells *btcrecover* to simply measure the performance until Ctrl-C is pressed, and not to try testing any particular passwords. You will still need a wallet file (or an `--mkey` if you'd prefer) for performance testing. After you you have a baseline from this initial test, you can try different values for `--global-ws` and `--local-ws` to see if they improve or worsen performance.
+
+Finding the right values for `--global-ws` and `--local-ws` can make a 10x improvement, so it's usually worth the effort.
+
+Generally when testing, you should increase or decrease these two values by powers of 2, for example you should increase or decrease them by 128 or 256 at a time. It's important to note that `--global-ws` must always be evenly divisible by `--local-ws`, otherwise *btcrecover* will exit with an error message.
+
+Although this procedure can be tedious, with larger tokenlists or passwordlists they can make a significant difference.
 
 ### command-line options inside the tokens file ###
 
