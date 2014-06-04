@@ -365,9 +365,16 @@ cl_devices_avail = None
 def get_opencl_devices():
     global pyopencl, numpy, cl_devices_avail
     if not cl_devices_avail:
-        import pyopencl, numpy
-        cl_devices_avail = filter(lambda d: d.available==1 and d.profile=="FULL_PROFILE" and d.endian_little==1,
-            itertools.chain(*[p.get_devices() for p in pyopencl.get_platforms()]))
+        try:
+            import pyopencl, numpy
+            cl_devices_avail = filter(lambda d: d.available==1 and d.profile=="FULL_PROFILE" and d.endian_little==1,
+                itertools.chain(*[p.get_devices() for p in pyopencl.get_platforms()]))
+        except ImportError as e:
+            print(prog+": warning:", e, file=sys.stderr)
+            cl_devices_avail = []
+        except pyopencl.LogicError as e:
+            if "platform not found" not in str(e): raise  # unexpected error
+            cl_devices_avail = []  # PyOpenCL loaded OK but didn't find any supported hardware
     return cl_devices_avail
 
 # Load and initialize the OpenCL kernel for Bitcoin Core, given:
@@ -875,7 +882,10 @@ def parse_arguments(effective_argv, **kwds):
         error_exit("--performance cannot be used with --tokenlist or --passwordlist")
 
     if args.list_gpus:
-        for i, dev in enumerate(get_opencl_devices(), 1):
+        devices_avail = get_opencl_devices()  # all available OpenCL device objects
+        if devices_avail == []:
+            error_exit("no supported GPUs found")
+        for i, dev in enumerate(devices_avail, 1):
             print("#"+str(i), dev.name.strip())
         exit(0)
 

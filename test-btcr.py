@@ -713,6 +713,11 @@ class Test07WalletDecryption(unittest.TestCase):
         self.assertIn("unrecognized wallet format", cm.exception.code)
 
 
+def has_any_opencl_devices():
+    try:   devs = btcrecover.get_opencl_devices()
+    except ImportError: return False
+    return len(devs) > 0
+
 class Test08KeyDecryption(unittest.TestCase):
 
     def key_tester(self, key_crc_base64, force_purepython = False):
@@ -742,7 +747,7 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", True)
 
-    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):
         btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
 
@@ -757,7 +762,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
-    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
     def test_bitcoincore_cl_no_interrupts(self):
         btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
@@ -773,7 +778,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
-    @unittest.skipUnless(btcrecover.get_opencl_devices(), "requires OpenCL and a compatible device")
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl_sli(self):
         devices_by_name = dict()
         for dev in btcrecover.get_opencl_devices():
