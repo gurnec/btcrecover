@@ -23,6 +23,8 @@
 #
 #                      Thank You!
 
+# PYTHON_ARGCOMPLETE_OK - enables optional bash tab completion
+
 # TODO: Unicode support? permit 8-bit characters (already done for passwordlist)?
 # TODO: put everything in a class?
 # TODO: pythonize comments/documentation
@@ -31,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.2"
+__version__          = "0.7.3"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -116,7 +118,7 @@ def typo_closecase(p, i):  # (case_id functions defined in the Password Generati
 def typo_replace_wildcard(p, i): return [e      for e in typos_replace_expanded if e != p[i]]
 def typo_map(p, i):              return typos_map.get(p[i], ())
 # (typos_replace_expanded and typos_map are initialized from args.typos_replace
-# and args.typos_map respectively in parse_args() )
+# and args.typos_map respectively in parse_arguments() )
 #
 # a dict: command line argument name is: "typos-" + key_name; associated value is
 # the generator function from above; this dict MUST BE ORDERED to prevent the
@@ -847,6 +849,10 @@ def parse_arguments(effective_argv, **kwds):
     # is changed (due to reading a tokenlist or restore file), we redo parser.parse_args() which
     # changes args, so we only do this early on before most args processing takes place.
 
+    # Optional bash tab completion support
+    try:   import argcomplete
+    except ImportError: argcomplete = None
+
     # Create a parser which can parse any supported option, and run it
     global args
     parser = argparse.ArgumentParser(add_help=False)
@@ -858,6 +864,7 @@ def parse_arguments(effective_argv, **kwds):
     parser.add_argument("--autosave",    metavar="FILE", help="autosaves (5 min) progress to/ restores it from a file")
     parser.add_argument("--restore",     metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--passwordlist",metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
+    if argcomplete: argcomplete.autocomplete(parser)
     args = parser.parse_args(effective_argv)
 
     # Do this as early as possible so user doesn't miss any error messages
