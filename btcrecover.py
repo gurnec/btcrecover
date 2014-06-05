@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.1"
+__version__          = "0.7.2"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -364,7 +364,7 @@ def return_bitcoincore_verified_password_or_false(passwords):
 cl_devices_avail = None
 def get_opencl_devices():
     global pyopencl, numpy, cl_devices_avail
-    if not cl_devices_avail:
+    if cl_devices_avail is None:
         try:
             import pyopencl, numpy
             cl_devices_avail = filter(lambda d: d.available==1 and d.profile=="FULL_PROFILE" and d.endian_little==1,
@@ -398,8 +398,9 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
     cl_context = pyopencl.Context(devices)
     #
     # Load and compile the OpenCL program
-    cl_program = pyopencl.Program(cl_context,
-        open(os.path.join(os.path.dirname(__file__), "sha512-ng-bc_kernel.cl")).read()).build("-w")
+    cl_program = pyopencl.Program(cl_context, open(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "sha512-ng-bc_kernel.cl"))
+        .read()).build("-w")
     #
     # Configure and store for later the OpenCL kernel (the entrance function)
     cl_kernel  = cl_program.kernel_sha512_bc
@@ -2803,14 +2804,16 @@ def main():
     if progress: progress.start()
     try:
         for password_found, passwords_tried_last in password_found_iterator:
-            passwords_tried += passwords_tried_last
-            if progress: progress.update(passwords_tried)
             if password_found:
-                if progress: print()  # move down to the line below the progress bar
+                passwords_tried += passwords_tried_last - 1  # just before the found password
+                if progress:
+                    progress.update(passwords_tried)
+                    print()  # move down to the line below the progress bar
                 msg = "Password found: " + repr(password_found)
                 print(msg)
-                passwords_tried -= 1  # adjusted so it's autosaved just before this password
                 break
+            passwords_tried += passwords_tried_last
+            if progress: progress.update(passwords_tried)
             if l_savestate and passwords_tried % est_passwords_per_5min == 0:
                 do_autosave(args.skip + passwords_tried)
         else:  # if the for loop exits normally (without breaking)
