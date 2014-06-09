@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.3"
+__version__          = "0.7.4"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -1864,10 +1864,6 @@ def tokenlist_base_password_generator():
     # is specified at the command line, otherwise use the standard itertools version.
     using_product_limitedlen = l_args_min_tokens > 5 or l_args_max_tokens < sys.maxint
     if using_product_limitedlen:
-        # Unfortunately, product_limitedlen is recursive; the recursion limit
-        # must be at least as high as the number of lines in the tokenlist file
-        if l_len(token_lists) + 20 > sys.getrecursionlimit():
-            sys.setrecursionlimit(l_len(token_lists) + 20)
         product_generator = product_limitedlen(*token_lists, minlen=l_args_min_tokens, maxlen=l_args_max_tokens)
     else:
         product_generator = itertools.product(*token_lists)
@@ -1975,48 +1971,100 @@ def tokenlist_base_password_generator():
 # (making their length variable) and only then applies the requested length constraint.
 # (Does not accept the itertools "repeat" argument.)
 # TODO: implement without recursion?
+#
+# Check for edge cases that would violate do_product_limitedlen()'s invariants,
+# and then call do_product_limitedlen() to do the real work
 def product_limitedlen(*sequences, **kwds):
-    minlen = kwds.get("minlen", 0)
+    minlen = max(kwds.get("minlen", 0), 0)  # no less than 0
     maxlen = kwds.get("maxlen", sys.maxint)
+
+    if minlen > maxlen:  # minlen is already >= 0
+        return xrange(0).__iter__()         # yields nothing at all
+
+    if maxlen == 0:      # implies minlen == 0 because of the check above
+        # Produce a length 0 tuple unless there's a seq which doesn't have a None
+        # (and therefore would produce output of length >= 1, but maxlen == 0)
+        for seq in sequences:
+            if None not in seq: break
+        else:  # if it didn't break, there was a None in every seq
+            return itertools.repeat((), 1)  # a single empty tuple
+        # if it did break, there was a seq without a None
+        return xrange(0).__iter__()         # yields nothing at all
 
     sequences_len = len(sequences)
     if sequences_len == 0:
-        if minlen <= 0 <= maxlen: yield ()
+        if minlen == 0:  # already true: minlen >= 0 and maxlen >= minlen
+            return itertools.repeat((), 1)  # a single empty tuple
+        else:            # else minlen > 0
+            return xrange(0).__iter__()     # yields nothing at all
+
+    # If there aren't enough sequences to satisfy minlen
+    if minlen > sequences_len:
+        return xrange(0).__iter__()         # yields nothing at all
+
+    # Unfortunately, do_product_limitedlen is recursive; the recursion limit
+    # must be at least as high as sequences_len plus a small buffer
+    if sequences_len + 20 > sys.getrecursionlimit():
+        sys.setrecursionlimit(sequences_len + 20)
+
+    # Build a lookup table for do_product_limitedlen() (see below for details)
+    requireds_left_sofar = 0
+    requireds_left = [None]  # requireds_left[0] is never used
+    for seq in reversed(sequences[1:]):
+        if None not in seq: requireds_left_sofar += 1
+        requireds_left.append(requireds_left_sofar)
+
+    return do_product_limitedlen(minlen, maxlen, requireds_left, sequences_len - 1, *sequences)
+#
+# assumes: maxlen >= minlen, maxlen >= 1, others_len == len(other_sequences), others_len + 1 >= minlen
+def do_product_limitedlen(minlen, maxlen, requireds_left, others_len, sequence, *other_sequences):
+    # When there's only one sequence
+    if others_len == 0:
+        # If minlen == 1, produce everything but empty tuples
+        # (since others_len + 1 >= minlen, minlen is 1 or less)
+        if minlen == 1:
+            for choice in sequence:
+                if choice is not None: yield (choice,)
+        # Else everything is produced
+        else:
+            for choice in sequence:
+                yield () if choice is None else (choice,)
         return
 
     # Iterate through elements in the first sequence
-    for choice in sequences[0]:
+    for choice in sequence:
 
         # Adjust minlen and maxlen if this element affects the length (isn't None)
+        # and check that the invariants aren't violated
         if choice is None:
+            # If all possible results will end up being shorter than the specified minlen:
+            if others_len < minlen:
+                continue
             new_minlen = minlen
             new_maxlen = maxlen
+
+            # Expand the other_sequences (the current choice doesn't contribute because it's None)
+            for rest in do_product_limitedlen(new_minlen, new_maxlen, requireds_left, others_len - 1, *other_sequences):
+                yield rest
+
         else:
             new_minlen = minlen - 1
             new_maxlen = maxlen - 1
-
-        # If (and only if) the total length after recursing could
-        # possibly fall inside the requested range, continue
-        if sequences_len > new_minlen and new_maxlen >= 0:
-
-            # Special case (just so we can be non-recursive) when new_maxlen == 0:
-            # this is only possible if each of the remaining sequences has a None
-            # option, otherwise the result will be too long, so search for this
-            # requirement and produce a single output if it's found
+            # requireds_left[others_len] is a count of remaining sequences which do not
+            # contain a None: they are "required" and will definitely add to the length
+            # of the final result. If all possible results will end up being longer than
+            # the specified maxlen:
+            if requireds_left[others_len] > new_maxlen:
+                continue
+            # If new_maxlen == 0, then the only valid result is the one where all of the
+            # other_sequences produce a None for their choice. Produce that single result:
             if new_maxlen == 0:
-                for seq in sequences:
-                    if None not in seq: break
-                else:  # if it didn't break, there was a None in every sequence
-                    yield () if choice is None else (choice,)
+                yield (choice,)
                 continue
 
-            # Special case (to avoid one recursion) when this sequence is the last
-            if sequences_len == 1:
-                yield () if choice is None else (choice,)
-                continue
-
-            for rest in product_limitedlen(*sequences[1:], minlen=new_minlen, maxlen=new_maxlen):
-                yield rest if choice is None else (choice,) + rest
+            # Prepend the choice to the result of expanding the other_sequences
+            for rest in do_product_limitedlen(new_minlen, new_maxlen, requireds_left, others_len - 1, *other_sequences):
+                yield (choice,) + rest
 
 
 # Like itertools.permutations, but avoids duplicates even if input contains some.
