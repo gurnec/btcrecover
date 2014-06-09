@@ -345,29 +345,49 @@ class Test04Typos(GeneratorTester):
     def test_swap(self):
         self.do_generator_test(["abcdd"], ["abcdd", "bacdd", "acbdd", "abdcd", "badcd"],
             "--typos-swap --typos 2 -d", True)
+    def test_swap_max(self):
+        self.do_generator_test(["abcdd"], ["abcdd", "bacdd", "acbdd", "abdcd"],
+            "--typos-swap --max-typos-swap 1 --typos 2 -d", True)
 
     def test_repeat(self):
         self.do_generator_test(["abc"], ["abc", "aabc", "abbc", "abcc", "aabbc", "aabcc", "abbcc"],
             "--typos-repeat --typos 2 -d", True)
+    def test_repeat_max(self):
+        self.do_generator_test(["abc"], ["abc", "aabc", "abbc", "abcc"],
+            "--typos-repeat --max-typos-repeat 1 --typos 2 -d", True)
 
     def test_delete(self):
         self.do_generator_test(["abc"], ["abc", "bc", "ac", "ab", "c", "b", "a"],
             "--typos-delete --typos 2 -d", True)
+    def test_delete_max(self):
+        self.do_generator_test(["abc"], ["abc", "bc", "ac", "ab"],
+            "--typos-delete --max-typos-delete 1 --typos 2 -d", True)
 
     def test_case(self):
         self.do_generator_test(["abC1"], ["abC1", "AbC1", "aBC1", "abc1", "ABC1", "Abc1", "aBc1"],
             "--typos-case --typos 2 -d", True)
+    def test_case_max(self):
+        self.do_generator_test(["abC1"], ["abC1", "AbC1", "aBC1", "abc1"],
+            "--typos-case --max-typos-case 1 --typos 2 -d", True)
 
     def test_closecase(self):
         self.do_generator_test(["one2Three"],
             ["one2Three", "One2Three", "one2three", "one2THree", "one2ThreE", "One2three",
             "One2THree", "One2ThreE", "one2tHree", "one2threE", "one2THreE"],
             "--typos-closecase --typos 2 -d", True)
+    def test_closecase_max(self):
+        self.do_generator_test(["one2Three"],
+            ["one2Three", "One2Three", "one2three", "one2THree", "one2ThreE"],
+            "--typos-closecase --max-typos-closecase 1 --typos 2 -d", True)
 
     def test_insert(self):
         self.do_generator_test(["abc"],
             ["abc", "Xabc", "aXbc", "abXc", "abcX", "XaXbc", "XabXc", "XabcX", "aXbXc", "aXbcX", "abXcX"],
             "--typos-insert X --typos 2 -d", True)
+    def test_insert_max(self):
+        self.do_generator_test(["abc"],
+            ["abc", "Xabc", "aXbc", "abXc", "abcX"],
+            "--typos-insert X --max-typos-insert 1 --typos 2 -d", True)
     def test_insert_adjacent_1(self):
         self.do_generator_test(["ab"], ["ab", "Xab", "aXb", "abX", "XXab", "XaXb", "XabX", "aXXb", "aXbX", "abXX"],
             "--typos-insert X --typos 2 --max-adjacent-inserts 2 -d", True)
@@ -389,6 +409,9 @@ class Test04Typos(GeneratorTester):
     def test_replace(self):
         self.do_generator_test(["abc"], ["abc", "Xbc", "aXc", "abX", "XXc", "XbX", "aXX"],
             "--typos-replace X --typos 2 -d", True)
+    def test_replace_max(self):
+        self.do_generator_test(["abc"], ["abc", "Xbc", "aXc", "abX"],
+            "--typos-replace X --max-typos-replace 1 --typos 2 -d", True)
     def test_replace_wildcard(self):
         self.do_generator_test(["abc"], ["abc", "Xbc", "Ybc", "aXc", "aYc", "abX", "abY"],
             "--typos-replace %[X-Y] -d", True)
@@ -401,6 +424,11 @@ class Test04Typos(GeneratorTester):
             ["axb", "Axb", "Bxb", "axA", "axB", "AxA", "AxB", "BxA", "BxB"],
             "--typos-map __funccall --typos 2 -d", True,
             typos_map=StringIONonClosing(" ab \t AB \n x x \n a aB "))
+    def test_map_max(self):
+        self.do_generator_test(["axb"],
+            ["axb", "Axb", "Bxb", "axA", "axB"],
+            "--typos-map __funccall --max-typos-map 1 --typos 2 -d", True,
+            typos_map=StringIONonClosing(" ab \t AB \n x x \n a aB "))
 
     def test_z_all(self):
         self.do_generator_test(["12"],
@@ -408,6 +436,14 @@ class Test04Typos(GeneratorTester):
                 1128,2,82,28,92,892,982,928,122,8122,1822,1282,1228,1,81,18,19,819,189,
                 198,1122,11,119,22,"",9,922,9,99,21,821,281,218,221,1,91,211,2,29]),
             "--typos-swap --typos-repeat --typos-delete --typos-case --typos-insert 8 --typos-replace 9 --typos 2 --max-adjacent-inserts 2 -d",
+            True)
+
+    def test_z_all_max(self):
+        self.do_generator_test(["12"],
+            map(str, [12,812,182,128,112,8112,1812,1182,1128,2,82,28,92,892,982,928,122,8122,1822,
+                1282,1228,1,81,18,19,819,189,198,11,119,22,9,922,9,21,821,281,218,221,1,91,211,2,29]),
+            "--typos-swap --max-typos-swap 1 --typos-repeat --max-typos-repeat 1 --typos-delete --max-typos-delete 1 " + \
+            "--typos-case --typos-insert 8 --max-typos-insert 1 --typos-replace 9 --max-typos-replace 1 --typos 2 -d",
             True)
 
     def test_z_min_typos_1(self):

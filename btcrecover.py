@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.4"
+__version__          = "0.7.5"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
@@ -135,12 +135,12 @@ simple_typos["map"]       = typo_map
 # a dict: typo name (matches typo names in the dict above) mapped to the options
 # that are passed to add_argument; this dict is only ordered for cosmetic reasons
 simple_typo_args = collections.OrderedDict()
-simple_typo_args["repeat"]    = dict( action="store_true",       help="repeats (doubles) a character" )
-simple_typo_args["delete"]    = dict( action="store_true",       help="deletes a character" )
-simple_typo_args["case"]      = dict( action="store_true",       help="changes the case (upper/lower) of a letter" )
-simple_typo_args["closecase"] = dict( action="store_true",       help="like --typos-case, but only changes letters next to one with a different case")
-simple_typo_args["map"]       = dict( metavar="FILE",            help="replaces specific characters based on a map file" )
-simple_typo_args["replace"]   = dict( metavar="WILDCARD-STRING", help="replaces a character with another string or wildcard" )
+simple_typo_args["repeat"]    = dict( action="store_true",       help="repeat (double) a character" )
+simple_typo_args["delete"]    = dict( action="store_true",       help="delete a character" )
+simple_typo_args["case"]      = dict( action="store_true",       help="change the case (upper/lower) of a letter" )
+simple_typo_args["closecase"] = dict( action="store_true",       help="like --typos-case, but only change letters next to those with a different case")
+simple_typo_args["map"]       = dict( metavar="FILE",            help="replace specific characters based on a map file" )
+simple_typo_args["replace"]   = dict( metavar="WILDCARD-STRING", help="replace a character with another string or wildcard" )
 
 
 # TODO: work on wallet "plugin" interface; via subclassing?
@@ -802,12 +802,14 @@ parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet fil
 parser_common.add_argument("--typos",       type=int, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
 parser_common.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
 typo_types_group = parser_common.add_argument_group("typo types")
-typo_types_group.add_argument("--typos-capslock", action="store_true", help="tries the password with caps lock turned on")
-typo_types_group.add_argument("--typos-swap",     action="store_true", help="swaps two adjacent characters")
+typo_types_group.add_argument("--typos-capslock", action="store_true", help="try the password with caps lock turned on")
+typo_types_group.add_argument("--typos-swap",     action="store_true", help="swap two adjacent characters")
 for typo_name, typo_args in simple_typo_args.items():
     typo_types_group.add_argument("--typos-"+typo_name, **typo_args)
-typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="inserts a string or wildcard")
-typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="COUNT", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: 1)")
+typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="insert a string or wildcard")
+for typo_name in itertools.chain(("swap",), simple_typo_args.keys(), ("insert",)):
+    typo_types_group.add_argument("--max-typos-"+typo_name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+typo_name+" typos")
+typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="#", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: 1)")
 parser_common.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
 parser_common.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
 parser_common.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
@@ -829,8 +831,8 @@ gpu_group = parser_common.add_argument_group("GPU acceleration")
 gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and mkeys)")
 gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: 4096)")
 gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
-gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="Choose GPU(s) on multi-GPU systems (default: auto)")
-gpu_group.add_argument("--list-gpus",  action="store_true",     help="List available GPU names and IDs, then exit")
+gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
+gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
 gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: 200)")
 
 # Once parse_arguments() has completed, password_generator_factory() will return an iterator
@@ -861,8 +863,8 @@ def parse_arguments(effective_argv, **kwds):
     parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
     parser.add_argument("--min-tokens",  type=int, default=1,          metavar="COUNT", help="enforce a min # of tokens included per guess")
     parser._add_container_actions(parser_common)
-    parser.add_argument("--autosave",    metavar="FILE", help="autosaves (5 min) progress to/ restores it from a file")
-    parser.add_argument("--restore",     metavar="FILE", help="restores progress and options from an autosave file (must be the only option on the command line)")
+    parser.add_argument("--autosave",    metavar="FILE", help="autosave (5 min) progress to or restore it from a file")
+    parser.add_argument("--restore",     metavar="FILE", help="restore progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--passwordlist",metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
     if argcomplete: argcomplete.autocomplete(parser)
     args = parser.parse_args(effective_argv)
@@ -1009,24 +1011,48 @@ def parse_arguments(effective_argv, **kwds):
         error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
 
     if tokenlist_file and args.max_tokens < args.min_tokens:
-        error_exit("--max-tokens is less than --min-tokens")
+        error_exit("--max-tokens must be greater than --min-tokens")
+
+    # Sanity check the --max-typos-* options
+    for typo_name in itertools.chain(("swap",), simple_typo_args.keys(), ("insert",)):
+        typo_max = args.__dict__["max_typos_"+typo_name]
+        if typo_max < sys.maxint:
+            #
+            # Sanity check for when a --max-typos-* is specified, but the corresponding --typos-* is not
+            if not args.__dict__["typos_"+typo_name]:
+                print(prog+": warning: --max-typos-"+typo_name+" is ignored without --typos-"+typo_name, file=sys.stderr)
+            #
+            # Sanity check for a a --max-typos-* <= 0
+            elif typo_max <= 0:
+                print(prog+": warning: --max-typos-"+typo_name, typo_max, "disables --typos-"+typo_name, file=sys.stderr)
+                args.__dict__["typos_"+typo_name] = None
+            #
+            # Sanity check --max-typos-* vs the total number of --typos
+            elif args.typos and typo_max > args.typos:
+                print(prog+": warning: --max-typos-"+typo_name+" ("+str(typo_max)+") is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
+
+    # Sanity check --typos--closecase
+    if args.typos_closecase and args.typos_case:
+        print(prog+": warning: specifying --typos-case disables --typos-closecase", file=sys.stderr)
+        args.typos_closecase = None
 
     # Build an ordered list of enabled simple typo generators. This list MUST be in the same relative
     # order as the items in simple_typos to prevent the breakage of --skip and --restore features
     global enabled_simple_typos
     enabled_simple_typos = \
-        [generator for name,generator in simple_typos.items() if args.__dict__.get("typos_"+name)]
+        [generator for name,generator in simple_typos.items() if args.__dict__["typos_"+name]]
 
     # Have _any_ (simple or otherwise) typo types been specified?
     any_typo_types_specified = enabled_simple_typos or \
         args.typos_capslock or args.typos_swap or args.typos_insert
 
+    # Sanity check the values of --typos and --min-typos
     if not any_typo_types_specified:
         if args.min_typos > 0:
             error_exit("no passwords are produced when no type of typo is chosen, but --min-typos were required")
         if args.typos:
             print(prog+": warning: --typos has no effect because no type of typo was chosen", file=sys.stderr)
-
+    #
     else:
         if args.typos is None:
             if args.min_typos:
@@ -1035,26 +1061,39 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 print(prog+": warning: --typos COUNT not specified; assuming 1", file=sys.stderr)
                 args.typos = 1
-
+        #
         elif args.typos < args.min_typos:
-            error_exit("--typos is less than --min_typos")
-
+            error_exit("--min_typos must be less than --typos")
+        #
         elif args.typos <= 0:
             print(prog+": warning: --typos", args.typos, " disables all typos", file=sys.stderr)
             enabled_simple_typos = args.typos_capslock = args.typos_swap = args.typos_insert = None
 
-        if args.typos_closecase and args.typos_case:
-            print(prog+": warning: specifying --typos-case disables --typos-closecase", file=sys.stderr)
-            args.typos_closecase = None
+    # If any simple typos have been enabled, set max_simple_typos and sum_max_simple_typos appropriately
+    global max_simple_typos, sum_max_simple_typos
+    if enabled_simple_typos:
+        max_simple_typos = \
+            [args.__dict__["max_typos_"+name] for name in simple_typos.keys() if args.__dict__["typos_"+name]]
+        if min(max_simple_typos) == sys.maxint:    # if none were specified
+            max_simple_typos     = None
+            sum_max_simple_typos = sys.maxint
+        elif max(max_simple_typos) == sys.maxint:  # if one, but not all were specified
+            sum_max_simple_typos = sys.maxint
+        else:                                      # else all were specified
+            sum_max_simple_typos = sum(max_simple_typos)
 
+    # Sanity check --max-adjacent-inserts (inserts are not a "simple" typo)
     if args.max_adjacent_inserts != 1:
         if not args.typos_insert:
             print(prog+": warning: --max-adjacent-inserts has no effect unless --typos-insert is used", file=sys.stderr)
         elif args.max_adjacent_inserts < 1:
             print(prog+": warning: --max-adjacent-inserts", args.max_adjacent_inserts, " disables --typos-insert", file=sys.stderr)
             args.typos_insert = None
-        elif args.max_adjacent_inserts > args.typos:
-            print(prog+": warning: --max-adjacent-inserts is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
+        elif args.max_adjacent_inserts > min(args.typos, args.max_typos_insert):
+            if args.max_typos_insert < args.typos:
+                print(prog+": warning: --max-adjacent-inserts ("+str(args.max_adjacent_inserts)+") is limited by --max-typos-insert ("+str(args.max_typos_insert)+")", file=sys.stderr)
+            else:
+                print(prog+": warning: --max-adjacent-inserts ("+str(args.max_adjacent_inserts)+") is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
 
 
     # Parse the custom wildcard set option
@@ -2075,37 +2114,34 @@ def permutations_nodups(sequence):
     l_len = len
 
     sequence_len = l_len(sequence)
+    
+    # Special case for speed
     if sequence_len == 2:
         # Only two permutations to try:
         yield sequence if type(sequence) == tuple else tuple(sequence)
         if sequence[0] != sequence[1]:
             yield (sequence[1], sequence[0])
-
-    elif sequence_len <= 1:
-        # Only one permutation to try:
-        yield sequence if type(sequence) == tuple else tuple(sequence)
-    else:
-
-        # If the sequence contains no duplicates, use the faster itertools version
-        seen = set(sequence)
-        if l_len(seen) == sequence_len:
-            for permutation in itertools.permutations(sequence):
-                yield permutation
-            return
-
-        # If they're all the same, there's only one permutation:
-        if l_len(seen) == 1:
-            yield sequence if type(sequence) == tuple else tuple(sequence)
-            return
-
-        # Else there's at least one duplicate and two+ permutations; use our version
-        seen = set()
-        for i, choice in enumerate(sequence):
-            if i > 0 and choice in seen: continue          # don't need to check the first one
-            if i+1 < sequence_len:       seen.add(choice)  # don't need to add the last one
-            for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
-                yield (choice,) + rest
         return
+
+    # If they're all the same, there's only one permutation:
+    seen = set(sequence)
+    if l_len(seen) == 1:
+        yield sequence if type(sequence) == tuple else tuple(sequence)
+        return
+
+    # If the sequence contains no duplicates, use the faster itertools version
+    if l_len(seen) == sequence_len:
+        for permutation in itertools.permutations(sequence):
+            yield permutation
+        return
+
+    # Else there's at least one duplicate and two+ permutations; use our version
+    seen = set()
+    for i, choice in enumerate(sequence):
+        if i > 0 and choice in seen: continue          # don't need to check the first one
+        if i+1 < sequence_len:       seen.add(choice)  # don't need to add the last one
+        for rest in permutations_nodups(sequence[:i] + sequence[i+1:]):
+            yield (choice,) + rest
 
 
 # Produces whole passwords from a file, exactly one per line, or from the file's cache
@@ -2269,16 +2305,14 @@ def swap_typos_generator(password_base):
     l_itertools_combinations = itertools.combinations
     l_args_nodupchecks       = args.no_dupchecks
 
-    # Start with the unmodified password itself, and end if there's nothing left to do
+    # Start with the unmodified password itself
     yield password_base
-    max_swaps         = args.typos - typos_sofar
-    password_base_len = len(password_base)
-    if max_swaps <= 0 or password_base_len < 2: return
 
     # First swap one pair of characters, then all combinations of 2 pairs, then of 3,
     # up to the max requested or up to the max number swappable (whichever's less). The
     # max number swappable is len // 2 because we never swap any single character twice.
-    max_swaps = min(max_swaps, password_base_len // 2)
+    password_base_len = len(password_base)
+    max_swaps = min(args.max_typos_swap, args.typos - typos_sofar, password_base_len // 2)
     for swap_count in l_xrange(1, max_swaps + 1):
         typos_sofar += swap_count
 
@@ -2336,8 +2370,11 @@ def case_id_changed(case_id1, case_id2):
 def simple_typos_generator(password_base):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
-    l_xrange            = xrange
-    l_itertools_product = itertools.product
+    l_xrange               = xrange
+    l_itertools_product    = itertools.product
+    l_product_max_elements = product_max_elements
+    l_enabled_simple_typos = enabled_simple_typos
+    l_max_simple_typos     = max_simple_typos
     assert len(enabled_simple_typos) > 0, "simple_typos_generator: at least one simple typo enabled"
 
     # Start with the unmodified password itself
@@ -2345,7 +2382,7 @@ def simple_typos_generator(password_base):
 
     # First change all single characters, then all combinations of 2 characters, then of 3, etc.
     password_base_len = len(password_base)
-    max_typos         = min(args.typos - typos_sofar, password_base_len)
+    max_typos         = min(sum_max_simple_typos, args.typos - typos_sofar, password_base_len)
     for typos_count in l_xrange(1, max_typos + 1):
         typos_sofar += typos_count
 
@@ -2356,12 +2393,18 @@ def simple_typos_generator(password_base):
             # one-past-the-end of password_base. This is used in the inner loop.
             typo_indexes_ = typo_indexes + (password_base_len,)
 
-            # Iterate through all possible permutations of the specified
-            # enabled_simple_typos being applied to the selected typo targets
-            for typo_generators_per_target in l_itertools_product(enabled_simple_typos, repeat=typos_count):
+            # Select and configure a generator which will generate all the possible permutations of
+            # the available simple_typos_choices (possibly limited to individual maximums specified
+            # by max_simple_typos) being applied to the typo targets selected above
+            if max_simple_typos:
+                typos_product_generator = l_product_max_elements(l_enabled_simple_typos, typos_count, l_max_simple_typos)
+            else:  # use the faster itertools version if possible
+                typos_product_generator = l_itertools_product(l_enabled_simple_typos, repeat=typos_count)
+            #
+            for typo_generators_per_target in typos_product_generator:
 
-                # For each of the selected typo targets, call the generator selected above to
-                # get the replacement(s) of said to-be-replaced typo targets. Each item in
+                # For each of the selected typo target(s), call the generator(s) selected above
+                # to get the replacement(s) of said to-be-replaced typo target(s). Each item in
                 # typo_replacements is an iterable (tuple, list, generator, etc.) producing
                 # zero or more replacements for a single target. If there are zero replacements
                 # for any target, the for loop below intentionally produces no results at all.
@@ -2386,6 +2429,46 @@ def simple_typos_generator(password_base):
 
         typos_sofar -= typos_count
 
+# product_max_elements() is a generator function similar to itertools.product() except that
+# it takes an extra argument:
+#     max_elements  -  a list of length == len(sequence) of positive (non-zero) integers
+# When min(max_elements) >= r, these two calls are equivalent:
+#     itertools.product(sequence, repeat=r)
+#     product_max_elements(sequence, r, max_elements)
+# When one of the integers in max_elements < r, then the corresponding element of sequence
+# is never repeated in any single generated output more than the requested number of times.
+# For example:
+#     tuple(product_max_elements(['a', 'b'], 3, [1, 2]))  == 
+#     (('a', 'b', 'b'), ('b', 'a', 'b'), ('b', 'b', 'a'))
+# Just like itertools.product, each output generated is of length r. Note that if
+# sum(max_elements) < r, then zero outputs are (inefficiently) produced.
+def product_max_elements(sequence, repeat, max_elements):
+    if repeat == 1:
+        for choice in sequence:
+            yield (choice,)
+        return
+
+    # If all of the max_elements are >= repeat, just use the faster itertools version
+    if min(max_elements) >= repeat:
+        for product in itertools.product(sequence, repeat=repeat):
+            yield product
+        return
+
+    # Iterate through the elements to choose one for the first position
+    for i, choice in enumerate(sequence):
+
+        # If this is the last time this element can be used, remove it from the sequence when recursing
+        if max_elements[i] == 1:
+            for rest in product_max_elements(sequence[:i] + sequence[i+1:], repeat - 1, max_elements[:i] + max_elements[i+1:]):
+                yield (choice,) + rest
+
+        # Otherwise, just reduce it's allowed count before recursing to generate the rest of the result
+        else:
+            max_elements[i] -= 1
+            for rest in product_max_elements(sequence, repeat - 1, max_elements):
+                yield (choice,) + rest
+            max_elements[i] += 1
+
 
 # insert_typos_generator() is a generator function which inserts one or more strings
 # from the typos_insert_expanded list between every pair of characters in password_base,
@@ -2405,11 +2488,11 @@ def insert_typos_generator(password_base):
     if l_max_adjacent_inserts > 1:
         # Can select for insertion the same index more than once in a single guess
         combinations_function = itertools.combinations_with_replacement
-        max_inserts = args.typos - typos_sofar
+        max_inserts = min(args.max_typos_insert, args.typos - typos_sofar)
     else:
         # Will select for insertion an index at most once in a single guess
         combinations_function = itertools.combinations
-        max_inserts = min(args.typos - typos_sofar, password_base_len + 1)
+        max_inserts = min(args.max_typos_insert, args.typos - typos_sofar, password_base_len + 1)
 
     # First insert a single string, then all combinations of 2 strings, then of 3, etc.
     for inserts_count in l_xrange(1, max_inserts + 1):
