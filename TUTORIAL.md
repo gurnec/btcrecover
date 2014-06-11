@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, Blockchain (v1 and v2 wallet formats, single password only) and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -311,7 +311,7 @@ In addition to requiring Armory 0.91, you will also need to download and install
 
  * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: <https://www.python.org/download/>
 
-### Windows – Bitcoin Core, MultiBit Classic, Electrum, or Litecoin-Qt ###
+### Windows – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
 
 With this combination, you will also need to download and install:
 
@@ -331,7 +331,7 @@ To enable the experimental GPU acceleration features in Windows, you will need t
 
 If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
 
-### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, or Litecoin-Qt ###
+### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
 
  * Python 2.7.x – Most distributions include this pre-installed.
 
@@ -470,13 +470,13 @@ If you specify `--no-dupchecks` more than once, it will disable even more of the
 
 By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of worker threads (which defaults to the number of logical processors in your system) if you'd like to decrease CPU usage (but also the guess rate).
 
-With MultiBit or Electrum wallets, *btcrecover* may not be able to effeciently use more than four or five CPU cores, sometimes even less depending on the contents of the tokenlist and the chosen typos. Specifying the `--no-dupchecks` option may help improve CPU usage and therefore the password guess rate in many cases with these two wallet types, and using slightly fewer or slightly greater `--threads` might also help. The only way to find out is to experiment.
+With MultiBit or Electrum wallets, *btcrecover* may not be able to efficiently use more than four or five CPU cores, sometimes even less depending on the contents of the tokenlist and the chosen typos. Specifying the `--no-dupchecks` option may help improve CPU usage and therefore the password guess rate in many cases with these two wallet types, and using slightly fewer or slightly greater `--threads` might also help. The only way to find out is to experiment.
 
 *btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
 
 ### Unsupported Wallet Types ###
 
-As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported.
+As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported. Although Blockchain is supported for both v1 and v2 format wallets, second password/double encryption is not currently supported (only the main password is supported).
 
 ### Security Issues ###
 

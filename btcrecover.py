@@ -33,11 +33,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.5"
+__version__          = "0.7.6"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
-import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, \
-       cPickle, gc, time, hashlib, collections, base64, struct, ast, atexit, zlib
+import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, \
+       gc, time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -187,6 +187,14 @@ def load_wallet(wallet_filename):
                 return_verified_password_or_false = return_electrum_verified_password_or_false
                 return
             except SyntaxError: pass     # probably wasn't an electrum wallet
+
+        # Blockchain
+        wallet_file.seek(0)
+        try:  # there's no easy way to check if it's a Blockchain wallet
+            load_blockchain_wallet(wallet_file)  # passing in a file object
+            return_verified_password_or_false = return_blockchain_verified_password_or_false
+            return
+        except ValueError: pass  # probably wasn't a Blockchain wallet
 
         error_exit("unrecognized wallet format")
 
@@ -533,9 +541,9 @@ def return_multibitpk_verified_password_or_false(passwords):
 # Load an Electrum wallet file (the part of it we need) given an opened file object
 def load_electrum_wallet(wallet_file):
     global wallet
-    load_aes256_library()
     wallet_file.seek(0)
     wallet = ast.literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+    load_aes256_library()
     seed_version = wallet.get("seed_version")
     if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")
     if seed_version != 4:                raise NotImplementedError("Unsupported Electrum seed version " + seed_version)
@@ -553,6 +561,76 @@ def return_electrum_verified_password_or_false(passwords):
         seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
         # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            return password, count
+    return False, count
+
+
+# Load a Blockchain wallet file (the part of it we need) given an opened file object
+def load_blockchain_wallet(wallet_file):
+    global wallet
+    data = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+    iter_count = None
+
+    # Try to load a v2.0 wallet file first
+    if data[0] == "{":
+        try:
+            data = json.loads(data)
+        except ValueError: pass
+        else:
+            if data[u"version"] != 2:
+                raise NotImplementedError("Unsupported Blockchain wallet version " + str(data[u"version"]))
+            iter_count = data[u"pbkdf2_iterations"]
+            if not isinstance(iter_count, int) or iter_count < 1:
+                raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(data[u"pbkdf2_iterations"]))
+            data = data[u"payload"]
+
+    # Either the encrypted data was extracted from the "payload" field above, or
+    # this is a v0.0 wallet file whose entire contents consist of the encrypted data
+    try:
+        data = base64.b64decode(data)
+    except TypeError as e:
+        raise ValueError("Can't base64-decode Blockchain wallet: "+str(e))
+    if len(data) % 16 != 0:
+        raise ValueError("Encrypted Blockchain data length not divisible by encryption blocksize (16)")
+
+    # If this is (possibly) a v0.0 wallet file, check that the encrypted data looks
+    # random, otherwise this could be some other type of base64-encoded file such
+    # as a MultiBit key file (it should be safe to skip this test for v2.0 wallets)
+    if not iter_count:
+        hist_bins = [0] * 256
+        for byte in data:
+            hist_bins[ord(byte)] += 1
+        entropy_bits = 0.0
+        for frequency in hist_bins:
+            if frequency:
+                prob = float(frequency) / len(data)
+                entropy_bits += prob * math.log(prob, 2)
+        # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum
+        # length of about 500 bytes) with less than 7.4 bits of entropy is less than 1 in 10^6
+        if -entropy_bits < 7.4:
+            raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet")
+        iter_count = 10  # the default for v0.0 wallets
+
+    # Load the required libraries and modify measure_performance_iterations
+    global passlib, measure_performance_iterations
+    import passlib.utils.pbkdf2
+    load_aes256_library()
+    measure_performance_iterations = int(round(measure_performance_iterations / iter_count)) or 1
+
+    wallet = data[16:32], data[0:16], iter_count  # first encrypted block, salt_and_iv, iteration count
+
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_blockchain_verified_password_or_false(passwords):
+    # Copy a global into local for a small speed boost
+    l_pbkdf2 = passlib.utils.pbkdf2.pbkdf2
+    encrypted_block, salt_and_iv, iter_count = wallet
+    for count, password in enumerate(passwords, 1):
+        key = l_pbkdf2(password, salt_and_iv, iter_count, 32)
+        unencrypted_block = aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)
+        # A bit fragile because it assumes the guid is in the first encrypted block,
+        # although this has always been the case as of 6/2014 (since 12/2011)
+        if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
             return password, count
     return False, count
 
@@ -2114,7 +2192,7 @@ def permutations_nodups(sequence):
     l_len = len
 
     sequence_len = l_len(sequence)
-    
+
     # Special case for speed
     if sequence_len == 2:
         # Only two permutations to try:
@@ -2438,7 +2516,7 @@ def simple_typos_generator(password_base):
 # When one of the integers in max_elements < r, then the corresponding element of sequence
 # is never repeated in any single generated output more than the requested number of times.
 # For example:
-#     tuple(product_max_elements(['a', 'b'], 3, [1, 2]))  == 
+#     tuple(product_max_elements(['a', 'b'], 3, [1, 2]))  ==
 #     (('a', 'b', 'b'), ('b', 'a', 'b'), ('b', 'b', 'a'))
 # Just like itertools.product, each output generated is of length r. Note that if
 # sum(max_elements) < r, then zero outputs are (inefficiently) produced.

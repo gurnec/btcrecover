@@ -734,6 +734,21 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
+    def test_blockchain_v0(self):
+        self.wallet_tester("blockchain-v0.0-wallet.aes.json")
+
+    def test_blockchain_v2(self):
+        self.wallet_tester("blockchain-v2.0-wallet.aes.json")
+
+    # Make sure the Blockchain wallet loader can heuristically determine that files containing 
+    # base64 data that doesn't look entirely encrypted (random) are not Blockchain wallets
+    def test_blockchain_invalid(self):
+        # A base64-containing file that's mostly but not entirely encrypted (random)
+        with open(os.path.join(wallet_dir, "multibit-wallet.key"), "rb") as wallet_file:
+            with self.assertRaises(ValueError) as cm:
+                btcrecover.load_blockchain_wallet(wallet_file)
+        self.assertIn("Doesn't look random enough to be an encrypted Blockchain wallet", cm.exception.message)
+
     def test_bitcoincore_pp(self):
         self.wallet_tester("bitcoincore-wallet.dat", True)
 
@@ -742,6 +757,12 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_multibit_pp(self):
         self.wallet_tester("multibit-wallet.key", True)
+
+    def test_blockchain_v0_pp(self):
+        self.wallet_tester("blockchain-v0.0-wallet.aes.json", True)
+
+    def test_blockchain_v2_pp(self):
+        self.wallet_tester("blockchain-v2.0-wallet.aes.json", True)
 
     def test_invalid_wallet(self):
         with self.assertRaises(SystemExit) as cm:

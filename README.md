@@ -9,6 +9,7 @@
      * [Bitcoin Core (Bitcoin-Qt)](https://bitcoinarmory.com/download/)
      * [MultiBit](https://multibit.org/)
      * [Electrum](https://electrum.org/)
+     * [Blockchain](https://blockchain.info/wallet)
  * Litecoin wallet support for:
      * [Litecoin-Qt](https://litecoin.org/)
  * [Free and Open Source](http://en.wikipedia.org/wiki/Free_and_open-source_software) - anyone can download, inspect, use, and redistribute this software
