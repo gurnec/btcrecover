@@ -1,0 +1,50 @@
+# Maps unshifted keys as found on a US ANSI ASCII keyboard to their nearest neighbors.
+# See also us-with-shifts-map.txt
+
+`	1	1
+1	`q	2
+2	1qw3
+3	2we4
+4	3er5
+5	4rt6
+6	5ty7
+7	6yu8
+8	7ui9
+9	8io0
+0	9op-
+-	0p[=
+=	-[]
+q	aw2	1
+w	se32qa
+e	dr43ws
+r	ft54ed
+t	gy65rf
+y	hu76tg
+u	ji87yh
+i	ko98uj
+o	lp09ik
+p	;[-0ol
+[	']=-p;
+]	\=['
+\	]
+a	zswq
+s	xdewaz
+d	cfresx
+f	vgtrdc
+g	bhytfv
+h	njuygb
+j	mkiuhn
+k	,loijm
+l	.;pok,
+;	/'[pl.
+'	][;/
+z	xsa
+x	cds z
+c	vfd x
+v	bgf c
+b	nhg v
+n	mjh b
+m	,kj n
+,	.lk m
+.	/;l,
+/	';.

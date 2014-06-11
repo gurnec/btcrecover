@@ -1,0 +1,27 @@
+# Maps characters to their leetspeak equivalents, including uncommon ones.
+# See http://en.wikipedia.org/wiki/Leet for more information.
+
+aA	4@^
+bB	86
+cC	(<{[
+eE	3
+gG	69&
+hH	#
+iI	1|!
+lL	1|
+oO	0
+qQ	9
+sS	5$
+tT	7+
+xX	%*
+zZ	2
+1	lI|
+2	Z
+3	E
+4	A
+5	S
+6	bG
+7	T
+8	B
+9	gq
+0	O

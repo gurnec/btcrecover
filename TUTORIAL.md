@@ -230,6 +230,8 @@ Each line is used verbatim as a single password when using the `--passwordlist` 
 
 *btcrecover* can generate different variations of passwords to find typos or mistakes you may have inadvertently made while typing a password in or writing one down. This feature is enabled by including one or more command-line options when you run *btcrecover*.
 
+If you'd just like some specific examples of command-line options you can add, please see the [Typos Quick Start Guide](typos/QUICKSTART.md).
+
 With the `--typos #` command-line option (with `#` replaced with a count of typos), you tell *btcrecover* up to how many typos you’d like it to add to each password (that has been either generated from a token file or taken from a passwordlist as described above). You must also specify the types of typos you’d like it to generate, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos along with the command-line options which enable each:
 
  * `--typos-capslock` - tries the whole password with caps lock turned on
@@ -267,6 +269,14 @@ Here are some additional types of typos that require a bit more explanation:
         oO    0
 
     This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$sword5` would both be tried because they each have three or fewer typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
+
+    The *btcrecover* package includes a few typos-map example files in the `typos` directory. You can read more about them in the [Typos Quick Start Guide](typos/QUICKSTART.md#typos-maps)
+
+### Max Typos by Type ###
+
+As described above, the `--typos #` command-line option limits the total number of typos, regardless of type, that will ever be applied to a single guess. You can also set limits which are only applied to specific types of typos. For each of the `--typos-xxxx` command-line options above there is a corresponding `--max-typos-xxxx #` option.
+
+For example, with `--typos 3 --typos-delete --typos-insert %a --max-typos-insert 1`, up to three typos will be tried. All of them could be delete typos, but at most only one will ever be an insert typo (which would insert a single lowercase letter in this case). This is particularly useful when `--typos-insert` and `--typos-replace` are used with wildcards as in this example, because it can greatly decrease the total number of combinations that need to be tried, turning a total number that would take far too long to test into one that is much more reasonable.
 
 
 ## Autosave ##

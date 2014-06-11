@@ -1,0 +1,17 @@
+# Maps characters to their common leetspeak equivalents.
+# See http://en.wikipedia.org/wiki/Leet for more information.
+
+aA	4@
+bB	86
+cC	(
+eE	3
+gG	69
+
+iI	1|
+lL	1|
+oO	0
+qQ	9
+sS	5$
+tT	7
+xX	%
+zZ	2

@@ -1,0 +1,99 @@
+# Maps both unshifted and shifted keys as found on a US ANSI ASCII keyboard to
+# their nearest neighbors of the same shift state, and for non-letters also to
+# it's opposite-shift-state key. This is intended for use in combination with
+# with either --typos-case or --typos-closecase. See also us-map.txt
+
+`	1	~
+1	`q	2!
+2	1qw3@
+3	2we4#
+4	3er5$
+5	4rt6%
+6	5ty7^
+7	6yu8&
+8	7ui9*
+9	8io0(
+0	9op-)
+-	0p[=_
+=	-[]+
+q	aw2	1
+w	se32qa
+e	dr43ws
+r	ft54ed
+t	gy65rf
+y	hu76tg
+u	ji87yh
+i	ko98uj
+o	lp09ik
+p	;[-0ol
+[	']=-p;{
+]	\=['}
+\	]|
+a	zswq
+s	xdewaz
+d	cfresx
+f	vgtrdc
+g	bhytfv
+h	njuygb
+j	mkiuhn
+k	,loijm
+l	.;pok,
+;	/'[pl.:
+'	][;/"
+z	xsa
+x	cds z
+c	vfd x
+v	bgf c
+b	nhg v
+n	mjh b
+m	,kj n
+,	.lk m<
+.	/;l,>
+/	';.?
+~	!	`
+!	~Q	@1
+@	!QW#2
+#	@WE$3
+$	#ER%4
+%	$RT^5
+^	%TY&6
+&	^YU*7
+*	&UI(8
+(	*IO)9
+)	(OP_0
+_	)P{+-
++	_{}=
+Q	AW@	!
+W	SE#@QA
+E	DR$#WS
+R	FT%$ED
+T	GY^%RF
+Y	HU&^TG
+U	JI*&YH
+I	KO(*UJ
+O	LP)(IK
+P	:{_)OL
+{	"}+_P:[
+}	|+{"]
+|	}\
+A	ZSWQ
+S	XDEWAZ
+D	CFRESX
+F	VGTRDC
+G	BHYTFV
+H	NJUYGB
+J	MKIUHN
+K	<LOIJM
+L	>:POK<
+:	?"{PL>;
+"	}{:?'
+Z	XSA
+X	CDS Z
+C	VFD X
+V	BGF C
+B	NHG V
+N	MJH B
+M	<KJ N
+<	>LK M,
+>	?:L<.
+?	":>/
