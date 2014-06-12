@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, Blockchain (v1 and v2 wallet formats, single password only) and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, Blockchain (v1 and v2 wallet formats, both main and second passwords) and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -476,7 +476,7 @@ With MultiBit or Electrum wallets, *btcrecover* may not be able to efficiently u
 
 ### Unsupported Wallet Types ###
 
-As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported. Although Blockchain is supported for both v1 and v2 format wallets, second password/double encryption is not currently supported (only the main password is supported).
+As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported.
 
 ### Security Issues ###
 

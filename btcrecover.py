@@ -33,11 +33,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.6"
+__version__          = "0.7.7"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
-import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, \
-       gc, time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json
+import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
+       time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json, getpass, uuid
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -246,10 +246,22 @@ def load_from_raw_key(key_data):
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
+    if key_type == b"bk:":
+        load_blockchain_from_filedata(key_data[3:])
+        return_verified_password_or_false = return_blockchain_verified_password_or_false
+        return
+
+    if key_type == b"bs:":
+        load_blockchain_secondpass_from_filedata(key_data[3:])
+        return_verified_password_or_false = return_blockchain_secondpass_verified_password_or_false
+        return
+
     # TODO: Electrum support (not sure if it's even possible?)
 
     error_exit("unrecognized encrypted key type")
 
+
+############### Armory ###############
 
 armoryengine = None
 def load_armory_library():
@@ -321,6 +333,8 @@ def return_armorypk_verified_password_or_false(passwords):
     else:
         return False, count
 
+
+############### Bitcoin Core ###############
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
 def load_bitcoincore_wallet(wallet_filename):
@@ -495,6 +509,8 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
     return False, i + 1
 
 
+############### MultiBit ###############
+
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
 def load_multibit_privkey_file(privkey_file):
     global wallet
@@ -538,6 +554,8 @@ def return_multibitpk_verified_password_or_false(passwords):
     return False, count
 
 
+############### Electrum ###############
+
 # Load an Electrum wallet file (the part of it we need) given an opened file object
 def load_electrum_wallet(wallet_file):
     global wallet
@@ -558,17 +576,90 @@ def return_electrum_verified_password_or_false(passwords):
     l_sha256 = hashlib.sha256
     for count, password in enumerate(passwords, 1):
         key  = l_sha256( l_sha256( password ).digest() ).digest()
-        seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])
+        seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])  # key, iv, encrypted seed
         # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
             return password, count
     return False, count
 
 
+############### Blockchain ###############
+
 # Load a Blockchain wallet file (the part of it we need) given an opened file object
 def load_blockchain_wallet(wallet_file):
-    global wallet
-    data = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+    global wallet, measure_performance_iterations
+    data, iter_count = parse_encrypted_blockchain_wallet(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+    # Decrease this (which is initialized in load_aes256_library() ) by a factor of iter_count:
+    measure_performance_iterations = int(round(float(measure_performance_iterations) / iter_count)) or 1
+    wallet = data[16:32], data[0:16], iter_count  # first encrypted block, salt_and_iv, iteration count
+
+# Load a Blockchain wallet file to get the "Second Password" hash given a wallet filename,
+# decrypting the wallet if necessary; note that this is usually called *instead* of the generic
+# load_wallet() function, and therefore it sets return_verified_password_or_false itself
+def load_blockchain_secondpass_wallet(wallet_filename, password = None):
+    global wallet, measure_performance_iterations, return_verified_password_or_false
+    data = open(wallet_filename).read(1048576)  # up to 1M, typical size is a few k
+
+    # Assuming the wallet is encrypted, get the encrypted data
+    try:
+        data, iter_count = parse_encrypted_blockchain_wallet(data)
+    except KeyError as e:
+        # This is the one error to expect and ignore if the wallet wasn't encrypted
+        if e.message == "version": pass
+        else: raise
+    except StandardError as e:
+        error_exit(str(e))
+    else:
+        # If there were no problems getting the encrypted data, decrypt it
+        if not password:
+            password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
+        if not password: error_exit("encrypted Blockchain files must be decrypted before searching for the second password")
+        key  = passlib.utils.pbkdf2.pbkdf2(password, data[:16], iter_count, 32)  # data[:16] is the salt
+        data = aes256_cbc_decrypt(key, data[:16], data[16:])                     # key, iv, encrypted blocks
+        padding = ord(data[-1:])  # ISO 10126 padding
+        if padding > 16:
+            error_exit("invalid padding (wrong main password?)")
+        data = data[:-padding]
+
+    # Load and parse the now-decrypted wallet
+    try:
+        data = json.loads(data)
+    except ValueError as e:
+        if password:
+            error_exit("can't parse JSON:", str(e), "(wrong main password?)")
+        raise
+    if not data["double_encryption"]:
+        error_exit("double encryption with a second password is not enabled for this wallet")
+
+    # Extract what we need to perform checking on the second password
+    password_hash = base64.b16decode(data["dpasswordhash"], True)  # True means allow lowercase
+    if len(password_hash) != 32:
+        raise ValueError("Blockchain second password hash is not 32 bytes long")
+    #
+    salt = data["sharedKey"].encode("ascii")
+    if str(uuid.UUID(salt)) != salt:
+        raise ValueError("Unrecognized Blockchain salt format")
+    #
+    iter_count = data["options"]["pbkdf2_iterations"]
+    if not isinstance(iter_count, int) or iter_count < 1:
+        raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
+
+    measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
+    wallet = password_hash, salt, iter_count
+    return_verified_password_or_false = return_blockchain_secondpass_verified_password_or_false
+
+    # Workaround for Windows: if multi-processing searches are used, the wallet data gathered above
+    # doesn't survive the process fork. This means that when the wallet file is re-parsed in each
+    # child process, the password (which we don't save) would be needed again. Instead, save the
+    # wallet data to the global key_data as if an extract script was used instead of a wallet file.
+    if sys.platform == "win32":
+        global key_data
+        key_data = b"bs:" + struct.pack("< 32s 16s I", password_hash, uuid.UUID(salt).bytes, iter_count)
+
+
+# Parse the contents of an encrypted blockchain wallet (either v0 or v2)
+# returning two values in a tuple: encrypted_data_blob, iter_count
+def parse_encrypted_blockchain_wallet(data):
     iter_count = None
 
     # Try to load a v2.0 wallet file first
@@ -577,12 +668,12 @@ def load_blockchain_wallet(wallet_file):
             data = json.loads(data)
         except ValueError: pass
         else:
-            if data[u"version"] != 2:
-                raise NotImplementedError("Unsupported Blockchain wallet version " + str(data[u"version"]))
-            iter_count = data[u"pbkdf2_iterations"]
+            if data["version"] != 2:
+                raise NotImplementedError("Unsupported Blockchain wallet version " + str(data["version"]))
+            iter_count = data["pbkdf2_iterations"]
             if not isinstance(iter_count, int) or iter_count < 1:
-                raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(data[u"pbkdf2_iterations"]))
-            data = data[u"payload"]
+                raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
+            data = data["payload"]
 
     # Either the encrypted data was extracted from the "payload" field above, or
     # this is a v0.0 wallet file whose entire contents consist of the encrypted data
@@ -590,13 +681,15 @@ def load_blockchain_wallet(wallet_file):
         data = base64.b64decode(data)
     except TypeError as e:
         raise ValueError("Can't base64-decode Blockchain wallet: "+str(e))
+    if len(data) < 32:
+        raise ValueError("Encrypted Blockchain data is too short")
     if len(data) % 16 != 0:
         raise ValueError("Encrypted Blockchain data length not divisible by encryption blocksize (16)")
 
     # If this is (possibly) a v0.0 wallet file, check that the encrypted data looks
     # random, otherwise this could be some other type of base64-encoded file such
     # as a MultiBit key file (it should be safe to skip this test for v2.0 wallets)
-    if not iter_count:
+    if not iter_count:  # has already been set for v2.0 wallets
         hist_bins = [0] * 256
         for byte in data:
             hist_bins[ord(byte)] += 1
@@ -605,19 +698,37 @@ def load_blockchain_wallet(wallet_file):
             if frequency:
                 prob = float(frequency) / len(data)
                 entropy_bits += prob * math.log(prob, 2)
-        # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum
-        # length of about 500 bytes) with less than 7.4 bits of entropy is less than 1 in 10^6
-        if -entropy_bits < 7.4:
+        entropy_bits *= -1
+        # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
+        # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
+        if entropy_bits < 7.4:
             raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet")
         iter_count = 10  # the default for v0.0 wallets
 
-    # Load the required libraries and modify measure_performance_iterations
-    global passlib, measure_performance_iterations
+    # Load the required libraries
+    global passlib
     import passlib.utils.pbkdf2
     load_aes256_library()
-    measure_performance_iterations = int(round(measure_performance_iterations / iter_count)) or 1
 
-    wallet = data[16:32], data[0:16], iter_count  # first encrypted block, salt_and_iv, iteration count
+    return data, iter_count
+
+# Import extracted Blockchain file data necessary for main password checking
+def load_blockchain_from_filedata(file_data):
+    global wallet, passlib, measure_performance_iterations
+    import passlib.utils.pbkdf2
+    load_aes256_library()
+    # These are the same first encrypted block, salt_and_iv, iteration count retrieved by load_blockchain_wallet()
+    wallet = struct.unpack("< 16s 16s I", file_data)
+    measure_performance_iterations = int(round(measure_performance_iterations / wallet[2])) or 1
+
+# Import extracted Blockchain file data necessary for second password checking
+def load_blockchain_secondpass_from_filedata(file_data):
+    global wallet, measure_performance_iterations
+    password_hash, uuid_salt, iter_count = struct.unpack("< 32s 16s I", file_data)
+    uuid_salt = uuid.UUID(bytes=uuid_salt)
+    # These are the same second password hash, salt, iteration count retrieved by load_blockchain_secondpass_wallet()
+    wallet = password_hash, str(uuid_salt), iter_count
+    measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -631,6 +742,20 @@ def return_blockchain_verified_password_or_false(passwords):
         # A bit fragile because it assumes the guid is in the first encrypted block,
         # although this has always been the case as of 6/2014 (since 12/2011)
         if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
+            return password, count
+    return False, count
+
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_blockchain_secondpass_verified_password_or_false(passwords):
+    # Copy a global into local for a small speed boost
+    l_sha256 = hashlib.sha256
+    password_hash, salt, iter_count = wallet
+    for count, password in enumerate(passwords, 1):
+        running_hash = salt + password
+        for i in xrange(iter_count):
+            running_hash = l_sha256(running_hash).digest()
+        if running_hash == password_hash:
             return password, count
     return False, count
 
@@ -805,11 +930,12 @@ def load_savestate(autosave_file):
 #   (These are "soft" fails which don't raise exceptions.)
 # * Tries to open (if not already opened) and return the file, letting any exception
 #   raised by open (a "hard" fail) to pass up.
-def open_or_use(filename, mode="r", funccall_file=None, **kwds):
-    permit_stdin     = kwds.get("permit_stdin")      # filename of "-" opens stdin
-    default_filename = kwds.get("default_filename")  # may open this if it exists
-    require_data     = kwds.get("require_data")      # open only if non-empty
-    new_or_empty     = kwds.get("new_or_empty")      # open only if new or empty
+def open_or_use(filename, mode = "r",
+        funccall_file    = None,   # already-opened file used if filename == "__funccall"
+        permit_stdin     = None,   # when True a filename == "-" opens stdin
+        default_filename = None,   # name of file that can be opened if filename == None
+        require_data     = None,   # only if file is non-empty, else return None
+        new_or_empty     = None):  # open if file is new or empty, else return None
     assert not(permit_stdin and require_data), "open_or_use: stdin cannot require_data"
     assert not(permit_stdin and new_or_empty), "open_or_use: stdin is never new_or_empty"
     assert not(require_data and new_or_empty), "open_or_use: can require_data or be new_or_empty"
@@ -876,7 +1002,7 @@ except StandardError: cpus = 1
 # Build the list of command-line options common to both tokenlist and passwordlist files
 parser_common = argparse.ArgumentParser(add_help=False)
 prog          = parser_common.prog
-parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --mkey, --privkey, or --listpass is required)")
+parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --data-extract, or --listpass is required)")
 parser_common.add_argument("--typos",       type=int, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
 parser_common.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
 typo_types_group = parser_common.add_argument_group("typo types")
@@ -887,31 +1013,33 @@ for typo_name, typo_args in simple_typo_args.items():
 typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="insert a string or wildcard")
 for typo_name in itertools.chain(("swap",), simple_typo_args.keys(), ("insert",)):
     typo_types_group.add_argument("--max-typos-"+typo_name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+typo_name+" typos")
-typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="#", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: 1)")
+typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="#", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: %(default)s)")
 parser_common.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
 parser_common.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
 parser_common.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
 parser_common.add_argument("--delimiter",   metavar="STRING", help="the delimiter between tokens in the tokenlist or columns in the typos-map (default: whitespace)")
 parser_common.add_argument("--skip",        type=int, default=0,    metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
-parser_common.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, "+str(cpus)+")")
+parser_common.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, %(default)s)")
 parser_common.add_argument("--worker",      metavar="ID#/TOTAL#",   help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
-parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
+parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: %(default)s hours, i.e. 1 week)")
 parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
 parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
 parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
-parser_common.add_argument("--mkey",        action="store_true", help="prompt for a Bitcoin Core encrypted master key (from extract-mkey.py) instead of using a wallet file")
-parser_common.add_argument("--privkey",     action="store_true", help="prompt for an encrypted private key (from extract-*-privkey.py) instead of using a wallet file")
+parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
+parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
+parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
+parser_common.add_argument("--privkey",     action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
 parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
 parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
 parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
 gpu_group = parser_common.add_argument_group("GPU acceleration")
-gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and mkeys)")
-gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: 4096)")
+gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
+gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
 gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
 gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
 gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
-gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: 200)")
+gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: %(default)s)")
 
 # Once parse_arguments() has completed, password_generator_factory() will return an iterator
 # (actually a generator object) configured to generate all the passwords requested by the
@@ -1293,43 +1421,42 @@ def parse_arguments(effective_argv, **kwds):
             have_progress = False
 
 
-    required_args = 0
-    if args.wallet:   required_args += 1
-    if args.mkey:     required_args += 1
-    if args.privkey:  required_args += 1
-    if args.listpass: required_args += 1
-    if required_args != 1:
-        error_exit("argument --wallet (--mkey, --privkey, or --listpass, exactly one) is required")
-
-    # Load the wallet file
-    global wallet
-    if args.wallet:
-        load_wallet(args.wallet)
-    else:
-        wallet = None
-
-    # Prompt for a Bitcoin Core encrypted master key or a private key instead of requiring
-    # a wallet file (the only reason to treat these two differently is to emphasize that
-    # privkeys once decrypted can "leak" Bitcoin, whereas mkeys without the wallet are safe)
-    global key_data
-    key_data = None
+    # --mkey and --privkey are deprecated synonyms of --data-extract
     if args.mkey or args.privkey:
-        key_crc_base64 = kwds.get("mkey") if args.mkey else kwds.get("privkey")  # for unittest
+        args.data_extract = True
+
+    required_args = 0
+    if args.wallet:       required_args += 1
+    if args.data_extract: required_args += 1
+    if args.listpass:     required_args += 1
+    if required_args != 1:
+        error_exit("argument --wallet (or --data-extract or --listpass, exactly one) is required")
+
+    global wallet, key_data
+    wallet = key_data = None
+
+    # Load the wallet file (this sets the wallet global)
+    if args.wallet:
+        if args.blockchain_secondpass:
+            load_blockchain_secondpass_wallet(args.wallet)
+        else:
+            load_wallet(args.wallet)
+
+    # Prompt for data extracted by one of the extract-* scripts instead of using a wallet file
+    if args.data_extract:
+        key_crc_base64 = kwds.get("data_extract")  # for unittest
         if not key_crc_base64:
             if tokenlist_file == sys.stdin:
                 print(prog+": warning: order of data on stdin is: optional extra command-line arguments, key data, rest of tokenlist", file=sys.stderr)
             elif args.passwordlist == "-" and not sys.stdin.isatty():  # if isatty, friendly prompts are provided instead
                 print(prog+": warning: order of data on stdin is: key data, password list", file=sys.stderr)
-            if args.privkey:
-                # We could warn about wallet files too, but hopefully that's already obvious...
-                print("WARNING: a complete private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
             #
             # Has the first character of the key data already been read in from stdin?
             need_to_prepend = tokenlist_file == sys.stdin and char1_of_tokenlist_file != ""
             if sys.stdin.isatty() and not need_to_prepend:
-                print("Please enter the encrypted key data from the extract script\n> ", end="")
+                print("Please enter the data from the extract script\n> ", end="")
             else:
-                print("Reading encrypted key data from stdin")
+                print("Reading extract data from stdin")
             key_crc_base64 = sys.stdin.readline().rstrip("\r\n")
             if need_to_prepend:
                 key_crc_base64 = char1_of_tokenlist_file + key_crc_base64
@@ -1339,11 +1466,9 @@ def parse_arguments(effective_argv, **kwds):
         # (this sets the key_data global, and returns the validated CRC)
         key_crc = load_from_base64_key(key_crc_base64)
         #
-        is_mkey = key_data.startswith("bc:")  # Bitcoin Core
-        if args.mkey and not is_mkey:
-            error_exit("the --mkey data is not a Bitcoin Core encrypted master key (might be a privkey?)")
-        if args.privkey and is_mkey:
-            error_exit("the --privkey data is a Bitcoin Core encrypted mkey, not a privkey")
+        # Armory is currently the only supported wallet whose extract-* script provides a full private key
+        if key_data.startswith("ar:"):
+            print("WARNING: an Armory private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
         #
         # If autosaving, either check the key_crc during a session restore to make sure we're
         # actually restoring the exact same session, or save it for future such checks
@@ -1359,7 +1484,7 @@ def parse_arguments(effective_argv, **kwds):
     if args.enable_gpu:
         # TODO: fix this fragile check
         if not isinstance(wallet, tuple) or len(wallet) != 3:
-            error_exit("GPU searching is only supported for Bitcoin Core wallets and mkeys")
+            error_exit("GPU searching is only supported for Bitcoin Core wallets and data extracts")
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
         if devices_avail == []:
             error_exit("no supported GPUs found")
@@ -1500,13 +1625,13 @@ def parse_arguments(effective_argv, **kwds):
                 print("Please enter your tokenlist")   # be a little user friendly
             else:
                 print("Reading tokenlist from stdin")  # unless we've already started reading it...
-        parse_tokenlist(tokenlist_file, char1_of_tokenlist_file)
+        parse_tokenlist(tokenlist_file, prepend_to_line1 = char1_of_tokenlist_file)
 
     # If something has been redirected to stdin and we've been reading from it, close
     # stdin now so we don't keep the redirected files alive while running, but only
     # if we're done with it (done reading the passwordlist_file and no --pause option)
     if (    not sys.stdin.isatty() and
-            (args.mkey or args.privkey or tokenlist_file == sys.stdin or passwordlist_file == sys.stdin) and
+            (args.data_extract or tokenlist_file == sys.stdin or passwordlist_file == sys.stdin or args.blockchain_secondpass) and
             (passwordlist_file != sys.stdin or passwordlist_allcached) and not pause_registered):
         sys.stdin.close()   # this doesn't really close the fd
         try:   os.close(0)  # but this should, where supported
@@ -1705,7 +1830,7 @@ def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
                     error_exit("token on line", line_num, "has non-ASCII character '"+c+"'")
 
             # Syntax check any wildcards
-            count_or_error_msg = count_valid_wildcards(token, True)  # True == permit contracting wildcards
+            count_or_error_msg = count_valid_wildcards(token, permit_contracting_wildcards=True)
             if isinstance(count_or_error_msg, basestring):
                 error_exit("on line", str(line_num)+":", count_or_error_msg)
             elif count_or_error_msg:
@@ -2624,8 +2749,8 @@ def insert_typos_generator(password_base):
 wallet = None  # initialized once at global scope for Windows
 def init_worker(wallet_filename, key_data):
     if not wallet:
-        if wallet_filename: load_wallet(wallet_filename)
-        elif key_data:      load_from_raw_key(key_data)
+        if key_data:          load_from_raw_key(key_data)
+        elif wallet_filename: load_wallet(wallet_filename)
         else: assert False, "init_worker: wallet filename or key data specified"
     set_process_priority_idle()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -2709,8 +2834,10 @@ def count_and_check_eta(est):
 # process is taking a while. (Or does the work of count_and_check_eta() when passed est_secs_per_password.)
 PASSWORDS_BEFORE_DISPLAY  = 3000000  # on my CPU takes between 2 and 15 seconds depending on complexity, YMMV
 PASSWORDS_BETWEEN_UPDATES = 100000
-def password_generator_factory(chunksize = 1, **kwds):
-    est_secs_per_password = kwds.get("est_secs_per_password", 0)  # Also causes *all* passwords to be counted
+def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
+    # If est_secs_per_password is zero, only skipping is performed;
+    # if est_secs_per_password is non-zero, all passwords (including skipped ones) are counted.
+
     # If not counting all passwords (if only skipping)
     if not est_secs_per_password:
         # The simple case where there's nothing to skip, just return an unmodified password_generator()
@@ -2718,7 +2845,7 @@ def password_generator_factory(chunksize = 1, **kwds):
             return password_generator(chunksize), 0
         # The still fairly simple case where there's not much to skip, just skip it all at once
         elif args.skip <= PASSWORDS_BETWEEN_UPDATES:
-            passwords_count_iterator = password_generator(args.skip, True)  # only_yield_count==True
+            passwords_count_iterator = password_generator(args.skip, only_yield_count=True)
             passwords_counted = 0
             try:
                 # Skip it all in a single iteration (or raise StopIteration if it's empty)
@@ -2737,7 +2864,7 @@ def password_generator_factory(chunksize = 1, **kwds):
     assert args.skip >= 0
     sys_stderr_isatty = sys.stderr.isatty()
     max_seconds = args.max_eta * 3600  # max_eta is in hours
-    passwords_count_iterator = password_generator(PASSWORDS_BETWEEN_UPDATES, True)  # only_yield_count==True
+    passwords_count_iterator = password_generator(PASSWORDS_BETWEEN_UPDATES, only_yield_count=True)
     passwords_counted = 0
     try:
         # Iterate though the password counts in increments of size PASSWORDS_BETWEEN_UPDATES
@@ -2824,7 +2951,7 @@ def main():
         # Python on Windows is a bit touchy with signal handlers; it's safest to just do
         # all the cleanup code here (even though it'd be cleaner to throw an exception)
         if savestate:
-            do_autosave(args.skip + passwords_tried, True)  # do this first, it's most important
+            do_autosave(args.skip + passwords_tried, inside_interrupt_handler=True)  # do this first, it's most important
             autosave_file.close()
         print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe

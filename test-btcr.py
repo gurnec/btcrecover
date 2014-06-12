@@ -124,7 +124,7 @@ class Test01Basics(GeneratorTester):
     def test_only_yield_count(self):
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("one two three four five six"))
-        tok_it = btcrecover.password_generator(2, True)
+        tok_it = btcrecover.password_generator(2, only_yield_count=True)
         self.assertEqual(tok_it.next(), 2)
         self.assertIsNone(tok_it.send( (3, True) ))
         self.assertEqual(tok_it.next(), 3)
@@ -134,7 +134,7 @@ class Test01Basics(GeneratorTester):
 
         btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
             passwordlist = cStringIO.StringIO("one two three four five six".replace(" ", "\n")))
-        pwl_it = btcrecover.password_generator(2, True)
+        pwl_it = btcrecover.password_generator(2, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 2)
         self.assertIsNone(pwl_it.send( (3, True) ))
         self.assertEqual(pwl_it.next(), 3)
@@ -145,13 +145,13 @@ class Test01Basics(GeneratorTester):
     def test_only_yield_count_all(self):
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("one two three"))
-        tok_it = btcrecover.password_generator(4, True)
+        tok_it = btcrecover.password_generator(4, only_yield_count=True)
         self.assertEqual(tok_it.next(), 3)
         self.assertRaises(StopIteration, tok_it.next)
 
         btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
             passwordlist = cStringIO.StringIO("one two three".replace(" ", "\n")))
-        pwl_it = btcrecover.password_generator(4, True)
+        pwl_it = btcrecover.password_generator(4, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 3)
         self.assertRaises(StopIteration, pwl_it.next)
 
@@ -520,34 +520,34 @@ class Test05CommandLine(GeneratorTester):
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
     def test_skip_end2end_all_noeta(self):
-        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --no-eta --privkey").split(),
-            tokenlist = cStringIO.StringIO("one \n two"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --no-eta --data-extract").split(),
+            tokenlist    = cStringIO.StringIO("one \n two"),
+            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         self.assertIn("Skipped all 4 passwords", btcrecover.main())
 
     def test_max_eta(self):
-        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --privkey").split(),
-            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract").split(),
+            tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11"),
+            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
     def test_max_eta_ok(self):
-        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --privkey").split(),
-            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract").split(),
+            tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10"),
+            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         self.assertEqual(btcrecover.count_and_check_eta(360.0), 10)  # 360s * 10 passwords <= 1 hour
     def test_max_eta_skip(self):
-        btcrecover.parse_arguments(("--max-eta 1 --skip 4 --tokenlist __funccall --privkey").split(),
-            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        btcrecover.parse_arguments(("--max-eta 1 --skip 4 --tokenlist __funccall --data-extract").split(),
+            tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
+            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
     def test_max_eta_skip_ok(self):
-        btcrecover.parse_arguments(("--max-eta 1 --skip 5 --tokenlist __funccall --privkey").split(),
-            tokenlist = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
-            privkey   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy privkey not actually tested
+        btcrecover.parse_arguments(("--max-eta 1 --skip 5 --tokenlist __funccall --data-extract").split(),
+            tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
+            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         # 360s * 10 passwords <= 1 hour, but count_and_check_eta still returns the total count of 15
         self.assertEqual(btcrecover.count_and_check_eta(360.0), 15)
 
@@ -575,24 +575,24 @@ class Test05CommandLine(GeneratorTester):
         self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
 
 SAVESLOT_SIZE = 4096
-AUTOSAVE_ARGS = ("--autosave __funccall --tokenlist __funccall --privkey --no-progress --threads 1").split()
-AUTOSAVE_TOKENLIST = "^one \n two \n three \n"
-AUTOSAVE_PRIVKEY   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
+AUTOSAVE_ARGS = ("--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1").split()
+AUTOSAVE_TOKENLIST    = "^one \n two \n three \n"
+AUTOSAVE_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test06AutosaveRestore(unittest.TestCase):
 
     autosave_file = StringIONonClosing()
 
     def run_autosave_parse_arguments(self, autosave_file):
         btcrecover.parse_arguments(AUTOSAVE_ARGS,
-            autosave  = autosave_file,
-            tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
-            privkey   = AUTOSAVE_PRIVKEY)
+            autosave     = autosave_file,
+            tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+            data_extract = AUTOSAVE_DATA_EXTRACT)
 
     def run_restore_parse_arguments(self, restore_file):
         btcrecover.parse_arguments("--restore __funccall".split(),
-            restore   = restore_file,
-            tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
-            privkey   = AUTOSAVE_PRIVKEY)
+            restore      = restore_file,
+            tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+            data_extract = AUTOSAVE_DATA_EXTRACT)
 
     # These test_ functions are in alphabetical order (the same order they're executed in)
 
@@ -631,9 +631,9 @@ class Test06AutosaveRestore(unittest.TestCase):
     def test_restore_changed_args(self):
         with self.assertRaises(SystemExit) as cm:
             btcrecover.parse_arguments(AUTOSAVE_ARGS + ["--typos-capslock"],
-                autosave  = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
-                privkey   = AUTOSAVE_PRIVKEY)
+                autosave     = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
+                tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+                data_extract = AUTOSAVE_DATA_EXTRACT)
         self.assertIn("can't restore previous session: the command line options have changed", cm.exception.code)
 
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
@@ -641,19 +641,19 @@ class Test06AutosaveRestore(unittest.TestCase):
     def test_restore_changed_tokenlist(self):
         with self.assertRaises(SystemExit) as cm:
             btcrecover.parse_arguments(AUTOSAVE_ARGS,
-                autosave  = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST + "four"),
-                privkey   = AUTOSAVE_PRIVKEY)
+                autosave     = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
+                tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST + "four"),
+                data_extract = AUTOSAVE_DATA_EXTRACT)
         self.assertIn("can't restore previous session: the tokenlist file has changed", cm.exception.code)
 
     # Using --restore, restore (a copy of) the autosave data created by test_autosave(),
-    # but change the privkey data to generate an error
-    def test_restore_changed_privkey(self):
+    # but change the data_extract to generate an error
+    def test_restore_changed_data_extract(self):
         with self.assertRaises(SystemExit) as cm:
             btcrecover.parse_arguments(("--restore __funccall").split(),
-                restore   = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
-                tokenlist = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
-                privkey   = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
+                restore      = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
+                tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
+                data_extract = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
         self.assertIn("can't restore previous session: the encrypted key entered is not the same", cm.exception.code)
 
     # Using --restore, restore the autosave data created by test_autosave(),
@@ -698,7 +698,7 @@ class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
     # that the library doesn't make any changes to the wallet file
-    def wallet_tester(self, wallet_basename, force_purepython = False):
+    def wallet_tester(self, wallet_basename, force_purepython = False, blockchain_mainpass = None):
         assert os.path.basename(wallet_basename) == wallet_basename
         wallet_filename = os.path.join(wallet_dir, wallet_basename)
 
@@ -706,8 +706,11 @@ class Test07WalletDecryption(unittest.TestCase):
         temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
         shutil.copyfile(wallet_filename, temp_wallet_filename)
 
-        btcrecover.load_wallet(temp_wallet_filename)
-        if force_purepython: btcrecover.load_aes256_library(True)
+        if blockchain_mainpass is None:
+            btcrecover.load_wallet(temp_wallet_filename)
+        else:
+            btcrecover.load_blockchain_secondpass_wallet(temp_wallet_filename, blockchain_mainpass)
+        if force_purepython: btcrecover.load_aes256_library(force_purepython=True)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
@@ -740,7 +743,16 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_blockchain_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json")
 
-    # Make sure the Blockchain wallet loader can heuristically determine that files containing 
+    def test_blockchain_secondpass_v0(self):
+        self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
+
+    def test_blockchain_secondpass_v2(self):
+        self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
+
+    def test_blockchain_secondpass_unencrypted(self):
+        self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="")
+
+    # Make sure the Blockchain wallet loader can heuristically determine that files containing
     # base64 data that doesn't look entirely encrypted (random) are not Blockchain wallets
     def test_blockchain_invalid(self):
         # A base64-containing file that's mostly but not entirely encrypted (random)
@@ -750,19 +762,19 @@ class Test07WalletDecryption(unittest.TestCase):
         self.assertIn("Doesn't look random enough to be an encrypted Blockchain wallet", cm.exception.message)
 
     def test_bitcoincore_pp(self):
-        self.wallet_tester("bitcoincore-wallet.dat", True)
+        self.wallet_tester("bitcoincore-wallet.dat", force_purepython=True)
 
     def test_electrum_pp(self):
-        self.wallet_tester("electrum-wallet", True)
+        self.wallet_tester("electrum-wallet", force_purepython=True)
 
     def test_multibit_pp(self):
-        self.wallet_tester("multibit-wallet.key", True)
+        self.wallet_tester("multibit-wallet.key", force_purepython=True)
 
     def test_blockchain_v0_pp(self):
-        self.wallet_tester("blockchain-v0.0-wallet.aes.json", True)
+        self.wallet_tester("blockchain-v0.0-wallet.aes.json", force_purepython=True)
 
     def test_blockchain_v2_pp(self):
-        self.wallet_tester("blockchain-v2.0-wallet.aes.json", True)
+        self.wallet_tester("blockchain-v2.0-wallet.aes.json", force_purepython=True)
 
     def test_invalid_wallet(self):
         with self.assertRaises(SystemExit) as cm:
@@ -779,7 +791,7 @@ class Test08KeyDecryption(unittest.TestCase):
 
     def key_tester(self, key_crc_base64, force_purepython = False):
         btcrecover.load_from_base64_key(key_crc_base64)
-        if force_purepython: btcrecover.load_aes256_library(True)
+        if force_purepython: btcrecover.load_aes256_library(force_purepython=True)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
@@ -799,10 +811,10 @@ class Test08KeyDecryption(unittest.TestCase):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
 
     def test_bitcoincore_pp(self):
-        self.key_tester("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==", True)
+        self.key_tester("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==", force_purepython=True)
 
     def test_multibit_pp(self):
-        self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", True)
+        self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", force_purepython=True)
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):
@@ -860,9 +872,9 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertIn("encrypted key data is corrupted (failed CRC check)", cm.exception.code)
 
 
-E2E_ARGS = "--tokenlist __funccall --privkey --autosave __funccall --typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
-E2E_TOKENLIST = "+ ^%0,1[b-c]tcr--  \n  + ^,$%0,1<Test-  \n  ^3$pas  \n  + wrod$"
-E2E_PRIVKEY   = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
+E2E_ARGS = "--tokenlist __funccall --data-extract --autosave __funccall --typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
+E2E_TOKENLIST    = "+ ^%0,1[b-c]tcr--  \n  + ^,$%0,1<Test-  \n  ^3$pas  \n  + wrod$"
+E2E_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test09EndToEnd(unittest.TestCase):
 
     autosave_file = StringIONonClosing()
@@ -873,9 +885,9 @@ class Test09EndToEnd(unittest.TestCase):
     def test_end_to_end(self):
         autosave_file = self.__class__.autosave_file
         btcrecover.parse_arguments(E2E_ARGS,
-            tokenlist = cStringIO.StringIO(E2E_TOKENLIST),
-            privkey   = E2E_PRIVKEY,
-            autosave  = autosave_file)
+            tokenlist    = cStringIO.StringIO(E2E_TOKENLIST),
+            data_extract = E2E_DATA_EXTRACT,
+            autosave     = autosave_file)
         self.assertIn("Password found: 'btcr-test-password'", btcrecover.main())
 
         # Verify the exact password number where it was found to ensure password ordering hasn't changed
@@ -897,9 +909,9 @@ class Test09EndToEnd(unittest.TestCase):
     def test_skip(self):
         autosave_file = StringIONonClosing()
         btcrecover.parse_arguments(E2E_ARGS + ["--skip=103765"],
-            tokenlist = cStringIO.StringIO(E2E_TOKENLIST),
-            privkey   = E2E_PRIVKEY,
-            autosave  = autosave_file)
+            tokenlist    = cStringIO.StringIO(E2E_TOKENLIST),
+            data_extract = E2E_DATA_EXTRACT,
+            autosave     = autosave_file)
         self.assertIn("Password search exhausted", btcrecover.main())
 
         # Verify the password number where the search started

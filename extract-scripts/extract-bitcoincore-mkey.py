@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-# extract-mkey.py -- Bitcoin wallet master key extractor
+# extract-bitcoincore-mkey.py -- Bitcoin wallet master key extractor
 # Copyright (C) 2014 Christopher Gurnee
 #
 # This program is free software; you can redistribute it and/or
