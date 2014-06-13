@@ -165,10 +165,12 @@ class Test01Basics(GeneratorTester):
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 0)
     # the size of a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
     def test_count_one_chunk(self):
+        assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("%5d"))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 100000)
     def test_count_two_chunks(self):
+        assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
         btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
             tokenlist = cStringIO.StringIO("%5d 100000"))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 100001)

@@ -133,7 +133,7 @@ if not data["double_encryption"]:
 
 # Extract the three items we need to perform checking on the second password
 
-# The second password hash, converted from base64 to binary
+# The second password hash, converted from hex to binary
 password_hash = base64.b16decode(data["dpasswordhash"], True)  # True means allow lowercase
 if len(password_hash) != 32:
     raise ValueError("Blockchain second password hash is not 32 bytes long")

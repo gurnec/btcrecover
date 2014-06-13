@@ -105,7 +105,7 @@ Of course, you need to replace the wallet file name with yours. You should get a
     Blockchain first 16 encrypted bytes, iv, and iter_count in base64:
     Yms6abF6aZYdu5sKpStKA4ihra6GEAeZTumFiIM0YQUkTjcQJwAAj8ekAQ==
 
-When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file or the private key file, only the output from *extract-blockchain-main-data.py*. To continue the example:
+When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-blockchain-main-data.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
     C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
@@ -127,7 +127,7 @@ You need to enter your wallet's main password when prompted so that the extract 
     Blockchain second password hash, salt, and iter_count in base64:
     YnM6LeP7peG853HnQlaGswlwpwtqXKwa/1rLyeGzvKNl9HpyjnaeTCZDAaC4LbJcVkxaECcAACwXY6w=
 
-When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file or the private key file, only the output from *extract-blockchain-second-hash.py*. To continue the example:
+When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-blockchain-second-hash.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
     C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
