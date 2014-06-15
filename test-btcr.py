@@ -711,7 +711,7 @@ class Test07WalletDecryption(unittest.TestCase):
         if blockchain_mainpass is None:
             btcrecover.load_wallet(temp_wallet_filename)
         else:
-            btcrecover.load_blockchain_secondpass_wallet(temp_wallet_filename, blockchain_mainpass)
+            btcrecover.load_blockchain_secondpass_wallet(temp_wallet_filename, blockchain_mainpass, force_purepython)
         if force_purepython: btcrecover.load_aes256_library(force_purepython=True)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(
@@ -739,19 +739,23 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
     def test_blockchain_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json")
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
     def test_blockchain_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json")
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
     def test_blockchain_secondpass_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
     def test_blockchain_secondpass_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
 
-    def test_blockchain_secondpass_unencrypted(self):
+    def test_blockchain_secondpass_unencrypted(self):  # this wallet has no second-password iter_count, so this case is also tested here
         self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="")
 
     # Make sure the Blockchain wallet loader can heuristically determine that files containing
@@ -777,6 +781,12 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_blockchain_v2_pp(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", force_purepython=True)
+
+    def test_blockchain_secondpass_v0(self):
+        self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password", force_purepython=True)
+
+    def test_blockchain_secondpass_v2(self):
+        self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password", force_purepython=True)
 
     def test_invalid_wallet(self):
         with self.assertRaises(SystemExit) as cm:
@@ -812,11 +822,31 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_multibit(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
+    def test_blockchain_v0(self):
+        self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
+    def test_blockchain_v2(self):
+        self.key_tester("Yms6abF6aZYdu5sKpStKA4ihra6GEAeZTumFiIM0YQUkTjcQJwAAj8ekAQ==")
+
+    def test_blockchain_secondpass(self):                # extracted from blockchain-v0.0-wallet.aes.json which has a second password iter_count
+        self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaCgAAACsWXkw=")
+
+    def test_blockchain_secondpass_no_iter_count(self):  # extracted from blockchain-unencrypted-wallet.aes.json which is missing a second password iter_count
+        self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaAAAAAE/24yM=")
+
     def test_bitcoincore_pp(self):
         self.key_tester("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==", force_purepython=True)
 
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", force_purepython=True)
+
+    def test_blockchain_v0_pp(self):
+        self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==", force_purepython=True)
+
+    def test_blockchain_v2_pp(self):
+        self.key_tester("Yms6abF6aZYdu5sKpStKA4ihra6GEAeZTumFiIM0YQUkTjcQJwAAj8ekAQ==", force_purepython=True)
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):

@@ -3,7 +3,7 @@
 	"sharedKey" : "728e769e-4c26-4301-a0b8-2db25c564c5a",
 	"double_encryption" : true,
 	"dpasswordhash" : "ba3b18c73dd213b7c411e91f32e202d68208eca63ffe3e4530e6c19fb1f276a5",
-	"options" : {"pbkdf2_iterations":10,"fee_policy":0,"html5_notifications":false,"logout_time":600000,"tx_display":0,"always_keep_local_backup":false,"transactions_per_page":30,"additional_seeds":[]},
+	"options" : {"fee_policy":0,"html5_notifications":false,"logout_time":600000,"tx_display":0,"always_keep_local_backup":false,"transactions_per_page":30,"additional_seeds":[]},
 	"keys" : [
 {"addr":"1BUoAfr3N6RcH3JArntzoFGfk9hrgU4i5a","priv":"oXndJ0rnJR3XTXAxzIAQvjpYdLD1F5X4aCOVB/lKJzwbdQqcYZ4kH9uHodiYXf+jcDHLItxMh5AaAh76m382/w==","created_time":0,"created_device_name":"javascript_web","created_device_version":"1.0"}
 	]

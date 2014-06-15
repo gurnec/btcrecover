@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.7"
+__version__          = "0.7.8"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -518,38 +518,39 @@ def load_multibit_privkey_file(privkey_file):
     privkey_file.seek(0)
     # Multibit privkey files contain base64 text split into multiple lines;
     # we need the first 32 bytes after decoding, which translates to 44 before.
-    wallet = "".join(privkey_file.read(50).split())  # join multiple lines into one
-    if len(wallet) < 44: raise EOFError("Expected at least 44 bytes of text in the MultiBit private key file")
-    wallet = base64.b64decode(wallet[:44])
-    assert wallet.startswith(b"Salted__"), "load_multibit_privkey_file: file starts with base64 'Salted__'"
-    if len(wallet) < 32:  raise EOFError("Expected at least 32 bytes of decoded data in the MultiBit private key file")
-    wallet = wallet[8:32]
-    # wallet now consists of:
-    #   8 bytes of salt, followed by
-    #   1 16-byte encrypted aes block containing the first 16 base58 chars of a 52-char encoded private key
+    data = "".join(privkey_file.read(50).split())  # join multiple lines into one
+    if len(data) < 44: raise EOFError("Expected at least 44 bytes of text in the MultiBit private key file")
+    data = base64.b64decode(data[:44])
+    assert data.startswith(b"Salted__"), "load_multibit_privkey_file: file starts with base64 'Salted__'"
+    if len(data) < 32:  raise EOFError("Expected at least 32 bytes of decoded data in the MultiBit private key file")
+    wallet = data[16:32], data[8:16]  # one 16-byte AES block, 8-byte salt
 
 # Import a MultiBit private key that was extracted by extract-multibit-privkey.py
 def load_multibit_from_privkey(privkey_data):
     global wallet
+    assert len(privkey_data) == 24
     load_aes256_library()
-    wallet = privkey_data
+    wallet = privkey_data[8:], privkey_data[:8]  # one 16-byte AES block, 8-byte salt
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
 def return_multibitpk_verified_password_or_false(passwords):
-    # Copy a global into local for a small speed boost
-    l_md5 = hashlib.md5
+    # Copy a few globals into local for a small speed boost
+    l_md5                 = hashlib.md5
+    l_aes256_cbc_decrypt  = aes256_cbc_decrypt
+    l_match               = re.match
+    encrypted_block, salt = wallet
     for count, password in enumerate(passwords, 1):
-        salted = password + wallet[:8]
+        salted = password + salt
         key1   = l_md5(salted).digest()
         key2   = l_md5(key1 + salted).digest()
         iv     = l_md5(key2 + salted).digest()
-        b58_privkey = aes256_cbc_decrypt(key1 + key2, iv, wallet[8:])
+        b58_privkey = l_aes256_cbc_decrypt(key1 + key2, iv, encrypted_block)
         # If it looks like a base58 private key, we've found it
         # (there's a 1 in 600 billion chance this hits but the password is wrong)
         # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
         if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
-            re.match(br".[1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
+            l_match(br".[1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
                 return password, count
     return False, count
 
@@ -572,11 +573,13 @@ def load_electrum_wallet(wallet_file):
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
 def return_electrum_verified_password_or_false(passwords):
-    # Copy a global into local for a small speed boost
-    l_sha256 = hashlib.sha256
+    # Copy a few globals into local for a small speed boost
+    l_sha256             = hashlib.sha256
+    l_aes256_cbc_decrypt = aes256_cbc_decrypt
+    encrypted_seed, iv   = wallet[16:], wallet[:16]
     for count, password in enumerate(passwords, 1):
         key  = l_sha256( l_sha256( password ).digest() ).digest()
-        seed = aes256_cbc_decrypt(key, wallet[:16], wallet[16:])  # key, iv, encrypted seed
+        seed = l_aes256_cbc_decrypt(key, iv, encrypted_seed)
         # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
             return password, count
@@ -590,45 +593,62 @@ def load_blockchain_wallet(wallet_file):
     global wallet, measure_performance_iterations
     data, iter_count = parse_encrypted_blockchain_wallet(wallet_file.read(1048576))  # up to 1M, typical size is a few k
     # Decrease this (which is initialized in load_aes256_library() ) by a factor of iter_count:
-    measure_performance_iterations = int(round(float(measure_performance_iterations) / iter_count)) or 1
-    wallet = data[16:32], data[0:16], iter_count  # first encrypted block, salt_and_iv, iteration count
+    measure_performance_iterations = int(round(float(measure_performance_iterations) / (iter_count or 10.0))) or 1
+    wallet = data[16:32], data[:16], iter_count  # first encrypted block, salt_and_iv, iteration count
 
 # Load a Blockchain wallet file to get the "Second Password" hash given a wallet filename,
 # decrypting the wallet if necessary; note that this is usually called *instead* of the generic
 # load_wallet() function, and therefore it sets return_verified_password_or_false itself
-def load_blockchain_secondpass_wallet(wallet_filename, password = None):
+def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_purepython = False):
     global wallet, measure_performance_iterations, return_verified_password_or_false
     data = open(wallet_filename).read(1048576)  # up to 1M, typical size is a few k
 
-    # Assuming the wallet is encrypted, get the encrypted data
     try:
+        # Assuming the wallet is encrypted, get the encrypted data
         data, iter_count = parse_encrypted_blockchain_wallet(data)
     except KeyError as e:
-        # This is the one error to expect and ignore if the wallet wasn't encrypted
+        # This is the one error to expect and ignore which occurs when the wallet isn't encrypted
         if e.message == "version": pass
         else: raise
     except StandardError as e:
         error_exit(str(e))
     else:
         # If there were no problems getting the encrypted data, decrypt it
-        if not password:
-            password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
+        if force_purepython:  # already loaded by parse_encrypted_blockchain_wallet(), this is just for unit tests
+            load_aes256_library(force_purepython = True)
+        if not password: password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
         if not password: error_exit("encrypted Blockchain files must be decrypted before searching for the second password")
-        key  = passlib.utils.pbkdf2.pbkdf2(password, data[:16], iter_count, 32)  # data[:16] is the salt
-        data = aes256_cbc_decrypt(key, data[:16], data[16:])                     # key, iv, encrypted blocks
-        padding = ord(data[-1:])  # ISO 10126 padding
-        if padding > 16:
-            error_exit("invalid padding (wrong main password?)")
-        data = data[:-padding]
+        data, salt_and_iv = data[16:], data[:16]
+        #
+        # These are a bit fragile in the interest of simplicity because they assume the guid is the first
+        # name in the JSON object, although this has always been the case as of 6/2014 (since 12/2011)
+        #
+        # Encryption scheme used in newer wallets
+        def decrypt_current(iter_count):
+            key = passlib.utils.pbkdf2.pbkdf2(password, salt_and_iv, iter_count, 32)
+            decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)           # CBC mode
+            padding   = ord(decrypted[-1:])                                  # ISO 10126 padding length
+            return decrypted[:-padding] if 1 <= padding <= 16 and re.match('{\s*"guid"', decrypted) else None
+        #
+        # Encryption scheme only used in version 0.0 wallets (N.B. this is untested)
+        def decrypt_old():
+            key = passlib.utils.pbkdf2.pbkdf2(password, salt_and_iv, 1, 32)  # only 1 iteration
+            decrypted  = aes256_ofb_decrypt(key, salt_and_iv, data)          # OFB mode
+            # The 16-byte last block, reversed, with all but the first byte of ISO 7816-4 padding removed:
+            last_block = tuple(itertools.dropwhile(lambda x: x=="\0", decrypted[:15:-1]))
+            padding    = 17 - len(last_block)                                # ISO 7816-4 padding length
+            return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == "\x80" and re.match('{\s*"guid"', decrypted) else None
+        #
+        if iter_count:  # v2.0 wallets have a single possible encryption scheme
+            data = decrypt_current(iter_count)
+        else:           # v0.0 wallets have three different possible encryption schemes
+            data = decrypt_current(10) or decrypt_current(1) or decrypt_old()
+        if not data:
+            error_exit("can't decrypt wallet (wrong main password?)")
 
     # Load and parse the now-decrypted wallet
-    try:
-        data = json.loads(data)
-    except ValueError as e:
-        if password:
-            error_exit("can't parse JSON:", str(e), "(wrong main password?)")
-        raise
-    if not data["double_encryption"]:
+    data = json.loads(data)
+    if not data.get("double_encryption"):
         error_exit("double encryption with a second password is not enabled for this wallet")
 
     # Extract what we need to perform checking on the second password
@@ -640,11 +660,15 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None):
     if str(uuid.UUID(salt)) != salt:
         raise ValueError("Unrecognized Blockchain salt format")
     #
-    iter_count = data["options"]["pbkdf2_iterations"]
-    if not isinstance(iter_count, int) or iter_count < 1:
-        raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
+    try:
+        iter_count = data["options"]["pbkdf2_iterations"]
+        if not isinstance(iter_count, int) or iter_count < 1:
+            raise ValueError("Invalid Blockchain second password pbkdf2_iterations " + str(iter_count))
+        measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
+    except KeyError:
+        iter_count = 0
+        measure_performance_iterations = 5000
 
-    measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
     wallet = password_hash, salt, iter_count
     return_verified_password_or_false = return_blockchain_secondpass_verified_password_or_false
 
@@ -657,12 +681,12 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None):
         key_data = b"bs:" + struct.pack("< 32s 16s I", password_hash, uuid.UUID(salt).bytes, iter_count)
 
 
-# Parse the contents of an encrypted blockchain wallet (either v0 or v2)
-# returning two values in a tuple: encrypted_data_blob, iter_count
+# Parse the contents of an encrypted blockchain wallet (either v0 or v2) returning two
+# values in a tuple: (encrypted_data_blob, iter_count) where iter_count == 0 for v0 wallets
 def parse_encrypted_blockchain_wallet(data):
-    iter_count = None
+    iter_count = 0
 
-    # Try to load a v2.0 wallet file first
+    # Try to load a v2.0 wallet file (which contains an iter_count)
     if data[0] == "{":
         try:
             data = json.loads(data)
@@ -684,12 +708,12 @@ def parse_encrypted_blockchain_wallet(data):
     if len(data) < 32:
         raise ValueError("Encrypted Blockchain data is too short")
     if len(data) % 16 != 0:
-        raise ValueError("Encrypted Blockchain data length not divisible by encryption blocksize (16)")
+        raise ValueError("Encrypted Blockchain data length is not divisible by the encryption blocksize (16)")
 
-    # If this is (possibly) a v0.0 wallet file, check that the encrypted data looks
-    # random, otherwise this could be some other type of base64-encoded file such
+    # If this is (possibly) a v0.0 (a.k.a. v1) wallet file, check that the encrypted data
+    # looks random, otherwise this could be some other type of base64-encoded file such
     # as a MultiBit key file (it should be safe to skip this test for v2.0 wallets)
-    if not iter_count:  # has already been set for v2.0 wallets
+    if not iter_count:  # if this is a v0.0 wallet
         hist_bins = [0] * 256
         for byte in data:
             hist_bins[ord(byte)] += 1
@@ -702,15 +726,14 @@ def parse_encrypted_blockchain_wallet(data):
         # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
         # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
         if entropy_bits < 7.4:
-            raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet")
-        iter_count = 10  # the default for v0.0 wallets
+            raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
 
     # Load the required libraries
     global passlib
     import passlib.utils.pbkdf2
     load_aes256_library()
 
-    return data, iter_count
+    return data, iter_count  # iter_count == 0 for v0 wallets
 
 # Import extracted Blockchain file data necessary for main password checking
 def load_blockchain_from_filedata(file_data):
@@ -719,7 +742,7 @@ def load_blockchain_from_filedata(file_data):
     load_aes256_library()
     # These are the same first encrypted block, salt_and_iv, iteration count retrieved by load_blockchain_wallet()
     wallet = struct.unpack("< 16s 16s I", file_data)
-    measure_performance_iterations = int(round(measure_performance_iterations / wallet[2])) or 1
+    measure_performance_iterations = int(round(float(measure_performance_iterations) / (wallet[2] or 10.0))) or 1
 
 # Import extracted Blockchain file data necessary for second password checking
 def load_blockchain_secondpass_from_filedata(file_data):
@@ -728,21 +751,35 @@ def load_blockchain_secondpass_from_filedata(file_data):
     uuid_salt = uuid.UUID(bytes=uuid_salt)
     # These are the same second password hash, salt, iteration count retrieved by load_blockchain_secondpass_wallet()
     wallet = password_hash, str(uuid_salt), iter_count
-    measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
+    measure_performance_iterations = int(round(50000.0 / (iter_count or 10.0))) or 1
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
 def return_blockchain_verified_password_or_false(passwords):
-    # Copy a global into local for a small speed boost
-    l_pbkdf2 = passlib.utils.pbkdf2.pbkdf2
+    # Copy a few globals into local for a small speed boost
+    l_pbkdf2             = passlib.utils.pbkdf2.pbkdf2
+    l_aes256_cbc_decrypt = aes256_cbc_decrypt
+    l_aes256_ofb_decrypt = aes256_ofb_decrypt
     encrypted_block, salt_and_iv, iter_count = wallet
+    v0 = not iter_count     # version 0.0 wallets don't specify an iter_count
+    if v0: iter_count = 10  # the default iter_count for version 0.0 wallets
     for count, password in enumerate(passwords, 1):
-        key = l_pbkdf2(password, salt_and_iv, iter_count, 32)
-        unencrypted_block = aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)
+        key = l_pbkdf2(password, salt_and_iv, iter_count, 32)                        # iter_count iterations
+        unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
         # A bit fragile because it assumes the guid is in the first encrypted block,
         # although this has always been the case as of 6/2014 (since 12/2011)
         if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
             return password, count
+    if v0:
+        # Try the older encryption schemes possibly used in v0.0 wallets
+        for count, password in enumerate(passwords, 1):
+            key = l_pbkdf2(password, salt_and_iv, 1, 32)                                 # only 1 iteration
+            unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
+            if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
+                return password, count
+            unencrypted_block = l_aes256_ofb_decrypt(key, salt_and_iv, encrypted_block)  # OFB mode
+            if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
+                return password, count
     return False, count
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
@@ -751,52 +788,76 @@ def return_blockchain_secondpass_verified_password_or_false(passwords):
     # Copy a global into local for a small speed boost
     l_sha256 = hashlib.sha256
     password_hash, salt, iter_count = wallet
-    for count, password in enumerate(passwords, 1):
-        running_hash = salt + password
-        for i in xrange(iter_count):
-            running_hash = l_sha256(running_hash).digest()
-        if running_hash == password_hash:
-            return password, count
+    # Newer wallets specify an iter_count and use something similar to PBKDF1 with SHA-256
+    if iter_count:
+        for count, password in enumerate(passwords, 1):
+            running_hash = salt + password
+            for i in xrange(iter_count):
+                running_hash = l_sha256(running_hash).digest()
+            if running_hash == password_hash:
+                return password, count
+    # Older wallets used one of three password hashing schemes
+    else:
+        for count, password in enumerate(passwords, 1):
+            running_hash = l_sha256(salt + password).digest()
+            # Just a single SHA-256 hash
+            if running_hash == password_hash:
+                return password, count
+            # Exactly 10 hashes (the first of which was done above)
+            for i in xrange(9):
+                running_hash = l_sha256(running_hash).digest()
+            if running_hash == password_hash:
+                return password, count
+            # A single unsalted hash
+            if l_sha256(password).digest() == password_hash:
+                return password, count
     return False, count
 
 
-# Loads PyCrypto if available, else falls back to the pure python version (30x slower)
+# Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
+# using either PyCrypto if it's available or a pure python library. The created functions each take
+# three bytestring arguments: key, iv, ciphertext. ciphertext must be a multiple of 16 bytes, and any
+# padding present is not stripped.
 missing_pycrypto_warned = False
 def load_aes256_library(force_purepython = False):
-    global Crypto, aespython, aes256_cbc_decrypt, aes256_key_expander, \
-           measure_performance_iterations, missing_pycrypto_warned
+    global aes256_cbc_decrypt, aes256_ofb_decrypt, measure_performance_iterations, missing_pycrypto_warned
     if not force_purepython:
         try:
             import Crypto.Cipher.AES
-            aes256_cbc_decrypt = aes256_cbc_decrypt_pycrypto
+            aes256_cbc_decrypt = lambda key, iv, ciphertext: \
+                Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
+            aes256_ofb_decrypt = lambda key, iv, ciphertext: \
+                Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_OFB, iv).decrypt(ciphertext)
             measure_performance_iterations = 50000
-            return Crypto
+            return Crypto  # just so the caller can check which version was loaded
         except ImportError:
             if not missing_pycrypto_warned:
                 print(prog+": warning: can't find PyCrypto, using aespython instead", file=sys.stderr)
                 missing_pycrypto_warned = True
-    import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode
-    aes256_cbc_decrypt  = aes256_cbc_decrypt_pp
-    aes256_key_expander = aespython.key_expander.KeyExpander(256)
+
+    # This version is attributed to GitHub user serprex; please see the aespython
+    # README.txt for more information. It measures over 30x faster than the more
+    # common "slowaes" package (although it's still 30x slower than the PyCrypto)
+    #
+    import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode, aespython.ofb_mode
+    key_expander = aespython.key_expander.KeyExpander(256)
+    AESCipher    = aespython.aes_cipher.AESCipher
+    def aes256_decrypt_factory(BlockMode):
+        # A bytearray iv is faster, but OFB mode requires a list of ints
+        convert_iv = (lambda iv: map(ord, iv)) if BlockMode==aespython.ofb_mode.OFBMode else bytearray
+        def aes256_decrypt(key, iv, ciphertext):
+            block_cipher  = AESCipher( key_expander.expand(map(ord, key)) )
+            stream_cipher = BlockMode(block_cipher, 16)
+            stream_cipher.set_iv(convert_iv(iv))
+            plaintext = bytearray()
+            for i in xrange(0, len(ciphertext), 16):
+                plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )  # input must be a list
+            return str(plaintext)
+        return aes256_decrypt
+    aes256_cbc_decrypt = aes256_decrypt_factory(aespython.cbc_mode.CBCMode)
+    aes256_ofb_decrypt = aes256_decrypt_factory(aespython.ofb_mode.OFBMode)
     measure_performance_iterations = 2000
-    return aespython
-
-# Input must be a multiple of 16 bytes; does not strip any padding
-def aes256_cbc_decrypt_pycrypto(key, iv, ciphertext):
-    return Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
-
-# Input must be a multiple of 16 bytes; does not strip any padding.
-# This version is attributed to GitHub user serprex; please see the aespython
-# README.txt for more information. It measures over 30x faster than the more
-# common "slowaes" package (although it's still 30x slower than the PyCrypto)
-def aes256_cbc_decrypt_pp(key, iv, ciphertext):
-    block_cipher  = aespython.aes_cipher.AESCipher( aes256_key_expander.expand(map(ord, key)) )
-    stream_cipher = aespython.cbc_mode.CBCMode(block_cipher, 16)
-    stream_cipher.set_iv(bytearray(iv))
-    plaintext = bytearray()
-    for i in xrange(0, len(ciphertext), 16):
-        plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )  # input must be a list
-    return str(plaintext)
+    return aespython  # just so the caller can check which version was loaded
 
 
 ################################### Argument Parsing ###################################

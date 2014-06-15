@@ -35,8 +35,10 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
 wallet_filename = sys.argv[1]
 data = open(wallet_filename, "rb").read(1048576)  # up to 1M, typical size is a few k
 
+# The number of pbkdf2 iterations, or 0 for v0.0 wallet files which don't specify this
+iter_count = 0
+
 # Try to load a v2.0 wallet file first
-iter_count = None
 if data[0] == "{":
     try:
         data = json.loads(data)
@@ -49,8 +51,8 @@ if data[0] == "{":
             raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
         data = data["payload"]
 
-# Either the encrypted data was extracted from the "payload" field above, or
-# this is a v0.0 wallet file whose entire contents consist of the encrypted data
+# Either the encrypted data was extracted from the "payload" field above, or this is 
+# a v0.0 (a.k.a. v1) wallet file whose entire contents consist of the encrypted data
 try:
     data = base64.b64decode(data)
 except TypeError as e:
@@ -59,9 +61,6 @@ if len(data) < 32:
     raise ValueError("Encrypted Blockchain data is too short")
 if len(data) % 16 != 0:
     raise ValueError("Encrypted Blockchain data length not divisible by encryption blocksize (16)")
-
-if not iter_count:   # has already been set for v2.0 wallets
-    iter_count = 10  # the default for v0.0 wallets
 
 print("Blockchain first 16 encrypted bytes, iv, and iter_count in base64:", file=sys.stderr)
 
