@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.8"
+__version__          = "0.7.9"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -200,6 +200,7 @@ def load_wallet(wallet_filename):
 
 # Clears out any wallet data (but doesn't "unload" any wallet libraries)
 def unload_wallet():
+    global wallet
     wallet = None
 
 
@@ -884,7 +885,7 @@ def duplicates_removed(iterable):
         return iterable
     elif isinstance(iterable, str):
         return b"".join(unique)
-    elif isinstance(iterable, Unicode):
+    elif isinstance(iterable, unicode):
         return u"".join(unique)
     return unique
 
@@ -1160,7 +1161,7 @@ def parse_arguments(effective_argv, **kwds):
 
     if args.list_gpus:
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
-        if devices_avail == []:
+        if not devices_avail:
             error_exit("no supported GPUs found")
         for i, dev in enumerate(devices_avail, 1):
             print("#"+str(i), dev.name.strip())
@@ -1450,7 +1451,7 @@ def parse_arguments(effective_argv, **kwds):
 
     if args.skip < 0:
         print(prog+": warning: --skip must be >= 0, assuming 0", file=sys.stderr)
-        args.skip == 0
+        args.skip = 0
 
     if args.threads < 1:
         print(prog+": warning: --threads must be >= 1, assuming 1", file=sys.stderr)
@@ -1547,7 +1548,7 @@ def parse_arguments(effective_argv, **kwds):
         if not isinstance(wallet, tuple) or len(wallet) != 3:
             error_exit("GPU searching is only supported for Bitcoin Core wallets and data extracts")
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
-        if devices_avail == []:
+        if not devices_avail:
             error_exit("no supported GPUs found")
         if args.int_rate <= 0:
             error_exit("--int-rate must be > 0")
@@ -3098,7 +3099,7 @@ def main():
         if l_savestate or not have_progress:
             eta_seconds = passwords_count * est_secs_per_password
             # if the main thread is sharing CPU time with a verifying thread
-            if (spawned_threads == 0 and not args.enable_gpu or spawned_threads >= cpus):
+            if spawned_threads == 0 and not args.enable_gpu or spawned_threads >= cpus:
                 eta_seconds += iterate_time
             eta_seconds = int(round(eta_seconds)) or 1
             if l_savestate:
