@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.9"
+__version__          = "0.7.10"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -1126,14 +1126,15 @@ def parse_arguments(effective_argv, **kwds):
     # Create a parser which can parse any supported option, and run it
     global args
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("-h", "--help",  action="store_true", help="show this help message and exit")
-    parser.add_argument("--tokenlist",   metavar="FILE",      help="the list of tokens/partial passwords (required)")
-    parser.add_argument("--max-tokens",  type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
-    parser.add_argument("--min-tokens",  type=int, default=1,          metavar="COUNT", help="enforce a min # of tokens included per guess")
+    parser.add_argument("-h", "--help",   action="store_true", help="show this help message and exit")
+    parser.add_argument("--tokenlist",    metavar="FILE",      help="the list of tokens/partial passwords (required)")
+    parser.add_argument("--max-tokens",   type=int, default=sys.maxint, metavar="COUNT", help="enforce a max # of tokens included per guess")
+    parser.add_argument("--min-tokens",   type=int, default=1,          metavar="COUNT", help="enforce a min # of tokens included per guess")
     parser._add_container_actions(parser_common)
-    parser.add_argument("--autosave",    metavar="FILE", help="autosave (5 min) progress to or restore it from a file")
-    parser.add_argument("--restore",     metavar="FILE", help="restore progress and options from an autosave file (must be the only option on the command line)")
-    parser.add_argument("--passwordlist",metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
+    parser.add_argument("--autosave",     metavar="FILE",      help="autosave (5 min) progress to or restore it from a file")
+    parser.add_argument("--restore",      metavar="FILE",      help="restore progress and options from an autosave file (must be the only option on the command line)")
+    parser.add_argument("--passwordlist", metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
+    parser.add_argument("--has-wildcards",action="store_true", help="parse and expand wildcards inside passwordlists (default: wildcards are only parsed inside tokenlists)")
     if argcomplete: argcomplete.autocomplete(parser)
     args = parser.parse_args(effective_argv)
 
@@ -1145,6 +1146,7 @@ def parse_arguments(effective_argv, **kwds):
     if args.passwordlist:
         parser = argparse.ArgumentParser(add_help=True)
         parser.add_argument("--passwordlist", required=True, nargs="?", const="-", metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
+        parser.add_argument("--has-wildcards",action="store_true", help="parse and expand wildcards inside passwordlists (default: disabled for passwordlists)")
         parser._add_container_actions(parser_common)
         # Add these in as non-options so that args gets a copy of their values
         parser.set_defaults(autosave=False, restore=False)
@@ -1367,7 +1369,7 @@ def parse_arguments(effective_argv, **kwds):
     # Parse the custom wildcard set option
     if args.custom_wild:
         global wildcard_keys
-        if args.passwordlist and not (args.typos_insert or args.typos_replace):
+        if args.passwordlist and not (args.has_wildcards or args.typos_insert or args.typos_replace):
             print(prog+": warning: ignoring unused --custom-wild", file=sys.stderr)
         else:
             for c in args.custom_wild:
@@ -1646,7 +1648,7 @@ def parse_arguments(effective_argv, **kwds):
     if passwordlist_file:
         initial_passwordlist   = []
         passwordlist_allcached = False
-        has_any_wildcards      = False  # currently not supported for passwordlists
+        has_any_wildcards      = False
         #
         if passwordlist_file == sys.stdin:
             passwordlist_isatty = sys.stdin.isatty()
@@ -1656,17 +1658,28 @@ def parse_arguments(effective_argv, **kwds):
             else:
                 print("Reading passwordlist from stdin")
             #
-            for i in xrange(1000000):
+            for line_num in xrange(1, 1000000):
                 line = passwordlist_file.readline()
                 if not line or passwordlist_isatty and line.rstrip("\r\n") == "exit()":
                     passwordlist_allcached = True
                     break
+                if args.has_wildcards and "%" in line:
+                    error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
+                    if isinstance(error_msg, str):
+                        line_msg = "last line:" if passwordlist_isatty else "line "+str(line_num)+":"
+                        print(prog+": warning: ignoring", line_msg, error_msg, file=sys.stderr)
+                        line = None  # add a None to the list so we can count line numbers correctly
+                    else:
+                        has_any_wildcards = True
                 initial_passwordlist.append(line)
             #
             if not passwordlist_allcached and not args.no_eta:
                 # ETA calculations require that the passwordlist file is seekable or all in RAM
                 print(prog+": warning: --no-eta has been enabled because --passwordlist is stdin and is large", file=sys.stderr)
                 args.no_eta = True
+        #
+        if not passwordlist_allcached and args.has_wildcards:
+            has_any_wildcards = True  # If not all cached, need to assume there are wildcards
 
     # Some final sanity checking, now that args.no_eta's value is known
     if args.no_eta:  # always true for --listpass and --performance
@@ -1691,7 +1704,7 @@ def parse_arguments(effective_argv, **kwds):
     # If something has been redirected to stdin and we've been reading from it, close
     # stdin now so we don't keep the redirected files alive while running, but only
     # if we're done with it (done reading the passwordlist_file and no --pause option)
-    if (    not sys.stdin.isatty() and
+    if (    not sys.stdin.closed and not sys.stdin.isatty() and
             (args.data_extract or tokenlist_file == sys.stdin or passwordlist_file == sys.stdin or args.blockchain_secondpass) and
             (passwordlist_file != sys.stdin or passwordlist_allcached) and not pause_registered):
         sys.stdin.close()   # this doesn't really close the fd
@@ -2414,12 +2427,20 @@ def permutations_nodups(sequence):
 def passwordlist_base_password_generator():
     global initial_passwordlist
 
-    for password_base in initial_passwordlist:
-        yield password_base.rstrip("\r\n")
+    line_num = 1
+    for password_base in initial_passwordlist:  # note that these have already been syntax-checked
+        if password_base is not None:           # happens if there was a wildcard syntax error
+            yield password_base.rstrip("\r\n")
+        line_num += 1                           # count both valid lines and ones with syntax errors
 
     if not passwordlist_allcached:
         assert not passwordlist_file.closed
-        for password_base in passwordlist_file:
+        for line_num, password_base in enumerate(passwordlist_file, line_num):  # not yet syntax-checked
+            if args.has_wildcards and "%" in password_base:
+                error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
+                if isinstance(error_msg, str):
+                    print(prog+": warning: ignoring line", str(line_num)+":", error_msg, file=sys.stderr)
+                    continue
             yield password_base.rstrip("\r\n")
 
     # Prepare for a potential future run

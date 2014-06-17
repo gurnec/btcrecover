@@ -62,7 +62,7 @@ class GeneratorTester(unittest.TestCase):
             self.assertEqual(tok_it.next(), expected_passwords)
         except StopIteration:
             self.assertEqual([], expected_passwords)
-        if not test_passwordlist: return (tok_it,)
+        if not test_passwordlist: return tok_it,
 
         # Reset any files passed in as extra parameters
         for sio in filter(lambda s: isinstance(s, StringIONonClosing), extra_kwds.values()):
@@ -77,7 +77,7 @@ class GeneratorTester(unittest.TestCase):
             self.assertEqual(pwl_it.next(), expected_passwords)
         except StopIteration:
             self.assertEqual([], expected_passwords)
-        return (tok_it, pwl_it)
+        return tok_it, pwl_it
 
     # tokenlist == a list of lines (w/o "\n") which will become the tokenlist file
     # expected_error == a (partial) error message that should be produced from the tokenlist
@@ -122,7 +122,7 @@ class Test01Basics(GeneratorTester):
         self.assertRaises(StopIteration, tok_it.next)
 
     def test_only_yield_count(self):
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one two three four five six"))
         tok_it = btcrecover.password_generator(2, only_yield_count=True)
         self.assertEqual(tok_it.next(), 2)
@@ -132,7 +132,7 @@ class Test01Basics(GeneratorTester):
         self.assertEqual(tok_it.next(), ["six"])
         self.assertRaises(StopIteration, tok_it.next)
 
-        btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
             passwordlist = cStringIO.StringIO("one two three four five six".replace(" ", "\n")))
         pwl_it = btcrecover.password_generator(2, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 2)
@@ -143,35 +143,35 @@ class Test01Basics(GeneratorTester):
         self.assertRaises(StopIteration, pwl_it.next)
 
     def test_only_yield_count_all(self):
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one two three"))
         tok_it = btcrecover.password_generator(4, only_yield_count=True)
         self.assertEqual(tok_it.next(), 3)
         self.assertRaises(StopIteration, tok_it.next)
 
-        btcrecover.parse_arguments(("--passwordlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
             passwordlist = cStringIO.StringIO("one two three".replace(" ", "\n")))
         pwl_it = btcrecover.password_generator(4, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 3)
         self.assertRaises(StopIteration, pwl_it.next)
 
     def test_count(self):
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one two three"))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 3)
     def test_count_zero(self):
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO(""))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 0)
     # the size of a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
     def test_count_one_chunk(self):
         assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("%5d"))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 100000)
     def test_count_two_chunks(self):
         assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
-        btcrecover.parse_arguments(("--tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("%5d 100000"))
         self.assertEqual(btcrecover.count_and_check_eta(1.0), 100001)
 
@@ -250,13 +250,13 @@ class Test02Anchors(GeneratorTester):
 class Test03WildCards(GeneratorTester):
 
     def test_basics_1(self):
-        self.do_generator_test(["%d"], map(str, xrange(10)))
+        self.do_generator_test(["%d"], map(str, xrange(10)), "--has-wildcards", True)
     def test_basics_2(self):
-        self.do_generator_test(["%dtest"], [str(i)+"test" for i in xrange(10)])
+        self.do_generator_test(["%dtest"], [str(i)+"test" for i in xrange(10)], "--has-wildcards", True)
     def test_basics_3(self):
-        self.do_generator_test(["te%dst"], ["te"+str(i)+"st" for i in xrange(10)])
+        self.do_generator_test(["te%dst"], ["te"+str(i)+"st" for i in xrange(10)], "--has-wildcards", True)
     def test_basics_4(self):
-        self.do_generator_test(["test%d"], ["test"+str(i) for i in xrange(10)])
+        self.do_generator_test(["test%d"], ["test"+str(i) for i in xrange(10)], "--has-wildcards", True)
 
     def test_invalid_nocust(self):
         self.expect_syntax_failure(["%c"],    "invalid wildcard")
@@ -266,15 +266,16 @@ class Test03WildCards(GeneratorTester):
         self.expect_syntax_failure(["test%"], "invalid wildcard")
 
     def test_multiple(self):
-        self.do_generator_test(["%d%d"], ["{:02}".format(i) for i in xrange(100)])
+        self.do_generator_test(["%d%d"], ["{:02}".format(i) for i in xrange(100)], "--has-wildcards", True)
 
     def test_length_2(self):
-        self.do_generator_test(["%2d"],  ["{:02}".format(i) for i in xrange(100)])
+        self.do_generator_test(["%2d"],  ["{:02}".format(i) for i in xrange(100)], "--has-wildcards", True)
     def test_length_range(self):
         self.do_generator_test(["%0,2d"],
             [""] +
             map(str, xrange(10)) +
-            ["{:02}".format(i) for i in xrange(100)])
+            ["{:02}".format(i) for i in xrange(100)],
+            "--has-wildcards", True)
 
     def test_length_invalid_range(self):
         self.expect_syntax_failure(["%2,1d"], "on line 1: min wildcard length (2) > max length (1)")
@@ -284,55 +285,55 @@ class Test03WildCards(GeneratorTester):
         self.expect_syntax_failure(["%,2d"],  "invalid wildcard")
 
     def test_case_lower(self):
-        self.do_generator_test(["%a"], map(chr, xrange(ord("a"), ord("z")+1)))
+        self.do_generator_test(["%a"], map(chr, xrange(ord("a"), ord("z")+1)), "--has-wildcards", True)
     def test_case_upper(self):
-        self.do_generator_test(["%A"], map(chr, xrange(ord("A"), ord("Z")+1)))
+        self.do_generator_test(["%A"], map(chr, xrange(ord("A"), ord("Z")+1)), "--has-wildcards", True)
     def test_case_insensitive_1(self):
         self.do_generator_test(["%ia"],
-            map(chr, xrange(ord("a"), ord("z")+1)) + map(chr, xrange(ord("A"), ord("Z")+1)))
+            map(chr, xrange(ord("a"), ord("z")+1)) + map(chr, xrange(ord("A"), ord("Z")+1)), "--has-wildcards", True)
     def test_case_insensitive_2(self):
         self.do_generator_test(["%iA"],
-            map(chr, xrange(ord("A"), ord("Z")+1)) + map(chr, xrange(ord("a"), ord("z")+1)))
+            map(chr, xrange(ord("A"), ord("Z")+1)) + map(chr, xrange(ord("a"), ord("z")+1)), "--has-wildcards", True)
 
     def test_custom(self):
-        self.do_generator_test(["%c"],  ["a", "b", "c", "D", "2"], "--custom-wild a-cD2")
+        self.do_generator_test(["%c"],  ["a", "b", "c", "D", "2"], "--has-wildcards --custom-wild a-cD2", True)
     def test_custom_upper(self):
-        self.do_generator_test(["%C"],  ["A", "B", "C", "D", "2"], "--custom-wild a-cD2")
+        self.do_generator_test(["%C"],  ["A", "B", "C", "D", "2"], "--has-wildcards --custom-wild a-cD2", True)
     def test_custom_insensitive_1(self):
         self.do_generator_test(["%ic"], ["a", "b", "c", "D", "2", "A", "B", "C", "d"],
-            "--custom-wild a-cD2 -d")
+            "--has-wildcards --custom-wild a-cD2 -d", True)
     def test_custom_insensitive_2(self):
         self.do_generator_test(["%iC"], ["A", "B", "C", "d", "2", "a", "b", "c", "D"],
-            "--custom-wild a-cD2 -d")
+            "--has-wildcards --custom-wild a-cD2 -d", True)
 
     def test_set(self):
-        self.do_generator_test(["%[abcc-]"], ["a", "b", "c", "-"], "-d")
+        self.do_generator_test(["%[abcc-]"], ["a", "b", "c", "-"], "--has-wildcards -d", True)
     def test_set_insensitive(self):
-        self.do_generator_test(["%i[abcc-]"], ["a", "b", "c", "-", "A", "B", "C"], "-d")
+        self.do_generator_test(["%i[abcc-]"], ["a", "b", "c", "-", "A", "B", "C"], "--has-wildcards -d", True)
     def test_noset(self):
-        self.do_generator_test(["%%[not-a-range]"], ["%[not-a-range]"])
+        self.do_generator_test(["%%[not-a-range]"], ["%[not-a-range]"], "--has-wildcards", True)
 
     def test_range_1(self):
-        self.do_generator_test(["%[1dc-f]"],  ["1", "d", "c", "e", "f"], "-d")
+        self.do_generator_test(["%[1dc-f]"],  ["1", "d", "c", "e", "f"], "--has-wildcards -d", True)
     def test_range_2(self):
-        self.do_generator_test(["%[a-c-e]"], ["a", "b", "c", "-", "e"])
+        self.do_generator_test(["%[a-c-e]"], ["a", "b", "c", "-", "e"], "--has-wildcards", True)
     def test_range_insensitive(self):
-        self.do_generator_test(["%i[1dc-f]"], ["1", "d", "c", "e", "f", "D", "C", "E", "F"], "-d")
+        self.do_generator_test(["%i[1dc-f]"], ["1", "d", "c", "e", "f", "D", "C", "E", "F"], "--has-wildcards -d", True)
 
     def test_range_invalid(self):
         self.expect_syntax_failure(["%[c-a]"],  "first character in wildcard range 'c' > last 'a'")
 
     def test_contracting_1(self):
-        self.do_generator_test(["a%0,2-bcd"], ["abcd", "bcd", "acd", "cd", "ad"], "-d")
+        self.do_generator_test(["a%0,2-bcd"], ["abcd", "bcd", "acd", "cd", "ad"], "--has-wildcards -d", True)
     def test_contracting_2(self):
-        self.do_generator_test(["abcd%1,2-"], ["abc", "ab"], "-d")
+        self.do_generator_test(["abcd%1,2-"], ["abc", "ab"], "--has-wildcards -d", True)
     def test_contracting_right(self):
-        self.do_generator_test(["ab%0,1>cd"], ["abcd", "abd"], "-d")
+        self.do_generator_test(["ab%0,1>cd"], ["abcd", "abd"], "--has-wildcards -d", True)
     def test_contracting_left(self):
-        self.do_generator_test(["ab%0,3<cd"], ["abcd", "acd", "cd"], "-d")
+        self.do_generator_test(["ab%0,3<cd"], ["abcd", "acd", "cd"], "--has-wildcards -d", True)
     def test_contracting_multiple(self):
         self.do_generator_test(["%0,2-ab%[X]cd%0,2-"],
-            ["abXcd", "abXc", "abX", "bXcd", "bXc", "bX", "Xcd", "Xc", "X"], "-d")
+            ["abXcd", "abXc", "abX", "bXcd", "bXc", "bX", "Xcd", "Xc", "X"], "--has-wildcards -d", True)
 
 
 class Test04Typos(GeneratorTester):
@@ -470,6 +471,12 @@ LARGE_TOKENLIST     = " ".join(str(i) for i in xrange(LARGE_TOKENLIST_LEN))
 LARGE_LAST_TOKEN    = str(LARGE_TOKENLIST_LEN - 1)
 class Test05CommandLine(GeneratorTester):
 
+    def test_passwordlist_no_wildcards(self):
+        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
+            passwordlist = cStringIO.StringIO("%%"))
+        tok_it, skipped = btcrecover.password_generator_factory(2)
+        self.assertEqual(tok_it.next(), ["%%"])
+
     def test_regex_only(self):
         self.do_generator_test(["one", "two"], ["one", "twoone", "onetwo"], "--regex-only o.e")
 
@@ -510,44 +517,44 @@ class Test05CommandLine(GeneratorTester):
     def test_skip_large_2_all_pastend(self):
         self.do_generator_test([LARGE_TOKENLIST + " last"], [],       "-d --skip "+str(LARGE_TOKENLIST_LEN+2), False, sys.maxint, LARGE_TOKENLIST_LEN+1)
     def test_skip_end2end(self):
-        btcrecover.parse_arguments(("--skip 2 --tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--skip 2 --tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main())
     def test_skip_end2end_all_exact(self):
-        btcrecover.parse_arguments(("--skip 4 --tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--skip 4 --tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
     def test_skip_end2end_all_pastend(self):
-        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --listpass").split(),
+        btcrecover.parse_arguments("--skip 5 --tokenlist __funccall --listpass".split(),
             tokenlist = cStringIO.StringIO("one \n two"))
         self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
     def test_skip_end2end_all_noeta(self):
-        btcrecover.parse_arguments(("--skip 5 --tokenlist __funccall --no-eta --data-extract").split(),
+        btcrecover.parse_arguments("--skip 5 --tokenlist __funccall --no-eta --data-extract".split(),
             tokenlist    = cStringIO.StringIO("one \n two"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         self.assertIn("Skipped all 4 passwords", btcrecover.main())
 
     def test_max_eta(self):
-        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract").split(),
+        btcrecover.parse_arguments("--max-eta 1 --tokenlist __funccall --data-extract".split(),
             tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
     def test_max_eta_ok(self):
-        btcrecover.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract").split(),
+        btcrecover.parse_arguments("--max-eta 1 --tokenlist __funccall --data-extract".split(),
             tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         self.assertEqual(btcrecover.count_and_check_eta(360.0), 10)  # 360s * 10 passwords <= 1 hour
     def test_max_eta_skip(self):
-        btcrecover.parse_arguments(("--max-eta 1 --skip 4 --tokenlist __funccall --data-extract").split(),
+        btcrecover.parse_arguments("--max-eta 1 --skip 4 --tokenlist __funccall --data-extract".split(),
             tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
     def test_max_eta_skip_ok(self):
-        btcrecover.parse_arguments(("--max-eta 1 --skip 5 --tokenlist __funccall --data-extract").split(),
+        btcrecover.parse_arguments("--max-eta 1 --skip 5 --tokenlist __funccall --data-extract".split(),
             tokenlist    = cStringIO.StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         # 360s * 10 passwords <= 1 hour, but count_and_check_eta still returns the total count of 15
@@ -577,7 +584,7 @@ class Test05CommandLine(GeneratorTester):
         self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
 
 SAVESLOT_SIZE = 4096
-AUTOSAVE_ARGS = ("--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1").split()
+AUTOSAVE_ARGS = "--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1".split()
 AUTOSAVE_TOKENLIST    = "^one \n two \n three \n"
 AUTOSAVE_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test06AutosaveRestore(unittest.TestCase):
@@ -652,7 +659,7 @@ class Test06AutosaveRestore(unittest.TestCase):
     # but change the data_extract to generate an error
     def test_restore_changed_data_extract(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(("--restore __funccall").split(),
+            btcrecover.parse_arguments("--restore __funccall".split(),
                 restore      = StringIO.StringIO(self.__class__.autosave_file.getvalue()),
                 tokenlist    = cStringIO.StringIO(AUTOSAVE_TOKENLIST),
                 data_extract = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
@@ -782,10 +789,10 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_blockchain_v2_pp(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", force_purepython=True)
 
-    def test_blockchain_secondpass_v0(self):
+    def test_blockchain_secondpass_v0_pp(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password", force_purepython=True)
 
-    def test_blockchain_secondpass_v2(self):
+    def test_blockchain_secondpass_v2_pp(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password", force_purepython=True)
 
     def test_invalid_wallet(self):
