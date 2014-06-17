@@ -1544,8 +1544,7 @@ def parse_arguments(effective_argv, **kwds):
 
     # Parse and syntax check all of the GPU related options
     if args.enable_gpu:
-        # TODO: fix this fragile check
-        if not isinstance(wallet, tuple) or len(wallet) != 3:
+        if return_verified_password_or_false != return_bitcoincore_verified_password_or_false:
             error_exit("GPU searching is only supported for Bitcoin Core wallets and data extracts")
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
         if not devices_avail:
