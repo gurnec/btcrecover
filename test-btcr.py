@@ -830,6 +830,10 @@ class Test08KeyDecryption(unittest.TestCase):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
+    def test_electrum(self):
+        self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == "Crypto", "requires PyCrypto")
     def test_blockchain_v0(self):
         self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==")
 
@@ -848,6 +852,9 @@ class Test08KeyDecryption(unittest.TestCase):
 
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", force_purepython=True)
+
+    def test_electrum_pp(self):
+        self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT", force_purepython=True)
 
     def test_blockchain_v0_pp(self):
         self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==", force_purepython=True)

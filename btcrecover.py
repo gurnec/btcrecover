@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.10"
+__version__          = "0.7.11"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -247,6 +247,11 @@ def load_from_raw_key(key_data):
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
         return
 
+    if key_type == b"el:":
+        load_electrum_from_halfseed(key_data[3:])
+        return_verified_password_or_false = return_electrum_verified_password_or_false
+        return
+
     if key_type == b"bk:":
         load_blockchain_from_filedata(key_data[3:])
         return_verified_password_or_false = return_blockchain_verified_password_or_false
@@ -257,9 +262,7 @@ def load_from_raw_key(key_data):
         return_verified_password_or_false = return_blockchain_secondpass_verified_password_or_false
         return
 
-    # TODO: Electrum support (not sure if it's even possible?)
-
-    error_exit("unrecognized encrypted key type")
+    error_exit("unrecognized encrypted key type '"+key_type+"'")
 
 
 ############### Armory ###############
@@ -535,6 +538,7 @@ def load_multibit_from_privkey(privkey_data):
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+assert "1" < "9" < "A" < "Z" < "a" < "z"  # the b58 check below assumes ASCII ordering in the interest of speed
 def return_multibitpk_verified_password_or_false(passwords):
     # Copy a few globals into local for a small speed boost
     l_md5                 = hashlib.md5
@@ -550,8 +554,11 @@ def return_multibitpk_verified_password_or_false(passwords):
         # If it looks like a base58 private key, we've found it
         # (there's a 1 in 600 billion chance this hits but the password is wrong)
         # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
-        if (b58_privkey[0] == b"L" or b58_privkey[0] == b"K") and \
-            l_match(br".[1-9A-HJ-NP-Za-km-z]{15}", b58_privkey):
+        if b58_privkey[0] in b"LK":  # private keys always start with L or K
+            for c in b58_privkey:
+                # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
+                if c > "z" or c < "1" or "9" < c < "A" or "Z" < c < "a" or c in b"IOl": break  # not base58
+            else:  # if the loop above doesn't break, it's base58
                 return password, count
     return False, count
 
@@ -570,9 +577,18 @@ def load_electrum_wallet(wallet_file):
     if not wallet.get("use_encryption"): raise ValueError("Electrum wallet is not encrypted")
     wallet = base64.b64decode(wallet["seed"])
     if len(wallet) != 64:                raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
+    wallet = wallet[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the seed
+
+# Import an Eletrum partial seed that was extracted by extract-electrum-halfseed.py
+def load_electrum_from_halfseed(seed_data):
+    global wallet
+    assert len(seed_data) == 32
+    load_aes256_library()
+    wallet = seed_data  # the 16-byte IV plus the first 16-byte encrypted block of the seed
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+assert "0" < "9" < "a" < "f"  # the hex check below assumes ASCII ordering in the interest of speed
 def return_electrum_verified_password_or_false(passwords):
     # Copy a few globals into local for a small speed boost
     l_sha256             = hashlib.sha256
@@ -581,8 +597,10 @@ def return_electrum_verified_password_or_false(passwords):
     for count, password in enumerate(passwords, 1):
         key  = l_sha256( l_sha256( password ).digest() ).digest()
         seed = l_aes256_cbc_decrypt(key, iv, encrypted_seed)
-        # If the 48 byte encrypted seed decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-        if seed.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+        # If the first 16 bytes of the encrypted seed is all lower-case hex, we've found it
+        for c in seed:
+            if c > "f" or c < "0" or "9" < c < "a": break  # not hex
+        else:  # if the loop above doesn't break, it's all hex
             return password, count
     return False, count
 

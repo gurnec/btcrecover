@@ -16,3 +16,6 @@ but is not limited to:
 
  * sha512-ng_kernel.cl, please see [sha512-ng-bc_kernel.cl](sha512-ng-bc_kernel.cl)
  for more information
+
+
+Thanks to Bitcointalk.org user Wotan777 who discovered a better way to work with Electrum wallets, and who made *extract-electrum-halfseed.py* possible.

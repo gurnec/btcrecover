@@ -22,7 +22,7 @@
  * Progress bar and ETA display (at the command line)
  * Interrupt and Continue searches without losing progress
  * Optional autosave - continue searches even after inadvertent interruptions or crashes
- * “Offline” mode for Bitcoin Core, MultiBit, Blockchain, and Litecoin-Qt wallets - use one of the [extract scripts (click for more information)](extract-scripts/README.md) to extract just enough information to attempt password recovery, without giving *btcrecover* or whoever runs it access to *any* of the addresses or private keys in your Bitcoin wallet.
+ * “Offline” mode for Bitcoin Core, MultiBit, Electrum, Blockchain, and Litecoin-Qt wallets - use one of the [extract scripts (click for more information)](extract-scripts/README.md) to extract just enough information to attempt password recovery, without giving *btcrecover* or whoever runs it access to *any* of the addresses or private keys in your Bitcoin wallet.
  * “Nearly offline” mode for Armory - use an [extract script (click for more information)](extract-scripts/README.md) to extract a single private key for attempting password recovery. *btcrecover* and whoever runs it will only have access to this one address/private key from your Bitcoin wallet.
 
 ----------

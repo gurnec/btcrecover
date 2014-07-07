@@ -22,6 +22,7 @@ If you'd prefer to download just a single extract script, please select the one 
  * Bitcoin Core - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bitcoincore-mkey.py>
  * Blockchain main password - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-main-data.py>
  * Blockchain second password -  <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-second-hash.py>
+ * Electrum - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum-halfseed.py>
  * MultiBit - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-privkey.py>
 
 If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, you must install the 32-bit version. For any other wallets, you may install either the 32-bit or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or the “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version, both available here: <https://www.python.org/download/>. For Armory wallets, you must also have Armory v0.91 or later installed.
@@ -138,7 +139,6 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 
 Please note that you must either download the entire *btcrecover* package which includes an AES decryption library, or you must already have PyCrypto installed in order to use the *extract-blockchain-second-hash.py* script.
 
-
 #### Blockchain Technical Details ####
 
 The *extract-blockchain-main-data.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts the first 32 bytes of encrypted data from a Blockchain wallet, of which 16 bytes are an AES initialization vector, and the remaining 16 bytes are the first encrypted AES block. This information is then converted to base64 format for easy copy/paste, and printed to the screen. The one encrypted block does not contain any private key information, but once decrypted it does contain a non-sensitive string (specifically the string "guid") which can be used by *btcrecover* to test for a successful password try.
@@ -146,6 +146,36 @@ The *extract-blockchain-main-data.py* script is intentionally short and should b
 The *extract-blockchain-second-hash.py* script is a bit longer, but it should still be short enough for most Python programmers to read and understand. After decrypting the first level of encryption of a Blockchain wallet, it extracts a password hash and salt which can be used by *btcrecover* to test for a successful password try. It does not extract any of the encrypted private keys.
 
 Without access to the rest of your wallet file, the bits of information extracted by these scripts alone do not put any of your Bitcoin funds at risk, even after a successful password guess and decryption.
+
+
+### Usage for Electrum ###
+
+After downloading the script, **make a copy of your wallet file into a different folder** (to make it easy, into the same folder as *extract-electrum-halfseed.py*). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open the folder which contains the first wallet file created by Electrum after it is installed: `%appdata%\Electrum\wallets`. From here you can copy and paste your wallet file, usually named `default_wallet`, into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming you've made a copy of your wallet file into the same folder):
+
+    cd \Users\Chris\Downloads\btcrecover-master\extract-scripts
+    C:\python27\python extract-electrum-halfseed.py default_wallet
+
+Of course, you need to replace the wallet file name with yours. You should get a message which looks like this as a result:
+
+    First half of encrypted Electrum seed, iv, and crc in base64:
+    ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT
+
+When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-electrum-halfseed.py*. To continue the example:
+
+    cd \Users\Chris\Downloads\btcrecover-master
+    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    Please enter the data from the extract script
+    > ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT
+    ...
+    Password found: xxxx
+
+#### Electrum Technical Details ####
+
+The *extract-electrum-halfseed.py* script is intentionally short and should be easy to read for any Python programmer. An Electrum encrypted seed is 64 bytes long. It contains a 16-byte AES initialization vector, followed by 48 bytes of encrypted seed data, the last 16 of which are padding (so just 32 bytes of actual seed data). The script extracts the 16-byte initialization vector and just the first 16 bytes of actual seed data (50% of the seed).
+
+Because only half of the seed is extracted, the private keys cannot be feasibly reconstructed even after the half-seed is decrypted (assuming the password search succeeds). Because these 16 characters are hex encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the characters with each password, and once the result is a valid 16-character long hex-encoded string, it has found the correct password.
+
+Without access to the rest of your wallet file, it is extremely unlikely that these 16 characters alone could put any of your Bitcoin funds at risk, even after a successful password guess and decryption.
 
 
 ### Usage for MultiBit ###
@@ -179,13 +209,11 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 
 #### MultiBit Technical Details ####
 
-The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 30% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 characters are decrypted (assuming the password search succeeds). Because these 16 characters are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the characters with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
+The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts 8 bytes of password salt plus the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 30% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 characters are decrypted (assuming the password search succeeds). Because these 16 characters are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the characters with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
 
 Without access to the rest of your private key backup file or your wallet file, these 16 characters alone do not put any of your Bitcoin funds at risk, even after a successful password guess and decryption.
 
 
 ### Limitations ###
-
-An extract script is not available for Electrum wallets.
 
 As mentioned in the [Usage for Armory](#usage-for-armory) section, the address and private key extracted from Armory wallets does put that one address at risk.
