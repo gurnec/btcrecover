@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.11"
+__version__          = "0.7.12"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -447,6 +447,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
     # trying to maximize the number of iterations done in the last set to optimize performance
     assert isinstance(wallet, tuple) and len(wallet) == 3, "init_bitcoincore_opencl_kernel: bitcoin core wallet or mkey has been loaded"
     iter_count = wallet[2]
+    assert isinstance(iter_count, int), "init_bitcoincore_opencl_kernel: bitcoin core wallet or mkey has been loaded"
     iter_count_chunksize = iter_count // int_rate or 1
     if iter_count_chunksize % int_rate != 0:  # if not evenly divisible,
         iter_count_chunksize += 1             # then round up
@@ -901,10 +902,8 @@ def duplicates_removed(iterable):
             seen.add(x)
     if len(unique) == len(iterable) and (isinstance(iterable, basestring) or isinstance(iterable, list)):
         return iterable
-    elif isinstance(iterable, str):
-        return b"".join(unique)
-    elif isinstance(iterable, unicode):
-        return u"".join(unique)
+    elif isinstance(iterable, basestring):
+        return type(iterable)().join(unique)
     return unique
 
 # Converts a wildcard set into a string, expanding ranges and removing duplicates,
@@ -956,6 +955,7 @@ def syntax_check_range(m):
         print(prog+": warning: %0 or %0,0 wildcards always expand to empty strings", file=sys.stderr)
     return ""
 
+
 # Loads the savestate from the more recent save slot in an autosave_file (into a global)
 SAVESLOT_SIZE = 4096
 def load_savestate(autosave_file):
@@ -1001,6 +1001,68 @@ def load_savestate(autosave_file):
         savestate = savestate1
         autosave_nextslot =  0
 
+
+# Converts a file-like object into a new file-like object with an added peek() method, e.g.:
+#   file = open(filename)
+#   peekable_file = MakePeekable(file)
+#   next_char = peekable_file.peek()
+#   assert next_char == peekable_file.read(1)
+# Do not take references of the member functions, e.g. don't do this:
+#   tell_ref = peekable_file.tell
+#   print peekable_file.peek()
+#   location = tell_ref()                    # will be off by one;
+#   assert location == peekable_file.tell()  # will assert
+class MakePeekable(object):
+    def __init__(self, file):
+        self.file   = file
+        self.peeked = ""
+    #
+    def peek(self):
+        if not self.peeked:
+            self.peeked = self.file.read(1)
+        return self.peeked
+    #
+    def read(self, size = -1):
+        if size == 0: return ""
+        peeked = self.peeked
+        self.peeked = ""
+        return peeked + self.file.read(size - 1) if peeked else self.file.read(size)
+    def readline(self, size = -1):
+        if size == 0: return ""
+        peeked = self.peeked
+        self.peeked = ""
+        if peeked == "\n": return "\n"  # A blank Unix-style line (or OS X)
+        if peeked == "\r":              # A blank Windows or MacOS line
+            if size == 1:
+                return "\r"
+            if self.peek() == "\n":
+                self.peeked = ""
+                return "\r\n"           # A blank Windows-style line
+            return "\r"                 # A blank MacOS-style line (not OS X)
+        return peeked + self.file.readline(size - 1) if peeked else self.file.readline(size)
+    def readlines(self, size = -1):
+        lines = []
+        while self.peeked:
+            lines.append(self.readline())
+        return lines + self.file.readlines(size)  # (this size is just a hint)
+    #
+    def __iter__(self):
+        return self
+    def next(self):
+        return self.readline() if self.peeked else self.file.next()
+    #
+    reset_before_calling = {"seek", "tell", "truncate", "write", "writelines"}
+    def __getattr__(self, name):
+        if self.peeked and name in MakePeekable.reset_before_calling:
+            self.file.seek(-1, os.SEEK_CUR)
+            self.peeked = ""
+        return getattr(self.file, name)
+    #
+    def close(self):
+        self.peeked = ""
+        self.file.close()
+
+
 # Opens a new or returns an already-opened file, if it passes the specified constraints.
 # * Only examines one file: if filename == "__funccall" and funccall_file is not None,
 #   use it. Otherwise if filename is not None, use it. Otherwise if default_filename
@@ -1015,10 +1077,11 @@ def open_or_use(filename, mode = "r",
         permit_stdin     = None,   # when True a filename == "-" opens stdin
         default_filename = None,   # name of file that can be opened if filename == None
         require_data     = None,   # only if file is non-empty, else return None
-        new_or_empty     = None):  # open if file is new or empty, else return None
+        new_or_empty     = None,   # open if file is new or empty, else return None
+        make_peekable    = None):  # the returned file object is given a peek method
     assert not(permit_stdin and require_data), "open_or_use: stdin cannot require_data"
     assert not(permit_stdin and new_or_empty), "open_or_use: stdin is never new_or_empty"
-    assert not(require_data and new_or_empty), "open_or_use: can require_data or be new_or_empty"
+    assert not(require_data and new_or_empty), "open_or_use: can either require_data or be new_or_empty"
     #
     # If the already-opened file was requested
     if funccall_file and filename == "__funccall":
@@ -1031,14 +1094,18 @@ def open_or_use(filename, mode = "r",
                 funccall_file.seek(0)
                 # The file has contents; if it shouldn't:
                 if new_or_empty: return None
-        return funccall_file
+        return MakePeekable(funccall_file) if make_peekable else funccall_file;
     #
     if permit_stdin and filename == "-":
+        if make_peekable:
+            sys.stdin = MakePeekable(sys.stdin)
         return sys.stdin
     #
     # If there was no file specified, but a default exists
     if not filename and default_filename:
         if permit_stdin and default_filename == "-":
+            if make_peekable:
+                sys.stdin = MakePeekable(sys.stdin)
             return sys.stdin
         if os.path.isfile(default_filename):
             filename = default_filename
@@ -1049,7 +1116,10 @@ def open_or_use(filename, mode = "r",
         return None
     if new_or_empty and os.path.exists(filename) and (os.path.getsize(filename) > 0 or not os.path.isfile(filename)):
         return None
-    return open(filename, mode)
+    #
+    file = open(filename, mode)
+    return MakePeekable(file) if make_peekable else file
+
 
 # Enables pause-before-exit (at most once per program run) if stdin is interactive (a tty)
 pause_registered = None
@@ -1191,33 +1261,29 @@ def parse_arguments(effective_argv, **kwds):
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
     if not args.restore and not args.passwordlist and not args.performance:
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
-            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True)
+            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True, make_peekable=True)
     else:
         tokenlist_file = None
 
     # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
     # TODO: handle Unicode BOM
-    char1_of_tokenlist_file = ""
-    if tokenlist_file:
-        char1_of_tokenlist_file = tokenlist_file.read(1)  # need to save this in case it's not "#"
-        if char1_of_tokenlist_file == "#":                # it's either a comment or additional args
-            char1_of_tokenlist_file = ""
-            first_line = tokenlist_file.readline()
-            if first_line.startswith("--"):               # if it's additional args, not just a comment
-                print("Reading additional options from tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
-                tokenlist_args = first_line.split()       # TODO: support quoting / escaping?
-                for arg in tokenlist_args:
-                    if arg.startswith("--to"):        # --tokenlist
-                        error_exit("the --tokenlist option is not permitted inside a tokenlist file")
-                    elif arg.startswith("--pas"):     # --passwordlist
-                        error_exit("the --passwordlist option is not permitted inside a tokenlist file")
-                    elif arg.startswith("--pe"):     # --performance
-                        error_exit("the --performance option is not permitted inside a tokenlist file")
-                effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
-                args = parser.parse_args(effective_argv)          # reparse the arguments
-                # Check this again as early as possible so user doesn't miss any error messages
-                if args.pause: enable_pause()
+    if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
+        first_line = tokenlist_file.readline().rstrip("\r\n")[1:]
+        if first_line.startswith("--"):                  # if it's additional args, not just a comment
+            print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
+            tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
+            for arg in tokenlist_args:
+                if arg.startswith("--to"):               # --tokenlist
+                    error_exit("the --tokenlist option is not permitted inside a tokenlist file")
+                elif arg.startswith("--pas"):            # --passwordlist
+                    error_exit("the --passwordlist option is not permitted inside a tokenlist file")
+                elif arg.startswith("--pe"):             # --performance
+                    error_exit("the --performance option is not permitted inside a tokenlist file")
+            effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
+            args = parser.parse_args(effective_argv)          # reparse the arguments
+            # Check this again as early as possible so user doesn't miss any error messages
+            if args.pause: enable_pause()
 
 
     # There are two ways to restore from an autosave file: either specify --restore (alone)
@@ -1248,15 +1314,12 @@ def parse_arguments(effective_argv, **kwds):
         #
         # We finally know the tokenlist filename; open it here
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
-            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True)
+            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True, make_peekable=True)
         # Display a warning if any options (all ignored) were specified in the tokenlist file
-        if tokenlist_file:
-            char1_of_tokenlist_file = tokenlist_file.read(1)  # need to save this in case it's not "#"
-            if char1_of_tokenlist_file == "#":                # it's either a comment or additional args
-                char1_of_tokenlist_file = ""
-                first_line = tokenlist_file.readline()
-                if first_line.startswith("--"):               # if it's additional args, not just a comment
-                    print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
+        if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
+            first_line = tokenlist_file.readline()
+            if first_line.startswith("#--"):                 # if it's additional args, not just a comment
+                print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
         print("Using autosave file '"+restore_filename+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
@@ -1533,16 +1596,12 @@ def parse_arguments(effective_argv, **kwds):
             elif args.passwordlist == "-" and not sys.stdin.isatty():  # if isatty, friendly prompts are provided instead
                 print(prog+": warning: order of data on stdin is: key data, password list", file=sys.stderr)
             #
-            # Has the first character of the key data already been read in from stdin?
-            need_to_prepend = tokenlist_file == sys.stdin and char1_of_tokenlist_file != ""
-            if sys.stdin.isatty() and not need_to_prepend:
-                print("Please enter the data from the extract script\n> ", end="")
-            else:
-                print("Reading extract data from stdin")
-            key_crc_base64 = sys.stdin.readline().rstrip("\r\n")
-            if need_to_prepend:
-                key_crc_base64 = char1_of_tokenlist_file + key_crc_base64
-                char1_of_tokenlist_file = ""
+            key_prompt = "Please enter the data from the extract script\n> "  # the default friendly prompt
+            try:
+                if not sys.stdin.isatty() or sys.stdin.peeked:
+                    key_prompt = "Reading extract data from stdin\n" # message to use if key data has already been entered
+            except AttributeError: pass
+            key_crc_base64 = raw_input(key_prompt)
         #
         # Emulates load_wallet, but using the base64 key data instead of a wallet file
         # (this sets the key_data global, and returns the validated CRC)
@@ -1601,7 +1660,7 @@ def parse_arguments(effective_argv, **kwds):
                 elif dev.type & pyopencl.device_type.GPU:         cur_score += 4  # better than CPU
                 if   "nvidia" in dev.vendor.lower():              cur_score += 2  # is never an IGP: very good
                 elif "amd"    in dev.vendor.lower():              cur_score += 1  # sometimes an IGP: good
-                if cur_score >= best_score_sofar:
+                if cur_score >= best_score_sofar:                                 # (intel is always an IGP)
                     if cur_score > best_score_sofar:
                         best_score_sofar = cur_score
                         devices = []
@@ -1683,7 +1742,7 @@ def parse_arguments(effective_argv, **kwds):
                     break
                 if args.has_wildcards and "%" in line:
                     error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
-                    if isinstance(error_msg, str):
+                    if isinstance(error_msg, basestring):
                         line_msg = "last line:" if passwordlist_isatty else "line "+str(line_num)+":"
                         print(prog+": warning: ignoring", line_msg, error_msg, file=sys.stderr)
                         line = None  # add a None to the list so we can count line numbers correctly
@@ -1713,11 +1772,8 @@ def parse_arguments(effective_argv, **kwds):
     # If we're using a tokenlist file, call parse_tokenlist() to parse it.
     if tokenlist_file:
         if tokenlist_file == sys.stdin:
-            if sys.stdin.isatty() and char1_of_tokenlist_file == "":
-                print("Please enter your tokenlist")   # be a little user friendly
-            else:
-                print("Reading tokenlist from stdin")  # unless we've already started reading it...
-        parse_tokenlist(tokenlist_file, prepend_to_line1 = char1_of_tokenlist_file)
+            print("Reading tokenlist from stdin")
+        parse_tokenlist(tokenlist_file)
 
     # If something has been redirected to stdin and we've been reading from it, close
     # stdin now so we don't keep the redirected files alive while running, but only
@@ -1793,7 +1849,7 @@ def parse_arguments(effective_argv, **kwds):
 
 # After creation, AnchoredToken must not be changed: it creates and caches the return
 # values for __str__ and __hash__ for speed on the assumption they don't change
-class AnchoredToken:
+class AnchoredToken(object):
     def __init__(self, token, line_num = "?"):
         if token.startswith("^"):
             # If it is a syntactically correct positional or middle anchor
@@ -1876,7 +1932,7 @@ class AnchoredToken:
     # For hashlib
     def __repr__(self):      return self.__class__.__name__ + "(" + repr(self.cached_str) + ")"
 
-def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
+def parse_tokenlist(tokenlist_file):
     global token_lists
     global has_any_duplicate_tokens, has_any_wildcards, has_any_anchors, has_any_mid_anchors
 
@@ -1888,10 +1944,7 @@ def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
     has_any_mid_anchors = False
     token_lists         = []
 
-    # May need to restore the first character we read in the argument parsing
-    # section while looking for command line arguments in the tokenlist file
-    first_line = prepend_to_line1 + tokenlist_file.readline()
-    for line_num, line in enumerate(itertools.chain((first_line,), tokenlist_file), 1):
+    for line_num, line in enumerate(tokenlist_file, 1):
 
         # Ignore comments
         if line.startswith("#"): continue
@@ -1968,7 +2021,7 @@ def parse_tokenlist(tokenlist_file, prepend_to_line1 = ""):
 
 # Checks for duplicate hashable items in multiple identical runs
 # (builds a cache in the first run to be memory efficient in future runs)
-class DuplicateChecker:
+class DuplicateChecker(object):
     def __init__(self):
         self.seen_once  = set()
         self.duplicates = dict()
@@ -2125,7 +2178,7 @@ def password_generator(chunksize = 1, only_yield_count = False):
 
         assert typos_sofar == 0, "password_generator: typos_sofar == 0 after all typo generators have finished"
 
-    if l_password_dups:          l_password_dups.run_finished()
+    if l_password_dups: l_password_dups.run_finished()
 
     # Produce the remaining passwords that have been accumulated
     if passwords_count > 0:
@@ -2222,7 +2275,7 @@ def tokenlist_base_password_generator():
             tokens_combination_nopos = []
             invalid_anchors          = False
             for token in tokens_combination:
-                if l_type(token) != str:        # If it's an AnchoredToken
+                if l_type(token) == AnchoredToken:
                     pos = token.begin
                     if token.is_positional():       # a single-position anchor
                         if pos == "$":
@@ -2279,11 +2332,12 @@ def tokenlist_base_password_generator():
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
             if has_any_mid_anchors:
-                if l_type(ordered_token_guess[0]) != str or l_type(ordered_token_guess[-1]) != str:
+                if l_type(ordered_token_guess[0])  == AnchoredToken or \
+                   l_type(ordered_token_guess[-1]) == AnchoredToken:
                     continue  # middle anchors are never permitted at the beginning or end
                 invalid_anchors = False
                 for i, token in enumerate(ordered_token_guess[1:-1], 1):
-                    if l_type(token) != str:  # If it's an AnchoredToken
+                    if l_type(token) == AnchoredToken:
                         assert token.is_middle(), "only middle/range anchors left"
                         if token.begin <= i <= token.end:
                             if l_type(ordered_token_guess) != l_list:
@@ -2456,7 +2510,7 @@ def passwordlist_base_password_generator():
         for line_num, password_base in enumerate(passwordlist_file, line_num):  # not yet syntax-checked
             if args.has_wildcards and "%" in password_base:
                 error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
-                if isinstance(error_msg, str):
+                if isinstance(error_msg, basestring):
                     print(prog+": warning: ignoring line", str(line_num)+":", error_msg, file=sys.stderr)
                     continue
             yield password_base.rstrip("\r\n")

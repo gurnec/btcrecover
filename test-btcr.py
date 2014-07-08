@@ -192,9 +192,11 @@ class Test01Basics(GeneratorTester):
             "--min-tokens 2 --max-tokens 2")
 
     def test_empty_file(self):
-        self.do_generator_test([], [], "", True)
+        self.do_generator_test([], [], test_passwordlist=True)
     def test_one_char_file(self):
-        self.do_generator_test(["a"], ["a"], "", True)
+        self.do_generator_test(["a"], ["a"], test_passwordlist=True)
+    def test_comments(self):
+        self.do_generator_test(["#one", " #two", "#three"], ["#two"])
 
     def test_z_all(self):
         self.do_generator_test(["1", "2 3", "+ 4 5"], map(str, [
@@ -470,6 +472,13 @@ LARGE_TOKENLIST_LEN = 2 * btcrecover.PASSWORDS_BETWEEN_UPDATES
 LARGE_TOKENLIST     = " ".join(str(i) for i in xrange(LARGE_TOKENLIST_LEN))
 LARGE_LAST_TOKEN    = str(LARGE_TOKENLIST_LEN - 1)
 class Test05CommandLine(GeneratorTester):
+
+    def test_embedded_tokenlist_option(self):
+        self.do_generator_test(["#--typos-capslock", "one"], ["one", "ONE"])
+    def test_embedded_tokenlist_overwridden_option(self):
+        self.do_generator_test(["#--skip 1", "one two"], [], "--skip 2")
+    def test_embedded_tokenlist_option_invalid(self):
+        self.expect_syntax_failure(["#--tokenlist file"], "--tokenlist option is not permitted inside a tokenlist file")
 
     def test_passwordlist_no_wildcards(self):
         btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
