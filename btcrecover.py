@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.12"
+__version__          = "0.7.13"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -645,14 +645,14 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
         #
         # Encryption scheme used in newer wallets
         def decrypt_current(iter_count):
-            key = passlib.utils.pbkdf2.pbkdf2(password, salt_and_iv, iter_count, 32)
+            key = pbkdf2_hmac_sha1(password, salt_and_iv, iter_count, 32)
             decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)           # CBC mode
             padding   = ord(decrypted[-1:])                                  # ISO 10126 padding length
             return decrypted[:-padding] if 1 <= padding <= 16 and re.match('{\s*"guid"', decrypted) else None
         #
         # Encryption scheme only used in version 0.0 wallets (N.B. this is untested)
         def decrypt_old():
-            key = passlib.utils.pbkdf2.pbkdf2(password, salt_and_iv, 1, 32)  # only 1 iteration
+            key = pbkdf2_hmac_sha1(password, salt_and_iv, 1, 32)  # only 1 iteration
             decrypted  = aes256_ofb_decrypt(key, salt_and_iv, data)          # OFB mode
             # The 16-byte last block, reversed, with all but the first byte of ISO 7816-4 padding removed:
             last_block = tuple(itertools.dropwhile(lambda x: x=="\0", decrypted[:15:-1]))
@@ -749,16 +749,15 @@ def parse_encrypted_blockchain_wallet(data):
             raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
 
     # Load the required libraries
-    global passlib
-    import passlib.utils.pbkdf2
+    load_pbkdf2_library()
     load_aes256_library()
 
     return data, iter_count  # iter_count == 0 for v0 wallets
 
 # Import extracted Blockchain file data necessary for main password checking
 def load_blockchain_from_filedata(file_data):
-    global wallet, passlib, measure_performance_iterations
-    import passlib.utils.pbkdf2
+    global wallet, measure_performance_iterations
+    load_pbkdf2_library()
     load_aes256_library()
     # These are the same first encrypted block, salt_and_iv, iteration count retrieved by load_blockchain_wallet()
     wallet = struct.unpack("< 16s 16s I", file_data)
@@ -777,7 +776,7 @@ def load_blockchain_secondpass_from_filedata(file_data):
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
 def return_blockchain_verified_password_or_false(passwords):
     # Copy a few globals into local for a small speed boost
-    l_pbkdf2             = passlib.utils.pbkdf2.pbkdf2
+    l_pbkdf2             = pbkdf2_hmac_sha1
     l_aes256_cbc_decrypt = aes256_cbc_decrypt
     l_aes256_ofb_decrypt = aes256_ofb_decrypt
     encrypted_block, salt_and_iv, iter_count = wallet
@@ -844,10 +843,11 @@ def load_aes256_library(force_purepython = False):
     if not force_purepython:
         try:
             import Crypto.Cipher.AES
+            new_aes = Crypto.Cipher.AES.new
             aes256_cbc_decrypt = lambda key, iv, ciphertext: \
-                Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
+                new_aes(key, Crypto.Cipher.AES.MODE_CBC, iv).decrypt(ciphertext)
             aes256_ofb_decrypt = lambda key, iv, ciphertext: \
-                Crypto.Cipher.AES.new(key, Crypto.Cipher.AES.MODE_OFB, iv).decrypt(ciphertext)
+                new_aes(key, Crypto.Cipher.AES.MODE_OFB, iv).decrypt(ciphertext)
             measure_performance_iterations = 50000
             return Crypto  # just so the caller can check which version was loaded
         except ImportError:
@@ -878,6 +878,29 @@ def load_aes256_library(force_purepython = False):
     aes256_ofb_decrypt = aes256_decrypt_factory(aespython.ofb_mode.OFBMode)
     measure_performance_iterations = 2000
     return aespython  # just so the caller can check which version was loaded
+
+
+# Creates a key derivation function (in global namespace) named pbkdf2_hmac_sha1() using either
+# hashlib.pbkdf2_hmac from Python 2.7.8+ if it's available, or a pure python library (passlib).
+# The created function takes two bytestring arguments and two integer arguments:
+# password, salt, iter_count, key_len (the length of the returned derived key)
+missing_pbkdf2_warned = False
+def load_pbkdf2_library(force_purepython = False):
+    global pbkdf2_hmac_sha1, missing_pbkdf2_warned
+    if not force_purepython:
+        try:
+            hashlib_pbkdf2 = hashlib.pbkdf2_hmac
+            pbkdf2_hmac_sha1 = lambda password, salt, iter_count, key_len: \
+                hashlib_pbkdf2("sha1", password, salt, iter_count, key_len)
+            return hashlib  # just so the caller can check which version was loaded
+        except AttributeError:
+            if not missing_pbkdf2_warned:
+                print(prog+": warning: hashlib.pbkdf2_hmac requires Python 2.7.8+, using passlib instead", file=sys.stderr)
+                missing_pbkdf2_warned = True
+    #
+    import passlib.utils.pbkdf2
+    pbkdf2_hmac_sha1 = passlib.utils.pbkdf2.pbkdf2
+    return passlib  # just so the caller can check which version was loaded
 
 
 ################################### Argument Parsing ###################################
