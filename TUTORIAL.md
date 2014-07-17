@@ -303,19 +303,21 @@ Just download the latest version from <https://github.com/gurnec/btcrecover/arch
 
 ### Armory (on any OS)###
 
-You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory version 0.91; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
+You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory versions 0.91 through 0.91.2; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
 
 ### Windows – Armory ###
 
-In addition to requiring Armory 0.91, you will also need to download and install:
+In addition to requiring Armory 0.91.x, you will also need to download and install:
 
- * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.6 Windows Installer” available here: <https://www.python.org/download/>
+ * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.8 Windows Installer” available here: <https://www.python.org/download/>
 
 ### Windows – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
 
 With this combination, you will also need to download and install:
 
- * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.6 Windows Installer” for the 32-bit version, or “Python 2.7.6 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows and don't plan on using GPU acceleration), both available here: <https://www.python.org/download/>
+ * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.8 Windows Installer” for the 32-bit version, or “Python 2.7.8 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows and don't plan on using GPU acceleration), both available here: <https://www.python.org/download/>
+
+    Please note that for Blockchain wallets, Python version 2.7.8 or greater is highly recommened, and will run approximately 5 times faster than earlier versions.
 
  * Optional, but highly recommended for MultiBit or Electrum (for a 30x speed improvement): The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
 
@@ -333,7 +335,7 @@ If you encounter the error `ImportError: DLL load failed` when running *btcrecov
 
 ### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
 
- * Python 2.7.x – Most distributions include this pre-installed.
+ * Python 2.7.x – Most distributions include this pre-installed. Please note that for Blockchain wallets, Python version 2.7.8 or greater is highly recommened, and will run approximately 5 times faster than earlier versions.
 
  * Optional, but highly recommended for MultiBit or Electrum: PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto” or just “python-crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
 
@@ -384,11 +386,15 @@ For more details on locating your MultiBit private key backup files, see: <https
 
 ### GPU acceleration for Bitcoin Core and Litecoin-Qt wallets###
 
-*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance with Bitcoin Core and Litecoin-Qt wallets. This can offer on the order of *100x* better performance when enabled.
+*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance with Bitcoin Core and Litecoin-Qt wallets. This can offer on the order of *100x* better performance when enabled and correctly tuned.
 
-In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](#windows-gpu-acceleration-for-bitcoin-core-or-litecoin-qt) section. GPU acceleration should also work on Linux and OS X, however instruction for installing the required Python libraries are not currently included in this tutorial.
+In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](#windows-gpu-acceleration-for-bitcoin-core-or-litecoin-qt) section. GPU acceleration should also work on Linux and OS X, however instructions for installing the required Python libraries are not currently included in this tutorial.
 
-To enable GPU support, add the `--enable-gpu` option to the command line. There are two other options, `--global-ws` and `--local-ws`, which should also be provided along with specific values to improve the search speed. Unfortunately, the specific values for these options can only be determined by trial and error. A good starting point is:
+Due to its experimental status, it's highly recommended that you run the GPU unit tests before running it with a wallet. The command below will run the two relevant tests (or you can leave out the test names to run all of the unit tests if you'd prefer). The second test will be skipped and can be ignored if you don't have multiple identical GPUs installed in your system.
+
+    C:\python27\python test-btcr.py -v Test08KeyDecryption.test_bitcoincore_cl Test08KeyDecryption.test_bitcoincore_cl_sli
+
+Assuming neither test above fails, GPU support can be enabled by adding the `--enable-gpu` option to the command line. There are two other options, `--global-ws` and `--local-ws`, which should also be provided along with specific values to improve the search speed. Unfortunately, the specific values for these options can only be determined by trial and error. A good starting point is:
 
     C:\python27\python btcrecover.py --wallet wallet.dat --performance --enable-gpu --global-ws 4096 --local-ws 512
 
