@@ -1,4 +1,4 @@
 language: python
 python:   "2.7"
 install:  bash .travis.install-dependencies.sh
-script:   python test-btcr.py -v
+script:   /usr/bin/python2.7 test-btcr.py -v

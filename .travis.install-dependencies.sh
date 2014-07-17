@@ -1,12 +1,11 @@
 #!/bin/bash
 
+# Best practice for Travis CI is to use Python virtualenv instead of the system Python.
+# Unfortunately, the virtualenv which Travis CI sets up has a broken bsddb module,
+# doesn't have PyCrypto preinstalled, and doesn't play nice with dependencies from
+# the Armory .deb distribution, so we just use the system Python instead.
+
 set -e
-
-# Install BerkeleyDB
-
-sudo apt-get -q update
-sudo apt-get -yq install libdb5.1
-
 
 # Download and install latest stable Armory plus prerequisites
 
@@ -18,10 +17,6 @@ echo "$LATEST" | grep -q '^https://' || { echo "Can't find latest Armory downloa
 
 curl -fsS --retry 10 -o 'armory.deb' "$LATEST"
 
+sudo apt-get -q update
 sudo apt-get -yq install gdebi-core
 sudo gdebi -nq armory.deb
-
-
-# Install PyCrypto if not already installed
-
-sudo pip install -q pycrypto
