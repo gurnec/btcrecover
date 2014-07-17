@@ -1,4 +1,4 @@
-# *btcrecover* #
+# *btcrecover* [![Build Status](https://travis-ci.org/gurnec/btcrecover.svg?branch=master)](https://travis-ci.org/gurnec/btcrecover) #
 
 *btcrecover* is an open source Bitcoin wallet password recovery tool. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations.
 
