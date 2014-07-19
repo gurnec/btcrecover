@@ -910,9 +910,11 @@ class Test08KeyDecryption(unittest.TestCase):
             btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 200)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+                dev.name.strip() + " found a false positive")
             self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+                dev.name.strip() + " failed to find password")
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")

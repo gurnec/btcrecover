@@ -11,16 +11,13 @@
 
 /*
  * This software is originally attributed to the authors of the JohnTheRipper
- * software package, and in particular to Claudio André who developed all of
- * the core SHA512 functionality. It was pieced together from files downloaded
+ * software package, and in particular to Claudio André who developed the core
+ * OpenCL SHA512 functionality. It was pieced together from files downloaded
  * from the JohnTheRipper source repository at the link below, and then
  * lightly modified to suit the purposes of this software package, btcrecover.
  *
  * https://github.com/magnumripper/JohnTheRipper/tree/bleeding-jumbo/src/opencl
  */
-
-#define _OPENCL_COMPILER
-
 
 // From opencl_device_info.h
 
@@ -57,30 +54,8 @@
 
 // Type names definition.
 // NOTE: long is always 64-bit in OpenCL, and long long is 128 bit.
-#ifdef _OPENCL_COMPILER
-	#define uint8_t  unsigned char
-	#define uint16_t unsigned short
-	#define uint32_t unsigned int
-	#define uint64_t unsigned long
-#endif
-
-/* Macros for reading/writing chars from int32's (from rar_kernel.cl) */
-#define ATTRIB(buf, index, val) (buf)[(index)] = val
-#if gpu_amd(DEVICE_INFO) || no_byte_addressable(DEVICE_INFO)
-#define PUTCHAR(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << (((index) & 3) << 3))) + ((val) << (((index) & 3) << 3))
-#else
-#define PUTCHAR(buf, index, val) ((uchar*)(buf))[(index)] = (val)
-#endif
-
-#ifdef _OPENCL_COMPILER
-#if no_byte_addressable(DEVICE_INFO)
-    #define PUT         PUTCHAR
-    #define BUFFER      ctx->buffer->mem_32
-#else
-    #define PUT         ATTRIB
-    #define BUFFER      ctx->buffer->mem_08
-#endif
-#endif
+#define uint32_t unsigned int
+#define uint64_t unsigned long
 
 
 // From opencl_sha512.h
@@ -118,7 +93,6 @@
 #define H6      0x1f83d9abfb41bd6bUL
 #define H7      0x5be0cd19137e2179UL
 
-#ifdef _OPENCL_COMPILER
 __constant uint64_t k[] = {
     0x428a2f98d728ae22UL, 0x7137449123ef65cdUL, 0xb5c0fbcfec4d3b2fUL, 0xe9b5dba58189dbbcUL,
     0x3956c25bf348b538UL, 0x59f111f1b605d019UL, 0x923f82a4af194f9bUL, 0xab1c5ed5da6d8118UL,
@@ -142,65 +116,31 @@ __constant uint64_t k[] = {
     0x4cc5d4becb3e42b6UL, 0x597f299cfc657e2aUL, 0x5fcb6fab3ad6faecUL, 0x6c44198c4a475817UL
 };
 
-__constant uint64_t clear_mask[] = {
-    0xffffffffffffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, //0
-    0x00000000000000ffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL,
-    0x000000000000ffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, //16
-    0x0000000000ffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL,
-    0x00000000ffffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, //32
-    0x000000ffffffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL,
-    0x0000ffffffffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, //48
-    0x00ffffffffffffffUL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL, 0x0UL,
-    0xffffffffffffffffUL                                                   //64
-};
 
-#define CLEAR_BUFFER_64_FAST(dest, start) {        \
-    uint32_t tmp, pos;                             \
-    tmp = (uint32_t) ((start & 7) << 3);           \
-    pos = (uint32_t) (start >> 3);                 \
-    dest[pos] = dest[pos] & clear_mask[tmp];       \
-}
+// From sha512_kernel.cl
 
-#endif
-
-
-// From opencl_rawsha512-ng.h
-
-// Data types
-typedef union {
-    uint8_t                     mem_08[8];
-    uint16_t                    mem_16[4];
-    uint32_t                    mem_32[2];
-    uint64_t                    mem_64[1];
-} buffer_64;
-
-typedef struct {
-    uint64_t                    H[8];           //512 bits
-    uint32_t                    buflen;
-    buffer_64                   buffer[16];     //1024bits
-} sha512_ctx;
-
-
-// From sha512-ng_kernel.cl
-
-inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
+__kernel
+void kernel_sha512_bc(__global uint64_t* hashes_buffer,
+		               uint32_t  iterations)
+{
     uint64_t a, b, c, d, e, f, g, h;
     uint64_t t1, t2;
-    uint64_t w[16], w8;
+    uint64_t w[16];
 
-    // Copy input arg into local input variable and convert endianness
+    // Get location of the hash to work on for this kernel
+    hashes_buffer += (get_global_id(0) << 3);
+
+    // Copy initial hash into local input variable and convert endianness
     #pragma unroll
     for (int i = 0; i < 8; i++)
-	w[i] = SWAP64(ctx->buffer[i].mem_64[0]);
+	w[i] = SWAP64(hashes_buffer[i]);
 
-    // Has been set correctly by finish_ctx()
-    w[8] = w8 = SWAP64(ctx->buffer[8].mem_64[0]);  // The appended 1
-    w[15] = ctx->buffer[15].mem_64[0];             // The length
-
-    // Assumes length is 64 bytes
+    // Assumes original input length was 64 bytes
+    w[8] = 0x8000000000000000UL;  // The appended "1" bit
     #pragma unroll
     for (int i = 9; i < 15; i++)
-	w[i] = 0;
+        w[i] = 0;
+    w[15] = 512;                  // The length in bits
 
     // Do a complete SHA512 hash for each requested iteration
     for (size_t iter_count = 0; iter_count < iterations; iter_count++) {
@@ -245,7 +185,7 @@ inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
 	    a = t1 + t2;
 	}
 
-	// Copy resulting SHA512 hash into the local input variable
+	// Copy resulting SHA512 hash back into the local input variable
 	w[0] = a + H0;
 	w[1] = b + H1;
 	w[2] = c + H2;
@@ -256,64 +196,15 @@ inline void sha512_block(sha512_ctx * ctx, uint32_t iterations) {
 	w[7] = h + H7;
 
 	// Assumes original input length was 64 bytes
-	w[8] = w8;                          // The appended 1
+	w[8] = 0x8000000000000000UL;  // The appended "1" bit
+	#pragma unroll
 	for (int i = 9; i < 15; i++)
 	    w[i] = 0;
-	w[15] = ctx->buffer[15].mem_64[0];  // The length
+	w[15] = 512;                  // The length in bits
     }
 
-    // Copy resulting SHA512 hash into the output arg and convert endianness
+    // Copy iterated SHA512 hash into the I/O buffer and convert endianness
     #pragma unroll
     for (int i = 0; i < 8; i++)
-	ctx->H[i] = SWAP64(w[i]);
-}
-
-inline void ctx_append_1(sha512_ctx * ctx) {
-
-    PUT(BUFFER, ctx->buflen, 0x80);
-
-    CLEAR_BUFFER_64_FAST(ctx->buffer->mem_64, ctx->buflen + 1);
-}
-
-inline void ctx_add_length(sha512_ctx * ctx) {
-
-    ctx->buffer[15].mem_64[0] = (uint64_t) (ctx->buflen * 8);
-}
-
-inline void finish_ctx(sha512_ctx * ctx) {
-
-    ctx_append_1(ctx);
-    ctx_add_length(ctx);
-}
-
-inline void sha512_crypt(sha512_ctx * ctx, uint32_t iterations) {
-
-    finish_ctx(ctx);
-
-    /* Run the collected hash value through SHA512. */
-    sha512_block(ctx, iterations);
-}
-
-__kernel
-void kernel_sha512_bc(__global uint32_t* hashes_buffer,
-		               uint32_t  iterations)
-{
-    sha512_ctx ctx;
-
-    // Get location of the hash to work on for this kernel
-    hashes_buffer += (get_global_id(0) << 4);
-
-    // Copy the initial hash from the I/O buffer into ctx
-    #pragma unroll
-    for (uint32_t i = 0; i < 16; i++)
-	ctx.buffer->mem_32[i] = hashes_buffer[i];
-    ctx.buflen = 64;
-
-    // Perform SHA512 iterations
-    sha512_crypt(&ctx, iterations);
-
-    // Copy the result back into the I/O buffer
-    #pragma unroll
-    for (uint32_t i = 0; i < 16; i++)
-	hashes_buffer[i] = ((uint32_t*)ctx.H)[i];
+	hashes_buffer[i] = SWAP64(w[i]);
 }

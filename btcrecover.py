@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.13"
+__version__          = "0.7.14"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -427,7 +427,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
     #
     # Load and compile the OpenCL program
     cl_program = pyopencl.Program(cl_context, open(
-        os.path.join(os.path.dirname(os.path.realpath(__file__)), "sha512-ng-bc_kernel.cl"))
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "sha512-bc-kernel.cl"))
         .read()).build("-w")
     #
     # Configure and store for later the OpenCL kernel (the entrance function)
