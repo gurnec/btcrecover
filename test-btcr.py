@@ -951,6 +951,78 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-test-password"]), ("btcr-test-password", 3))
 
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
+    def test_armory_cl(self):
+        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+
+        dev_names_tested = set()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in dev_names_tested: continue
+            dev_names_tested.add(dev.name)
+            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 200)
+
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+                dev.name.strip() + " found a false positive")
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+                dev.name.strip() + " failed to find password")
+
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
+    def test_armory_cl_mem_factor(self):
+        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+
+        dev_names_tested = set()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in dev_names_tested: continue
+            dev_names_tested.add(dev.name)
+            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 200, save_every=3)
+
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+                dev.name.strip() + " found a false positive")
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+                dev.name.strip() + " failed to find password")
+
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
+    @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
+    def test_armory_cl_no_interrupts(self):
+        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+
+        dev_names_tested = set()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in dev_names_tested: continue
+            dev_names_tested.add(dev.name)
+            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 1)
+
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+            self.assertEqual(btcrecover.return_verified_password_or_false(
+                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+
+    @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
+    def test_armory_cl_sli(self):
+        devices_by_name = dict()
+        for dev in btcrecover.get_opencl_devices():
+            if dev.name in devices_by_name: break
+            else: devices_by_name[dev.name] = dev
+        else:
+            self.skipTest("requires two identical OpenCL devices")
+
+        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+        btcrecover.init_armory_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [None, None], 200)
+
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4",
+             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-wrong-password-8"]), (False, 8))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-test-password",    "btcr-wrong-password-4",
+             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-wrong-password-8"]), ("btcr-test-password", 3))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4",
+             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-test-password"]), ("btcr-test-password", 8))
+
     def test_invalid_crc(self):
         with self.assertRaises(SystemExit) as cm:
             self.key_tester("aWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")

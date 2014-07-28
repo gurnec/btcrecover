@@ -404,7 +404,7 @@ Finding the right values for `--global-ws` and `--local-ws` can make a 10x impro
 
 Generally when testing, you should increase or decrease these two values by powers of 2, for example you should increase or decrease them by 128 or 256 at a time. It's important to note that `--global-ws` must always be evenly divisible by `--local-ws`, otherwise *btcrecover* will exit with an error message.
 
-Although this procedure can be tedious, with larger tokenlists or passwordlists they can make a significant difference.
+Although this procedure can be tedious, with larger tokenlists or passwordlists it can make a significant difference.
 
 ### command-line options inside the tokens file ###
 

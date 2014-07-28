@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.7.14"
+__version__          = "0.8.0"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -56,7 +56,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 # of characters; used in expand_wildcards_generator()
 # warning: don't use digits, 'i', '[', ',', '-', '<', or '>' as the key for a wildcard set
 def init_wildcards():
-    global wildcard_sets, wildcard_keys, wildcard_nocase_sets, custom_wildcard_cache
+    global wildcard_sets, wildcard_keys, wildcard_nocase_sets, wildcard_re, custom_wildcard_cache
     all_ascii_symbols = "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127)))
     wildcard_sets = {
         "d" : string.digits,
@@ -91,6 +91,7 @@ def init_wildcards():
         "N" : string.uppercase + string.lowercase + string.digits
     }
     #
+    wildcard_re = None
     custom_wildcard_cache = dict()
 
 
@@ -338,6 +339,208 @@ def return_armorypk_verified_password_or_false(passwords):
         return False, count
 
 
+# Load and initialize the OpenCL kernel for Armory, given the global wallet and these params:
+#   devices   - a list of one or more of the devices returned by get_opencl_devices()
+#   global_ws - a list of global work sizes, exactly one per device
+#   local_ws  - a list of local work sizes (or Nones), exactly one per device
+#   int_rate  - number of times to interrupt calculations to prevent hanging
+#               the GPU driver per call to return_verified_password_or_false()
+#   save_every- how frequently hashes are saved in the lookup table
+#   calc_memory-if true, just print the memory statistics and exit
+def init_armory_opencl_kernel(devices, global_ws, local_ws, int_rate, save_every = 1, calc_memory = False):
+    global cl_devices, cl_global_ws, cl_local_ws, cl_kernel, cl_kernel_fill, cl_queues, \
+           cl_hashes_buffers, cl_V_buffer0s, cl_V_buffer1s, cl_V_buffer2s, cl_V_buffer3s, \
+           return_verified_password_or_false, v_len_chunksize, wallet
+
+    # Need to save these for return_armory_opencl_verified_password_or_false()
+    assert devices, "init_armory_opencl_kernel: at least one device is selected"
+    assert len(devices) == len(global_ws) == len(local_ws), "init_armory_opencl_kernel: one global_ws and one local_ws specified for each device"
+    assert save_every > 0
+    cl_devices   = devices
+    cl_global_ws = global_ws
+    cl_local_ws  = local_ws
+
+    # If we have a full wallet loaded, extract what we need from it now.
+    # ( if we don't have a full wallet loaded, what we need has already
+    # been extracted by load_armory_from_privkey() )
+    if (isinstance(wallet, armoryengine.PyBtcWallet.PyBtcWallet)):
+        kdf = wallet.kdf
+        wallet = wallet.addrMap['ROOT'], kdf
+    else:
+        assert isinstance(wallet, tuple) and isinstance(wallet[0], armoryengine.PyBtcAddress.PyBtcAddress), \
+            "init_armory_opencl_kernel: armory wallet or mkey has been loaded"
+        kdf = wallet[1]
+
+    cl_V_buffer0s = cl_V_buffer1s = cl_V_buffer2s = cl_V_buffer3s = None            # clear any
+    cl_context = cl_kernel = cl_kernel_fill = cl_queues = cl_hashes_buffers = None  # previously loaded
+    cl_context = pyopencl.Context(devices)
+    #
+    # Load and compile the OpenCL program, passing in defines for SAVE_EVERY, V_LEN, and SALT
+    assert kdf.getMemoryReqtBytes() % 64 == 0
+    v_len = kdf.getMemoryReqtBytes() // 64
+    salt = kdf.getSalt().toBinStr()
+    assert len(salt) == 32
+    cl_program = pyopencl.Program(cl_context, open(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "romix-ar-kernel.cl")).read()).build(
+            "-w -D SAVE_EVERY={}U -D V_LEN={}U -D SALT0=0x{:016x}UL -D SALT1=0x{:016x}UL -D SALT2=0x{:016x}UL -D SALT3=0x{:016x}UL" \
+            .format(save_every, v_len, *struct.unpack(">4Q", salt)))
+    #
+    # Configure and store for later the OpenCL kernels (the entrance functions)
+    cl_kernel_fill = cl_program.kernel_fill_V    # this kernel is executed first
+    cl_kernel      = cl_program.kernel_lookup_V  # this kernel is executed once per iter_count
+    cl_kernel_fill.set_scalar_arg_dtypes([None, None, None, None, numpy.uint32, numpy.uint32, None, numpy.uint8])
+    cl_kernel.set_scalar_arg_dtypes([None, None, None, None, numpy.uint32, None])
+    #
+    # Check the local_ws sizes
+    for i, device in enumerate(devices):
+        if local_ws[i] is None: continue
+        max_local_ws = min(cl_kernel_fill.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device),
+                           cl_kernel     .get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device))
+        if local_ws[i] > max_local_ws:
+            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+device.name.strip()+"' with Armory wallets")
+
+    if calc_memory:
+        mem_per_worker = math.ceil(v_len / save_every) * 64 + 64
+        print(    "Details for this wallet")
+        print(    "  ROMix V-table length:  {:,}".format(v_len))
+        print(    "  outer iteration count: {:,}".format(kdf.getNumIterations()))
+        print(    "  with -mem_factor {},".format(save_every if save_every>1 else "1 (the default)"))
+        print(    "    memory per global worker: {:,} KB\n".format(int(round(mem_per_worker / 1024))))
+        #
+        for i, device in enumerate(devices):
+            print("Details for", device.name.strip())
+            print("  global memory size:     {:,} MB".format(int(round(device.global_mem_size / float(1024**2)))))
+            print("  with -mem_factor {},".format(save_every if save_every>1 else "1 (the default)"))
+            print("    est. max --global-ws: {}".format((device.global_mem_size // mem_per_worker // 32 * 32)))
+            print("    with --global-ws {},".format(global_ws[i] if global_ws[i]!=4096 else "4096 (the default)"))
+            print("      est. memory usage:  {:,} MB\n".format(int(round(global_ws[i] * mem_per_worker / float(1024**2)))))
+        exit(0)
+
+    # Create one command queue, one I/O buffer, and four "V" buffers per device
+    cl_queues         = []
+    cl_hashes_buffers = []
+    cl_V_buffer0s     = []
+    cl_V_buffer1s     = []
+    cl_V_buffer2s     = []
+    cl_V_buffer3s     = []
+    for i, device in enumerate(devices):
+        cl_queues.append(pyopencl.CommandQueue(cl_context, device))
+        # Each I/O buffer is of len --global-ws * (size-of-sha512-hash-in-bytes == 512 bits / 8 == 64)
+        cl_hashes_buffers.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, global_ws[i] * 64))
+        #
+        # The "V" buffers total v_len * 64 * --global-ws bytes per device. There are four
+        # per device, so each is 1/4 of the total. They are reduced by a factor of save_every,
+        # rounded up to the nearest 64-byte boundry (the size-of-sha512-hash-in-bytes)
+        assert global_ws[i] % 4 == 0  # (kdf.getMemoryReqtBytes() is already checked to be divisible by 64)
+        V_buffer_len = int(math.ceil(v_len / save_every)) * 64 * global_ws[i] // 4
+        cl_V_buffer0s.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, V_buffer_len))
+        cl_V_buffer1s.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, V_buffer_len))
+        cl_V_buffer2s.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, V_buffer_len))
+        cl_V_buffer3s.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, V_buffer_len))
+
+    # Doing all the work at once will hang the GPU. One set of passwords requires iter_count
+    # calls to cl_kernel_fill and to cl_kernel. Divide 2xint_rate among these calls (2x is
+    # an arbitrary choice) and then calculate how much work (v_len_chunksize) to perform for
+    # each call rounding up to to maximize the work done in the last sets to optimize performance.
+    int_rate = int(round(int_rate / kdf.getNumIterations())) or 1  # there are two 2's which cancel out
+    v_len_chunksize = v_len // int_rate or 1
+    if v_len_chunksize % int_rate != 0:  # if not evenly divisible,
+        v_len_chunksize += 1             # then round up.
+    if v_len_chunksize % 2 != 0:         # also if not divisible by two,
+        v_len_chunksize += 1             # make it divisible by two.
+
+    return_verified_password_or_false = return_armory_opencl_verified_password_or_false
+
+def return_armory_opencl_verified_password_or_false(passwords):
+    assert len(passwords) <= sum(cl_global_ws), "return_armory_opencl_verified_password_or_false: at most --global-ws passwords"
+    address, kdf = wallet
+
+    # The first password hash is done by the CPU
+    salt = kdf.getSalt().toBinStr()
+    hashes = numpy.empty([sum(cl_global_ws), 64], numpy.uint8)
+    for i, password in enumerate(passwords):
+        hashes[i] = numpy.fromstring(hashlib.sha512(password + salt).digest(), numpy.uint8)
+
+    # Divide up and copy the starting hashes into the OpenCL buffer(s) (one per device) in parallel
+    done   = []  # a list of OpenCL event objects
+    offset = 0
+    for devnum, ws in enumerate(cl_global_ws):
+        done.append(pyopencl.enqueue_copy(cl_queues[devnum], cl_hashes_buffers[devnum], hashes[offset : offset + ws], is_blocking=False))
+        cl_queues[devnum].flush()  # Starts the copy operation
+        offset += ws
+    pyopencl.wait_for_events(done)
+
+    v_len = kdf.getMemoryReqtBytes() // 64
+    for i in xrange(kdf.getNumIterations()):
+
+        # Doing all the work at once will hang the GPU, so instead do v_len_chunksize chunks
+        # at a time, pausing briefly while waiting for them to complete, and then continuing.
+        # Because the work is probably not evenly divisible by v_len_chunksize, the loops below
+        # perform all but the last of these v_len_chunksize sets of work.
+
+        # The first set of kernel executions runs cl_kernel_fill which fills the "V" lookup table.
+
+        v_start = -v_len_chunksize  # used if the loop below doesn't run (when --int-rate == 1)
+        for v_start in xrange(0, v_len - v_len_chunksize, v_len_chunksize):
+            done = []  # a list of OpenCL event objects
+            # Start up a kernel for each device to do one chunk of v_len_chunksize work
+            for devnum in xrange(len(cl_devices)):
+                done.append(cl_kernel_fill(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+                            cl_V_buffer0s[devnum], cl_V_buffer1s[devnum], cl_V_buffer2s[devnum], cl_V_buffer3s[devnum],
+                            v_start, v_len_chunksize, cl_hashes_buffers[devnum], 0 == v_start == i))
+                cl_queues[devnum].flush()  # Starts the kernel
+            pyopencl.wait_for_events(done)
+
+        # Perform the remaining work (usually less then v_len_chunksize)
+        done = []  # a list of OpenCL event objects
+        for devnum in xrange(len(cl_devices)):
+            done.append(cl_kernel_fill(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+                        cl_V_buffer0s[devnum], cl_V_buffer1s[devnum], cl_V_buffer2s[devnum], cl_V_buffer3s[devnum],
+                        v_start + v_len_chunksize, v_len - v_len_chunksize - v_start, cl_hashes_buffers[devnum], v_start<0 and i==0))
+            cl_queues[devnum].flush()  # Starts the kernel
+        pyopencl.wait_for_events(done)
+
+        # The second set of kernel executions runs cl_kernel which uses the "V" lookup table to complete
+        # the hashes. This kernel runs with half the count of internal iterations as cl_kernel_fill.
+
+        assert v_len_chunksize % 2 == 0
+        v_start = -v_len_chunksize//2  # used if the loop below doesn't run (when --int-rate == 1)
+        for v_start in xrange(0, v_len//2 - v_len_chunksize//2, v_len_chunksize//2):
+            done = []  # a list of OpenCL event objects
+            # Start up a kernel for each device to do one chunk of v_len_chunksize work
+            for devnum in xrange(len(cl_devices)):
+                done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+                            cl_V_buffer0s[devnum], cl_V_buffer1s[devnum], cl_V_buffer2s[devnum], cl_V_buffer3s[devnum],
+                            v_len_chunksize//2, cl_hashes_buffers[devnum]))
+                cl_queues[devnum].flush()  # Starts the kernel
+            pyopencl.wait_for_events(done)
+
+        # Perform the remaining work (usually less then v_len_chunksize)
+        done = []  # a list of OpenCL event objects
+        for devnum in xrange(len(cl_devices)):
+            done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
+                        cl_V_buffer0s[devnum], cl_V_buffer1s[devnum], cl_V_buffer2s[devnum], cl_V_buffer3s[devnum],
+                        v_len//2 - v_len_chunksize//2 - v_start, cl_hashes_buffers[devnum]))
+            cl_queues[devnum].flush()  # Starts the kernel
+        pyopencl.wait_for_events(done)
+
+    # Copy the resulting fully computed hashes back to RAM in parallel
+    done   = []  # a list of OpenCL event objects
+    offset = 0
+    for devnum, ws in enumerate(cl_global_ws):
+        done.append(pyopencl.enqueue_copy(cl_queues[devnum], hashes[offset : offset + ws], cl_hashes_buffers[devnum], is_blocking=False))
+        offset += ws
+        cl_queues[devnum].flush()  # Starts the copy operation
+    pyopencl.wait_for_events(done)
+
+    # The first 32 bytes of each computed hash is the derived key. Use each to try to decrypt the private key.
+    for i, password in enumerate(passwords):
+        if address.verifyEncryptionKey(hashes[i,:32].tostring()):
+            return password, i + 1
+        address.binPublicKey65 = SecureBinaryData()  # work around bug in verifyEncryptionKey in Armory 0.91
+    return False, i + 1
+
+
 ############### Bitcoin Core ###############
 
 # Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
@@ -412,17 +615,19 @@ def get_opencl_devices():
 #   int_rate  - number of times to interrupt calculations to prevent hanging
 #               the GPU driver per call to return_verified_password_or_false()
 def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
-    global cl_devices, cl_global_ws, cl_local_ws, cl_kernel, cl_queues, cl_hashes_buffers, \
+    global cl_devices, cl_global_ws, cl_local_ws, cl_kernel, cl_kernel_fill, cl_queues, \
+           cl_hashes_buffers, cl_V_buffer0s, cl_V_buffer1s, cl_V_buffer2s, cl_V_buffer3s, \
            return_verified_password_or_false, iter_count_chunksize
 
     # Need to save these for return_bitcoincore_opencl_verified_password_or_false()
-    assert devices, "init_bitcoincore_opencl_kernel: at least one device is selected in cl_devices"
+    assert devices, "init_bitcoincore_opencl_kernel: at least one device is selected"
     assert len(devices) == len(global_ws) == len(local_ws), "init_bitcoincore_opencl_kernel: one global_ws and one local_ws specified for each device"
     cl_devices   = devices
     cl_global_ws = global_ws
     cl_local_ws  = local_ws
 
-    cl_context = cl_kernel = cl_queues = cl_hashes_buffers = None  # clear any previously loaded
+    cl_V_buffer0s = cl_V_buffer1s = cl_V_buffer2s = cl_V_buffer3s = None            # clear any
+    cl_context = cl_kernel = cl_kernel_fill = cl_queues = cl_hashes_buffers = None  # previously loaded
     cl_context = pyopencl.Context(devices)
     #
     # Load and compile the OpenCL program
@@ -433,18 +638,25 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
     # Configure and store for later the OpenCL kernel (the entrance function)
     cl_kernel  = cl_program.kernel_sha512_bc
     cl_kernel.set_scalar_arg_dtypes([None, numpy.uint32])
+    #
+    # Check the local_ws sizes
+    for i, device in enumerate(devices):
+        if local_ws[i] is None: continue
+        max_local_ws = cl_kernel.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device)
+        if local_ws[i] > max_local_ws:
+            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+device.name.strip()+"' with Bitcoin Core wallets")
 
     # Create one command queue and one I/O buffer per device
     cl_queues         = []
     cl_hashes_buffers = []
     for i, device in enumerate(devices):
         cl_queues.append(pyopencl.CommandQueue(cl_context, device))
-        # Each buffer is of len --global-ws * (size-of-sha152-hash-in-bytes == 512 bits / 8 == 64)
+        # Each buffer is of len --global-ws * (size-of-sha512-hash-in-bytes == 512 bits / 8 == 64)
         cl_hashes_buffers.append(pyopencl.Buffer(cl_context, pyopencl.mem_flags.READ_WRITE, global_ws[i] * 64))
 
     # Doing all iter_count iterations at once will hang the GPU, so instead calculate how
     # many iterations should be done at a time based on iter_count and the requested int_rate,
-    # trying to maximize the number of iterations done in the last set to optimize performance
+    # rounding up to maximize the number of iterations done in the last set to optimize performance
     assert isinstance(wallet, tuple) and len(wallet) == 3, "init_bitcoincore_opencl_kernel: bitcoin core wallet or mkey has been loaded"
     iter_count = wallet[2]
     assert isinstance(iter_count, int), "init_bitcoincore_opencl_kernel: bitcoin core wallet or mkey has been loaded"
@@ -948,8 +1160,8 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
     # Remove all valid wildcards, syntax checking the min to max ranges; if any %'s are left they are invalid
     try:
         valid_wildcards_removed, count = \
-            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:["+wildcard_keys+contracting_wildcards+"]|\[.+?\])",
-            syntax_check_range, str_with_wildcards)
+            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:[{}]|\[.+?\])".format(wildcard_keys+contracting_wildcards),
+                    syntax_check_range, str_with_wildcards)
     except ValueError as e: return str(e)
     if "%" in valid_wildcards_removed:
         invalid_wildcard_msg = "invalid wildcard (%) syntax (use %% to escape a %)"
@@ -1210,6 +1422,8 @@ gpu_group = parser_common.add_argument_group("GPU acceleration")
 gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
 gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
 gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
+gpu_group.add_argument("--mem-factor", type=int,                default=1,      metavar="FACTOR", help="enable memory-saving space-time tradeoff for Armory")
+gpu_group.add_argument("--calc-memory",action="store_true",     help="list the memory requirements for an Armory wallet")
 gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
 gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
 gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: %(default)s)")
@@ -1381,7 +1595,7 @@ def parse_arguments(effective_argv, **kwds):
     # Either we're using a passwordlist file (though it's not yet opened),
     # or we're using a tokenlist file it it should have been found and opened by now,
     # or we're running a performance test (and neither is open; already checked above).
-    if not args.passwordlist and not tokenlist_file and not args.performance:
+    if not args.passwordlist and not tokenlist_file and not args.performance and not args.calc_memory:
         error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
 
     if tokenlist_file and args.max_tokens < args.min_tokens:
@@ -1645,9 +1859,16 @@ def parse_arguments(effective_argv, **kwds):
 
 
     # Parse and syntax check all of the GPU related options
-    if args.enable_gpu:
-        if return_verified_password_or_false != return_bitcoincore_verified_password_or_false:
-            error_exit("GPU searching is only supported for Bitcoin Core wallets and data extracts")
+    if args.enable_gpu or args.calc_memory:
+        if return_verified_password_or_false == return_bitcoincore_verified_password_or_false:
+            wallet_type = "bc"
+            if args.calc_memory:
+                error_exit("--calc-memory is not supported for Bitcoin Core wallets")
+        elif return_verified_password_or_false == return_armory_verified_password_or_false or \
+             return_verified_password_or_false == return_armorypk_verified_password_or_false:
+            wallet_type = "ar"
+        else:
+            error_exit("GPU searching is only supported for Bitcoin Core and Armory wallets and data extracts")
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
         if not devices_avail:
             error_exit("no supported GPUs found")
@@ -1715,18 +1936,29 @@ def parse_arguments(effective_argv, **kwds):
                     print(prog+": warning: each --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
                     local_ws_warning = True
         for ws in args.global_ws:
+            if wallet_type == "ar" and ws % 4 != 0:
+                error_exit("each --global_ws must be divisible by 4 for Armory wallets")
             if ws % 32 != 0:
                 print(prog+": warning: each --global-ws should probably be divisible by 32 for good performance", file=sys.stderr)
                 break
         #
-        init_bitcoincore_opencl_kernel(devices, args.global_ws, args.local_ws, args.int_rate)
+        if wallet_type == "bc":
+            if args.mem_factor != 1:
+                print(prog+": warning: --mem-factor is ignored for Bitcoin Core wallets", file=sys.stderr)
+            init_bitcoincore_opencl_kernel(devices, args.global_ws, args.local_ws, args.int_rate)
+        elif wallet_type == "ar":
+            if args.mem_factor < 1:
+                error_exit("--mem-factor must be >= 1")
+            init_armory_opencl_kernel(devices, args.global_ws, args.local_ws, args.int_rate, args.mem_factor, args.calc_memory)
+        else: assert False
         if args.threads != parser.get_default("threads"):
             print(prog+": warning: --threads is ignored with --enable-gpu", file=sys.stderr)
         args.threads = 1
     #
     # if not --enable-gpu: sanity checks
     else:
-        for argname, argkey in ("--gpu-names", "gpu_names"), ("--global-ws", "global_ws"), ("--local-ws", "local_ws"), ("--int-rate", "int_rate"):
+        for argname, argkey in ("--gpu-names", "gpu_names"), ("--global-ws", "global_ws"), ("--local-ws", "local_ws"), \
+                               ("--int-rate", "int_rate"), ("--mem-factor", "mem_factor"):
             if args.__dict__[argkey] != parser.get_default(argkey):
                 print(prog+": warning:", argname, "is ignored without --enable-gpu", file=sys.stderr)
 
@@ -2575,7 +2807,12 @@ def expand_wildcards_generator(password_with_wildcards):
     # Find the first wildcard parameter in the format %[[min,]max][caseflag]type
     # where caseflag=="i" if present and type is one of: wildcard_keys, <, >, or -
     # (e.g. "%d", "%-", "%2n", "%1,3ia", etc.) or type is of the form "[custom-wildcard-set]"
-    match = re.search(r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>["+wildcard_keys+"<>-])|\[(?P<custom>.+?)\])", password_with_wildcards)
+    global wildcard_re
+    if not wildcard_re:
+        wildcard_re = re.compile(
+            r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>[{}<>-])|\[(?P<custom>.+?)\])" \
+            .format(wildcard_keys))
+    match = wildcard_re.search(password_with_wildcards)
     assert match, "expand_wildcards_generator: parsed valid wildcard spec"
 
     password_prefix = password_with_wildcards[0:match.start()]               # no wildcards present here;
@@ -3159,23 +3396,26 @@ def main():
         return msg
 
     # Measure the performance of the verification function
-    if args.enable_gpu:
-        inner_iterations = sum(args.global_ws)
-        outer_iterations = 1
+    if args.performance and args.enable_gpu:  # skip this time-consuming & unnecessary measurement in this case
+        est_secs_per_password = 0.01          # set this to something relatively big, it doesn't matter exactly what
     else:
-        # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
-        # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
-        CHUNKSIZE_SECONDS = 1.0 / 100.0
-        # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
-        assert measure_performance_iterations, "measure_performance_iterations has been set"
-        inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
-        outer_iterations = int(round(measure_performance_iterations / inner_iterations))
-    #
-    start = time.clock()
-    for o in xrange(outer_iterations):
-        return_verified_password_or_false(["measure performance "+str(i) for i in xrange(inner_iterations)])
-    est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
-    assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
+        if args.enable_gpu:
+            inner_iterations = sum(args.global_ws)
+            outer_iterations = 1
+        else:
+            # Passwords are verified in "chunks" to reduce call overhead. One chunk includes enough passwords to
+            # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
+            CHUNKSIZE_SECONDS = 1.0 / 100.0
+            # (measure_performance_iterations has been set such that this should take about 0.5 seconds)
+            assert measure_performance_iterations, "measure_performance_iterations has been set"
+            inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
+            outer_iterations = int(round(measure_performance_iterations / inner_iterations))
+        #
+        start = time.clock()
+        for o in xrange(outer_iterations):
+            return_verified_password_or_false(["measure performance "+str(i) for i in xrange(inner_iterations)])
+        est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
+        assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
 
     if args.enable_gpu:
         chunksize = sum(args.global_ws)
