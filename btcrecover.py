@@ -419,7 +419,7 @@ def init_armory_opencl_kernel(devices, global_ws, local_ws, int_rate, save_every
             print("Details for", device.name.strip())
             print("  global memory size:     {:,} MB".format(int(round(device.global_mem_size / float(1024**2)))))
             print("  with -mem_factor {},".format(save_every if save_every>1 else "1 (the default)"))
-            print("    est. max --global-ws: {}".format((device.global_mem_size // mem_per_worker // 32 * 32)))
+            print("    est. max --global-ws: {}".format((int(device.global_mem_size // mem_per_worker) // 32 * 32)))
             print("    with --global-ws {},".format(global_ws[i] if global_ws[i]!=4096 else "4096 (the default)"))
             print("      est. memory usage:  {:,} MB\n".format(int(round(global_ws[i] * mem_per_worker / float(1024**2)))))
         exit(0)

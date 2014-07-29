@@ -14,7 +14,7 @@ but is not limited to:
  * progressbar, please see [progressbar/README.txt](progressbar/README.txt)
  for more information
 
- * sha512-ng_kernel.cl, please see [sha512-ng-bc_kernel.cl](sha512-ng-bc_kernel.cl)
+ * sha512-kernel.cl, please see [sha512-bc-kernel.cl](sha512-bc-kernel.cl)
  for more information
 
 

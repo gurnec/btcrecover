@@ -979,7 +979,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 200, save_every=3)
+            btcrecover.init_armory_opencl_kernel([dev], [8], [None], 200, save_every=3)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
