@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.0"
+__version__          = "0.8.1"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -188,6 +188,14 @@ def load_wallet(wallet_filename):
                 return_verified_password_or_false = return_electrum_verified_password_or_false
                 return
             except SyntaxError: pass     # probably wasn't an electrum wallet
+
+        # Bitcoin Core pywallet.pw --dumpwallet
+        wallet_file.seek(0)
+        try:  # there's no easy way to check if it's a pywallet dump file
+            load_bitcoincore_from_pywallet(wallet_file)  # passing in a file object
+            return_verified_password_or_false = return_bitcoincore_verified_password_or_false
+            return
+        except ValueError: pass  # probably wasn't a pywallet dump file
 
         # Blockchain
         wallet_file.seek(0)
@@ -574,6 +582,56 @@ def load_bitcoincore_from_mkey(mkey_data):
     measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
     # These are the same encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
     wallet = struct.unpack("< 48s 8s I", mkey_data)
+
+# Load a Bitcoin Core encrypted master key given an open file object created by pywallet.py --dumpwallet
+def load_bitcoincore_from_pywallet(wallet_file):
+    global measure_performance_iterations, wallet
+
+    # pywallet dump files are largish json files often preceded by a bunch of error messages;
+    # search through the file in 16k blocks looking for a particular string which occurs twice
+    # inside the mkey object we need (because it appears twice, we're guaranteed one copy
+    # will appear whole in at least one block even if the other is split across blocks).
+    #
+    # For the first block, give up if this doesn't look like a text file
+    last_block = ""
+    cur_block  = wallet_file.read(16384)
+    if sum(1 for c in cur_block if ord(c)>126 or ord(c)==0) > 512: # about 3%
+        raise ValueError("Unrecognized pywallet format (does not look like ASCII text)")
+    while cur_block:
+        found_at = cur_block.find('"nDerivation')
+        if found_at >= 0: break
+        last_block = cur_block
+        cur_block  = wallet_file.read(16384)
+    else:
+        raise ValueError("Unrecognized pywallet format (can't find mkey)")
+
+    cur_block = last_block + cur_block + wallet_file.read(4096)
+    found_at  = cur_block.rfind("{", 0, found_at + len(last_block))
+    if found_at < 0:
+        raise ValueError("Unrecognized pywallet format (can't find mkey opening brace)")
+    wallet = json.JSONDecoder().raw_decode(cur_block[found_at:])[0]
+
+    if not all(name in wallet for name in ("encrypted_key", "nDerivationIterations", "nDerivationMethod", "nID", "salt")):
+        raise ValueError("Unrecognized pywallet format (can't find all mkey attributes)")
+
+    if wallet["nID"] != 1:
+        raise NotImplementedError("Unsupported Bitcoin Core wallet ID " + str(wallet["nID"]))
+    if wallet["nDerivationMethod"] != 0:
+        raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(wallet["nDerivationMethod"]))
+
+    encrypted_master_key = base64.b16decode(wallet["encrypted_key"], True)  # True means allow lowercase
+    salt                 = base64.b16decode(wallet["salt"], True)
+    iter_count           = int(wallet["nDerivationIterations"])
+
+    if len(encrypted_master_key) != 48: raise NotImplementedError("Unsupported encrypted master key length")
+    if len(salt)                 != 8:  raise NotImplementedError("Unsupported salt length")
+    if iter_count                <= 0:  raise NotImplementedError("Unsupported iteration count")
+
+    load_aes256_library()
+    measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
+
+    # These are the same as retrieved by load_bitcoincore_wallet()
+    wallet = encrypted_master_key, salt, iter_count
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1

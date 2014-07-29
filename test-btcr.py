@@ -784,6 +784,9 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_blockchain_secondpass_unencrypted(self):  # this wallet has no second-password iter_count, so this case is also tested here
         self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="")
 
+    def test_bitcoincore_pywallet(self):
+        self.wallet_tester("bitcoincore-pywallet-dumpwallet.txt")
+
     # Make sure the Blockchain wallet loader can heuristically determine that files containing
     # base64 data that doesn't look entirely encrypted (random) are not Blockchain wallets
     def test_blockchain_invalid(self):
