@@ -65,7 +65,7 @@ wallet = json.JSONDecoder().raw_decode(cur_block[found_at:])[0]
 
 # Do some sanity checking
 #
-if not all(name in wallet for name in ("encrypted_key", "nDerivationIterations", "nDerivationMethod", "nID", "salt")):
+if not all(name in wallet for name in ("nDerivationIterations", "nDerivationMethod", "nID", "salt")):
     raise ValueError("Unrecognized pywallet format (can't find all mkey attributes)")
 #
 if wallet["nID"] != 1:
@@ -73,7 +73,14 @@ if wallet["nID"] != 1:
 if wallet["nDerivationMethod"] != 0:
     raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(wallet["nDerivationMethod"]))
 
-encrypted_master_key = base64.b16decode(wallet["encrypted_key"], True)  # True means allow lowercase
+if "encrypted_key" in wallet:
+    encrypted_master_key = wallet["encrypted_key"]
+elif "crypted_key" in wallet:
+    encrypted_master_key = wallet["crypted_key"]
+else:
+    raise ValueError("Unrecognized pywallet format (can't find [en]crypted_key attribute)")
+
+encrypted_master_key = base64.b16decode(encrypted_master_key, True)  # True means allow lowercase
 salt                 = base64.b16decode(wallet["salt"], True)
 iter_count           = int(wallet["nDerivationIterations"])
 

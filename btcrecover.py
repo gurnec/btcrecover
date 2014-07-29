@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.1"
+__version__          = "0.8.2"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -611,7 +611,7 @@ def load_bitcoincore_from_pywallet(wallet_file):
         raise ValueError("Unrecognized pywallet format (can't find mkey opening brace)")
     wallet = json.JSONDecoder().raw_decode(cur_block[found_at:])[0]
 
-    if not all(name in wallet for name in ("encrypted_key", "nDerivationIterations", "nDerivationMethod", "nID", "salt")):
+    if not all(name in wallet for name in ("nDerivationIterations", "nDerivationMethod", "nID", "salt")):
         raise ValueError("Unrecognized pywallet format (can't find all mkey attributes)")
 
     if wallet["nID"] != 1:
@@ -619,7 +619,14 @@ def load_bitcoincore_from_pywallet(wallet_file):
     if wallet["nDerivationMethod"] != 0:
         raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(wallet["nDerivationMethod"]))
 
-    encrypted_master_key = base64.b16decode(wallet["encrypted_key"], True)  # True means allow lowercase
+    if "encrypted_key" in wallet:
+        encrypted_master_key = wallet["encrypted_key"]
+    elif "crypted_key" in wallet:
+        encrypted_master_key = wallet["crypted_key"]
+    else:
+        raise ValueError("Unrecognized pywallet format (can't find [en]crypted_key attribute)")
+
+    encrypted_master_key = base64.b16decode(encrypted_master_key, True)  # True means allow lowercase
     salt                 = base64.b16decode(wallet["salt"], True)
     iter_count           = int(wallet["nDerivationIterations"])
 
