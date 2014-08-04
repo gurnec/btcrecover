@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.2"
+__version__          = "0.8.3"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -1570,10 +1570,12 @@ def parse_arguments(effective_argv, **kwds):
     # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
     # TODO: handle Unicode BOM
+    tokenlist_first_line_num = 1
     if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
         first_line = tokenlist_file.readline().rstrip("\r\n")[1:]
         if first_line.startswith("--"):                  # if it's additional args, not just a comment
             print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
+            tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
             tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
             for arg in tokenlist_args:
                 if arg.startswith("--to"):               # --tokenlist
@@ -1622,6 +1624,7 @@ def parse_arguments(effective_argv, **kwds):
             first_line = tokenlist_file.readline()
             if first_line.startswith("#--"):                 # if it's additional args, not just a comment
                 print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
+                tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
         print("Using autosave file '"+restore_filename+"'")
         args.skip = savestate["skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
@@ -2093,7 +2096,7 @@ def parse_arguments(effective_argv, **kwds):
     if tokenlist_file:
         if tokenlist_file == sys.stdin:
             print("Reading tokenlist from stdin")
-        parse_tokenlist(tokenlist_file)
+        parse_tokenlist(tokenlist_file, tokenlist_first_line_num)
 
     # If something has been redirected to stdin and we've been reading from it, close
     # stdin now so we don't keep the redirected files alive while running, but only
@@ -2105,7 +2108,8 @@ def parse_arguments(effective_argv, **kwds):
         try:   os.close(0)  # but this should, where supported
         except StandardError: pass
 
-    if tokenlist_file: tokenlist_file.close()
+    if tokenlist_file and not (pause_registered and tokenlist_file == sys.stdin):
+        tokenlist_file.close()
 
     # Open a new autosave file (if --restore was specified, the restore file
     # is still open and has already been assigned to autosave_file instead)
@@ -2252,7 +2256,7 @@ class AnchoredToken(object):
     # For hashlib
     def __repr__(self):      return self.__class__.__name__ + "(" + repr(self.cached_str) + ")"
 
-def parse_tokenlist(tokenlist_file):
+def parse_tokenlist(tokenlist_file, first_line_num = 1):
     global token_lists
     global has_any_duplicate_tokens, has_any_wildcards, has_any_anchors, has_any_mid_anchors
 
@@ -2264,10 +2268,13 @@ def parse_tokenlist(tokenlist_file):
     has_any_mid_anchors = False
     token_lists         = []
 
-    for line_num, line in enumerate(tokenlist_file, 1):
+    for line_num, line in enumerate(tokenlist_file, first_line_num):
 
         # Ignore comments
-        if line.startswith("#"): continue
+        if line.startswith("#"):
+            if line.startswith("#--"):
+                print(prog+": warning: all options must be on the first line, ignoring options on line", str(line_num), file=sys.stderr)
+            continue
 
         # Start off assuming these tokens are optional (no preceding "+");
         # if it turns out there is a "+", we'll remove this None later
@@ -2300,6 +2307,16 @@ def parse_tokenlist(tokenlist_file):
                 error_exit("on line", str(line_num)+":", count_or_error_msg)
             elif count_or_error_msg:
                 has_any_wildcards = True  # (a global)
+
+            # Check for tokens which look suspiciously like command line options
+            # (using a private ArgumentParser member func is asking for trouble...)
+            if token.startswith("--") and parser_common._get_option_tuples(token):
+                if line_num == 1:
+                    print(prog+": warning: token on line 1 looks like an option, "
+                               "but line 1 is missing the required '#--' at its beginning", file=sys.stderr)
+                else:
+                    print(prog+": warning: token on line", str(line_num), "looks like an option, "
+                               " but all options must be on the first line", file=sys.stderr)
 
             # Parse anchor if present and convert to an AnchoredToken object
             if token.startswith("^") or token.endswith("$"):
