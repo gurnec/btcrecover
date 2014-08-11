@@ -342,6 +342,14 @@ If you encounter the error `ImportError: DLL load failed` when running *btcrecov
         sudo apt-get install python-pip
         sudo pip install pycrypto
 
+    On OS X, installing PyCrypto is unfortunately a bit more difficult:
+
+    1. Download and install the "Command Line Tools for Xcode" for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
+    2.  Open a Terminal window, and install Python pip and then PyCrypto:
+
+            curl https://bootstrap.pypa.io/get-pip.py | sudo python
+            sudo pip install pycrypto
+
 
 ## Running *btcrecover* ##
 
@@ -483,9 +491,6 @@ Normally, when you run *btcrecover* it expects you to run it with at least a few
 Although this software is unlikely to harm any wallet files, **you are strongly encouraged to only run it with copies of your wallets**. In particular, this software is distributed **WITHOUT ANY WARRANTY**; please see the accompanying GPLv2 licensing terms for more details.
 
 Because this software is beta software, and also because it interacts with other beta software, it’s entirely possible that it may fail to find a password which it’s been correctly configure by you to find.
-
-#### OS X ####
-Mac OS X support is completely untested.
 
 ### Delimiters, Spaces, and Special Symbols in Passwords###
 
