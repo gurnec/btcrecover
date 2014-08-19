@@ -1787,36 +1787,13 @@ def parse_arguments(effective_argv, **kwds):
     global typos_map
     typos_map = None
     if args.typos_map:
-        typos_map = dict()
-        typos_map_file = open_or_use(args.typos_map, "r", kwds.get("typos_map"))
-        for line_num, line in enumerate(typos_map_file, 1):
-            if line.startswith("#"): continue  # ignore comments
-            #
-            # Remove the trailing newline, then split the line exactly
-            # once on the specified delimiter (default: whitespace)
-            split_line = line.rstrip("\r\n").split(args.delimiter, 1)
-            if len(split_line) == 0: continue  # ignore empty lines
-            if len(split_line) == 1:
-                error_exit("--typos-map file has an empty replacement list on line", line_num)
-            if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
-            for c in "".join(split_line):
-                if ord(c) > 127:
-                    error_exit("--typos-map file has non-ASCII character '"+c+"' on line", line_num)
-            for c in split_line[0]:  # (c is the character to be replaced)
-                replacements = duplicates_removed(typos_map.get(c, "") + split_line[1])
-                if c in replacements:
-                    typos_map[c] = filter(lambda r: r != c, replacements)
-                else:
-                    typos_map[c] = replacements
-        typos_map_file.close()
+        sha1 = hashlib.sha1() if savestate else None
+        typos_map = parse_mapfile(open_or_use(args.typos_map, "r", kwds.get("typos_map")), sha1, "--typos-map")
         #
-        # If autosaving, take a hash of the typos_map and either check it
+        # If autosaving, take the hash of the typos_map and either check it
         # during a session restore to make sure we're actually restoring
         # the exact same session, or save it for future such checks
         if savestate:
-            sha1 = hashlib.sha1()
-            for k in sorted(typos_map.keys()):  # must take the hash in a deterministic order (not in typos_map order)
-                sha1.update(k + str(typos_map[k]))
             typos_map_hash = sha1.digest()
             del sha1
             if restored:
@@ -2120,6 +2097,43 @@ def parse_arguments(effective_argv, **kwds):
             error_exit("--autosave file '"+args.autosave+"' already exists, won't overwrite")
         autosave_nextslot = 0
         print("Using autosave file '"+args.autosave+"'")
+
+
+# Builds and returns a dict (e.g. typos_map) mapping replaceable characters to their replacements.
+#   map_file     -- an open file object (which this function will close)
+#   running_hash -- (opt.) adds the map's data to the hash object
+#   feature_name -- (opt.) used to generate more descriptive error messages
+def parse_mapfile(map_file, running_hash = None, feature_name = "map"):
+    map_data = dict()
+    for line_num, line in enumerate(map_file, 1):
+        if line.startswith("#"): continue  # ignore comments
+        #
+        # Remove the trailing newline, then split the line exactly
+        # once on the specified delimiter (default: whitespace)
+        split_line = line.rstrip("\r\n").split(args.delimiter, 1)
+        if len(split_line) == 0: continue  # ignore empty lines
+        if len(split_line) == 1:
+            error_exit(feature_name, "file '"+map_file.name+"' has an empty replacement list on line", line_num)
+        if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
+        for c in "".join(split_line):
+            if ord(c) > 127:
+                error_exit(feature_name, "file '"+map_file.name+"' has non-ASCII character '"+c+"' on line", line_num)
+        for c in split_line[0]:  # (c is the character to be replaced)
+            replacements = duplicates_removed(map_data.get(c, "") + split_line[1])
+            if c in replacements:
+                map_data[c] = filter(lambda r: r != c, replacements)
+            else:
+                map_data[c] = replacements
+    map_file.close()
+
+    # If autosaving, take a hash of the map_data so it can either be checked (later)
+    # during a session restore to make sure we're actually restoring the exact same
+    # session, or can be saved for future such checks
+    if running_hash:
+        for k in sorted(map_data.keys()):  # must take the hash in a deterministic order (not in map_data order)
+            running_hash.update(k + str(map_data[k]))
+
+    return map_data
 
 
 ################################### Tokenfile Parsing ###################################
@@ -2870,14 +2884,17 @@ def performance_base_password_generator():
 
 
 # This generator function expands (or contracts) all wildcards in the string passed
-# to it, or if there are no wildcards it simply produces the string unchanged
+# to it, or if there are no wildcards it simply produces the string unchanged. The
+# prior_prefix argument is only used internally while recursing, and is needed to
+# support backreference wildcards. The returned value is:
+#   prior_prefix + password_with_all_wildcards_expanded
 # TODO: implement without recursion?
-def expand_wildcards_generator(password_with_wildcards):
+def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
 
     # Quick check to see if any wildcards are present
     if password_with_wildcards.find("%") == -1:
         # If none, just produce the string and end
-        yield password_with_wildcards
+        yield prior_prefix + password_with_wildcards
         return
 
     # Copy a few globals into local for a small speed boost
@@ -2940,12 +2957,12 @@ def expand_wildcards_generator(password_with_wildcards):
 
                 # If the wildcard was at the end of the string, we're done
                 if password_postfix_with_wildcards == "":
-                    yield password_prefix_expanded
+                    yield prior_prefix + password_prefix_expanded
                     continue
 
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-                for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards):
-                    yield password_prefix_expanded + password_postfix_expanded
+                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, prior_prefix + password_prefix_expanded):
+                    yield password_expanded
 
     # Otherwise it's a contracting wildcard
     else:
@@ -2966,14 +2983,16 @@ def expand_wildcards_generator(password_with_wildcards):
             for remove_right in l_xrange(l_max(0, remove_total-max_from_left), l_min(remove_total, max_from_right) + 1):
                 remove_left = remove_total-remove_right
 
+                password_prefix_contracted = password_prefix[:-remove_left] if remove_left else password_prefix
+
                 # If the wildcard was at the end or if there's nothing remaining on the right, we're done
                 if l_len(password_postfix_with_wildcards) - remove_right == 0:
-                    yield password_prefix[:-remove_left] if remove_left else password_prefix
+                    yield prior_prefix + password_prefix_contracted
                     continue
 
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-                for password_postfix_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:]):
-                    yield (password_prefix[:-remove_left] if remove_left else password_prefix) + password_postfix_expanded
+                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:], prior_prefix + password_prefix_contracted):
+                    yield password_expanded
 
 
 # capslock_typos_generator() is a generator function which tries swapping the case of

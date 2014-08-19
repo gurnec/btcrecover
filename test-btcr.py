@@ -1085,6 +1085,37 @@ class Test09EndToEnd(unittest.TestCase):
         self.assertEqual(savestate.get("skip"), 139655)
 
 
+# QuickTests: all of Test01Basics, Test02Anchors, Test03WildCards, and Test04Typos,
+# all of Test05CommandLine except the "large" tests, and select quick tests from
+# Test08KeyDecryption
+class QuickTests(unittest.TestSuite) :
+    def __init__(self):
+        super(self.__class__, self).__init__()
+        tl = unittest.defaultTestLoader
+        self.addTests(tl.loadTestsFromTestCase(TestCase)
+            for TestCase in (Test01Basics, Test02Anchors, Test03WildCards, Test04Typos))
+        self.addTest(tl.loadTestsFromNames(("Test05CommandLine." + method_name
+            for method_name in tl.getTestCaseNames(Test05CommandLine) if "large" not in method_name),
+            module=sys.modules[__name__]))
+        self.addTest(tl.loadTestsFromNames(("Test08KeyDecryption." + method_name
+            for method_name in (
+                "test_bitcoincore_pp",
+                "test_multibit",
+                "test_electrum",
+                "test_blockchain_v0",
+                "test_blockchain_v2",
+                "test_blockchain_secondpass",
+                "test_blockchain_secondpass_no_iter_count",
+                "test_multibit_pp",
+                "test_electrum_pp",
+                "test_blockchain_v0_pp",
+                "test_blockchain_secondpass_pp",
+                "test_blockchain_secondpass_no_iter_count_pp",
+                "test_invalid_crc")),
+            module=sys.modules[__name__]
+        ))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--no-buffer", action="store_true")
