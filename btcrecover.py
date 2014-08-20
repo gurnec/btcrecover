@@ -54,7 +54,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 
 # Recognized wildcard (e.g. %d, %a) types mapped to their associated sets
 # of characters; used in expand_wildcards_generator()
-# warning: don't use digits, 'i', '[', ',', '-', '<', or '>' as the key for a wildcard set
+# warning: these can't be the key for a wildcard set: digits 'i' 'b' '[' ',' ';' '-' '<' '>'
 def init_wildcards():
     global wildcard_sets, wildcard_keys, wildcard_nocase_sets, wildcard_re, custom_wildcard_cache
     all_ascii_symbols = "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127)))
@@ -1225,7 +1225,8 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
     # Remove all valid wildcards, syntax checking the min to max ranges; if any %'s are left they are invalid
     try:
         valid_wildcards_removed, count = \
-            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i)?(?:[{}]|\[.+?\])".format(wildcard_keys+contracting_wildcards),
+            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i?[{}]|i?\[.+?\]{}|(?:;.+?;(\d+)?|;(\d+))?b)"
+                    .format(wildcard_keys, "|["+contracting_wildcards+"]" if contracting_wildcards else ""),
                     syntax_check_range, str_with_wildcards)
     except ValueError as e: return str(e)
     if "%" in valid_wildcards_removed:
@@ -1248,11 +1249,14 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
     return count
 #
 def syntax_check_range(m):
-    minlen, maxlen = m.groups()
+    minlen, maxlen, bpos, bpos2 = m.groups()
     if minlen and maxlen and int(minlen) > int(maxlen):
-        raise ValueError("min wildcard length ("+minlen+") > max length ("+maxlen+")")
+        raise ValueError("max wildcard length ("+maxlen+") must be >= min length ("+minlen+")")
     if maxlen and int(maxlen) == 0:
         print(prog+": warning: %0 or %0,0 wildcards always expand to empty strings", file=sys.stderr)
+    if bpos2: bpos = bpos2  # at most one of these is not None
+    if bpos and int(bpos) == 0:
+        raise ValueError("backreference wildcard position must be > 0")
     return ""
 
 
@@ -2903,42 +2907,49 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
     l_min    = min
     l_max    = max
 
-    # Find the first wildcard parameter in the format %[[min,]max][caseflag]type
-    # where caseflag=="i" if present and type is one of: wildcard_keys, <, >, or -
-    # (e.g. "%d", "%-", "%2n", "%1,3ia", etc.) or type is of the form "[custom-wildcard-set]"
+    # Find the first wildcard parameter in the format %[[min,]max][caseflag]type where
+    # caseflag == "i" if present and type is one of: wildcard_keys, "<", ">", or "-"
+    # (e.g. "%d", "%-", "%2n", "%1,3ia", etc.), or type is of the form "[custom-wildcard-set]", or
+    # for backreferences type is of the form: [ ";file;" ["#"] | ";#" ] "b"  <--brackets denote options
     global wildcard_re
     if not wildcard_re:
         wildcard_re = re.compile(
-            r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>[{}<>-])|\[(?P<custom>.+?)\])" \
+            r"%(?:(?:(?P<min>\d+),)?(?P<max>\d+))?(?P<nocase>i)?(?:(?P<type>[{}<>-])|\[(?P<custom>.+?)\]|(?:;(?:(?P<bfile>.+?);)?(?P<bpos>\d+)?)?(?P<bref>b))" \
             .format(wildcard_keys))
     match = wildcard_re.search(password_with_wildcards)
     assert match, "expand_wildcards_generator: parsed valid wildcard spec"
 
-    password_prefix = password_with_wildcards[0:match.start()]               # no wildcards present here;
+    password_prefix      = password_with_wildcards[0:match.start()]          # no wildcards present here,
+    full_password_prefix = prior_prefix + password_prefix                    # nor here;
     password_postfix_with_wildcards = password_with_wildcards[match.end():]  # might be other wildcards in here
 
-    # For positive (expanding) wildcards, build the set of possible characters based on the wildcard type and caseflag
-    m_custom, m_nocase = match.group("custom", "nocase")
-    if m_custom:  # e.g. %[abcdef0-9]
-        is_expanding = True
-        wildcard_set = custom_wildcard_cache.get((m_custom, m_nocase))
-        if wildcard_set is None:
-            wildcard_set = build_wildcard_set(m_custom)
-            if m_nocase:
-                # Build a case-insensitive version
-                wildcard_set_caseswapped = wildcard_set.swapcase()
-                if wildcard_set_caseswapped != wildcard_set:
-                    wildcard_set = duplicates_removed(wildcard_set + wildcard_set_caseswapped)
-            custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
+    m_bref = match.group("bref")
+    if m_bref:  # a backreference wildcard, e.g. "%b" or "%;2b" or "%;map.txt;2b"
+        m_bfile, m_bpos = match.group("bfile", "bpos")
+        m_bpos = int(m_bpos) if m_bpos else 1
     else:
-        m_type = match.group("type")
-        is_expanding = m_type not in "<>-"
-        if is_expanding:
-            if m_nocase and m_type in wildcard_nocase_sets:
-                wildcard_set = wildcard_nocase_sets[m_type]
-            else:
-                wildcard_set = wildcard_sets[m_type]
-    assert not is_expanding or wildcard_set, "expand_wildcards_generator: found expanding wildcard set"
+        # For positive (expanding) wildcards, build the set of possible characters based on the wildcard type and caseflag
+        m_custom, m_nocase = match.group("custom", "nocase")
+        if m_custom:  # a custom set wildcard, e.g. %[abcdef0-9]
+            is_expanding = True
+            wildcard_set = custom_wildcard_cache.get((m_custom, m_nocase))
+            if wildcard_set is None:
+                wildcard_set = build_wildcard_set(m_custom)
+                if m_nocase:
+                    # Build a case-insensitive version
+                    wildcard_set_caseswapped = wildcard_set.swapcase()
+                    if wildcard_set_caseswapped != wildcard_set:
+                        wildcard_set = duplicates_removed(wildcard_set + wildcard_set_caseswapped)
+                custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
+        else:  # either a "normal" or a contracting wildcard
+            m_type = match.group("type")
+            is_expanding = m_type not in "<>-"
+            if is_expanding:
+                if m_nocase and m_type in wildcard_nocase_sets:
+                    wildcard_set = wildcard_nocase_sets[m_type]
+                else:
+                    wildcard_set = wildcard_sets[m_type]
+        assert not is_expanding or wildcard_set, "expand_wildcards_generator: found expanding wildcard set"
 
     # Extract or default the wildcard min and max length
     wildcard_maxlen = match.group("max")
@@ -2946,22 +2957,52 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
     wildcard_minlen = match.group("min")
     wildcard_minlen = int(wildcard_minlen) if wildcard_minlen else wildcard_maxlen
 
+    # If it's a backreference wildcard
+    if m_bref:
+        first_pos = len(full_password_prefix) - m_bpos
+        if first_pos < 0:
+            wildcard_minlen = l_max(wildcard_minlen + first_pos, 0)
+            wildcard_maxlen = l_max(wildcard_maxlen + first_pos, 0)
+            m_bpos += first_pos  # will always be >= 1
+        m_bpos *= -1             # is now <= -1
+
+        # Construct the first password to be produced
+        for i in xrange(0, wildcard_minlen):
+            full_password_prefix += full_password_prefix[m_bpos]
+
+        # Iterate over the [wildcard_minlen, wildcard_maxlen) range
+        i = wildcard_minlen
+        while True:
+            # If the wildcard was at the end of the string, we're done
+            if password_postfix_with_wildcards == "":
+                yield full_password_prefix
+
+            # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
+            else:
+                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix):
+                    yield password_expanded
+
+            i += 1
+            if i > wildcard_maxlen: break
+
+            # Construct the next password
+            full_password_prefix += full_password_prefix[m_bpos]
+
     # If it's an expanding wildcard
-    if is_expanding:
+    elif is_expanding:
         # Iterate through specified wildcard lengths
         for wildcard_len in l_xrange(wildcard_minlen, wildcard_maxlen+1):
 
             # Expand the wildcard into a length of characters according to the wildcard type/caseflag
             for wildcard_expanded_list in itertools.product(wildcard_set, repeat=wildcard_len):
-                password_prefix_expanded = password_prefix + "".join(wildcard_expanded_list)
 
                 # If the wildcard was at the end of the string, we're done
                 if password_postfix_with_wildcards == "":
-                    yield prior_prefix + password_prefix_expanded
+                    yield full_password_prefix + "".join(wildcard_expanded_list)
                     continue
 
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, prior_prefix + password_prefix_expanded):
+                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix + "".join(wildcard_expanded_list)):
                     yield password_expanded
 
     # Otherwise it's a contracting wildcard
@@ -2983,15 +3024,15 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
             for remove_right in l_xrange(l_max(0, remove_total-max_from_left), l_min(remove_total, max_from_right) + 1):
                 remove_left = remove_total-remove_right
 
-                password_prefix_contracted = password_prefix[:-remove_left] if remove_left else password_prefix
+                password_prefix_contracted = full_password_prefix[:-remove_left] if remove_left else full_password_prefix
 
                 # If the wildcard was at the end or if there's nothing remaining on the right, we're done
                 if l_len(password_postfix_with_wildcards) - remove_right == 0:
-                    yield prior_prefix + password_prefix_contracted
+                    yield password_prefix_contracted
                     continue
 
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:], prior_prefix + password_prefix_contracted):
+                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:], password_prefix_contracted):
                     yield password_expanded
 
 

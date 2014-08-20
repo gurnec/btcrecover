@@ -280,7 +280,7 @@ class Test03WildCards(GeneratorTester):
             "--has-wildcards", True)
 
     def test_length_invalid_range(self):
-        self.expect_syntax_failure(["%2,1d"], "on line 1: min wildcard length (2) > max length (1)")
+        self.expect_syntax_failure(["%2,1d"], "on line 1: max wildcard length (1) must be >= min length (2)")
     def test_invalid_length_1(self):
         self.expect_syntax_failure(["%2,d"],  "invalid wildcard")
     def test_invalid_length_2(self):
@@ -334,8 +334,19 @@ class Test03WildCards(GeneratorTester):
     def test_contracting_left(self):
         self.do_generator_test(["ab%0,3<cd"], ["abcd", "acd", "cd"], "--has-wildcards -d", True)
     def test_contracting_multiple(self):
-        self.do_generator_test(["%0,2-ab%[X]cd%0,2-"],
+        self.do_generator_test(["%0,3-ab%[X]cd%0,3-"],
             ["abXcd", "abXc", "abX", "bXcd", "bXc", "bX", "Xcd", "Xc", "X"], "--has-wildcards -d", True)
+
+    def test_backreference(self):
+        self.do_generator_test(["%[ab]%b"], ["aa", "bb"], "--has-wildcards -d", True)
+    def test_backreference_length(self):
+        self.do_generator_test(["%[ab]%2,3b"], ["aaa", "aaaa", "bbb", "bbbb"], "--has-wildcards -d", True)
+    def test_backreference_pos(self):
+        self.do_generator_test(["%[ab]X%;2b"], ["aXa", "bXb"], "--has-wildcards -d", True)
+    def test_backreference_pos_length(self):
+        self.do_generator_test(["%[ab]X%2,3;2b"], ["aXaX", "aXaXa", "bXbX", "bXbXb"], "--has-wildcards -d", True)
+    def test_backreference_bounds(self):
+        self.do_generator_test(["%[ab]%1,3;3b"], ["a", "aa", "b", "bb"], "--has-wildcards -d", True)
 
 
 class Test04Typos(GeneratorTester):
