@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.4"
+__version__          = "0.8.5"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -56,7 +56,8 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 # of characters; used in expand_wildcards_generator()
 # warning: these can't be the key for a wildcard set: digits 'i' 'b' '[' ',' ';' '-' '<' '>'
 def init_wildcards():
-    global wildcard_sets, wildcard_keys, wildcard_nocase_sets, wildcard_re, custom_wildcard_cache
+    global wildcard_sets, wildcard_keys, wildcard_nocase_sets, wildcard_re, \
+           custom_wildcard_cache, backreference_maps, backreference_maps_sha1
     all_ascii_symbols = "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127)))
     wildcard_sets = {
         "d" : string.digits,
@@ -92,7 +93,9 @@ def init_wildcards():
     }
     #
     wildcard_re = None
-    custom_wildcard_cache = dict()
+    custom_wildcard_cache   = dict()
+    backreference_maps      = dict()
+    backreference_maps_sha1 = None
 
 
 # Simple typo generators produce (as an iterable, e.g. a tuple, generator, etc.)
@@ -1776,12 +1779,15 @@ def parse_arguments(effective_argv, **kwds):
             wildcard_keys += "cC"  # keep track of available wildcard types (this is used in regex's)
 
     # Syntax check and expand --typos-insert/--typos-replace wildcards
+    # N.B. changing the iteration order below will break autosave/restore between btcr versions
     global typos_insert_expanded, typos_replace_expanded
     for arg_name, arg_val in ("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace):
         if arg_val:
-            error_msg = count_valid_wildcards(arg_val)
-            if isinstance(error_msg, basestring):
-                error_exit(arg_name, arg_val, ":", error_msg)
+            count_or_error_msg = count_valid_wildcards(arg_val)
+            if isinstance(count_or_error_msg, basestring):
+                error_exit(arg_name, arg_val, ":", count_or_error_msg)
+            if count_or_error_msg:
+                load_backreference_maps_from_token(arg_val)
     if args.typos_insert:
         typos_insert_expanded  = list(expand_wildcards_generator(args.typos_insert))
     if args.typos_replace:
@@ -2045,13 +2051,14 @@ def parse_arguments(effective_argv, **kwds):
                     passwordlist_allcached = True
                     break
                 if args.has_wildcards and "%" in line:
-                    error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
-                    if isinstance(error_msg, basestring):
+                    count_or_error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
+                    if isinstance(count_or_error_msg, basestring):
                         line_msg = "last line:" if passwordlist_isatty else "line "+str(line_num)+":"
-                        print(prog+": warning: ignoring", line_msg, error_msg, file=sys.stderr)
+                        print(prog+": warning: ignoring", line_msg, count_or_error_msg, file=sys.stderr)
                         line = None  # add a None to the list so we can count line numbers correctly
                     else:
                         has_any_wildcards = True
+                        load_backreference_maps_from_token(line)
                 initial_passwordlist.append(line)
             #
             if not passwordlist_allcached and not args.no_eta:
@@ -2104,10 +2111,11 @@ def parse_arguments(effective_argv, **kwds):
 
 
 # Builds and returns a dict (e.g. typos_map) mapping replaceable characters to their replacements.
-#   map_file     -- an open file object (which this function will close)
-#   running_hash -- (opt.) adds the map's data to the hash object
-#   feature_name -- (opt.) used to generate more descriptive error messages
-def parse_mapfile(map_file, running_hash = None, feature_name = "map"):
+#   map_file       -- an open file object (which this function will close)
+#   running_hash   -- (opt.) adds the map's data to the hash object
+#   feature_name   -- (opt.) used to generate more descriptive error messages
+#   same_permitted -- (opt.) if True, the input value may be mapped to the same output value
+def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_permitted = False):
     map_data = dict()
     for line_num, line in enumerate(map_file, 1):
         if line.startswith("#"): continue  # ignore comments
@@ -2124,7 +2132,7 @@ def parse_mapfile(map_file, running_hash = None, feature_name = "map"):
                 error_exit(feature_name, "file '"+map_file.name+"' has non-ASCII character '"+c+"' on line", line_num)
         for c in split_line[0]:  # (c is the character to be replaced)
             replacements = duplicates_removed(map_data.get(c, "") + split_line[1])
-            if c in replacements:
+            if not same_permitted and c in replacements:
                 map_data[c] = filter(lambda r: r != c, replacements)
             else:
                 map_data[c] = replacements
@@ -2319,12 +2327,13 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
                 if ord(c) > 127:
                     error_exit("token on line", line_num, "has non-ASCII character '"+c+"'")
 
-            # Syntax check any wildcards
+            # Syntax check any wildcards, and load any wildcard backreference maps
             count_or_error_msg = count_valid_wildcards(token, permit_contracting_wildcards=True)
             if isinstance(count_or_error_msg, basestring):
                 error_exit("on line", str(line_num)+":", count_or_error_msg)
             elif count_or_error_msg:
                 has_any_wildcards = True  # (a global)
+                load_backreference_maps_from_token(token)
 
             # Check for tokens which look suspiciously like command line options
             # (using a private ArgumentParser member func is asking for trouble...)
@@ -2359,16 +2368,36 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
     # appear at the end of the list and consequently get tried first
     token_lists.reverse()
 
-    # If autosaving, take a hash of the token_lists and either check it
-    # during a session restore to make sure we're actually restoring
-    # the exact same session, or save it for future such checks
+    # If autosaving, take a hash of the token_lists and backreference maps, and
+    # either check them during a session restore to make sure we're actually
+    # restoring the exact same session, or save them for future such checks
     if savestate:
-        token_lists_hash = hashlib.sha1(str(token_lists)).digest()
+        global backreference_maps_sha1
+        token_lists_hash        = hashlib.sha1(str(token_lists)).digest()
+        backreference_maps_hash = backreference_maps_sha1.digest() if backreference_maps_sha1 else None
         if restored:
             if token_lists_hash != savestate["token_lists_hash"]:
                 error_exit("can't restore previous session: the tokenlist file has changed")
+            if backreference_maps_hash != savestate.get("backreference_maps_hash"):
+                error_exit("can't restore previous session: one or more backreference maps have changed")
         else:
             savestate["token_lists_hash"] = token_lists_hash
+            if backreference_maps_hash:
+                savestate["backreference_maps_hash"] = backreference_maps_hash
+
+
+# Load any map files referenced in wildcard backreferences in the passed token
+def load_backreference_maps_from_token(token):
+    global backreference_maps       # initialized to dict() in init_wildcards()
+    global backreference_maps_sha1  # initialized to  None  in init_wildcards()
+    # We know all wildcards present have valid syntax, so we don't need to use the full regex, but
+    # we do need to capture %% to avoid parsing this as a backreference (it isn't one): %%;file;b
+    for map_filename in re.findall(r"%[\d,]*;(.+?);\d*b|%%", token):
+        if map_filename and map_filename not in backreference_maps:
+            if savestate and not backreference_maps_sha1:
+                backreference_maps_sha1 = hashlib.sha1()
+            backreference_maps[map_filename] = \
+                parse_mapfile(open(map_filename, "r"), backreference_maps_sha1, "backreference map", same_permitted=True)
 
 
 ################################### Password Generation ###################################
@@ -2864,10 +2893,14 @@ def passwordlist_base_password_generator():
         assert not passwordlist_file.closed
         for line_num, password_base in enumerate(passwordlist_file, line_num):  # not yet syntax-checked
             if args.has_wildcards and "%" in password_base:
-                error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
-                if isinstance(error_msg, basestring):
-                    print(prog+": warning: ignoring line", str(line_num)+":", error_msg, file=sys.stderr)
+                count_or_error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
+                if isinstance(count_or_error_msg, basestring):
+                    print(prog+": warning: ignoring line", str(line_num)+":", count_or_error_msg, file=sys.stderr)
                     continue
+                try:
+                    load_backreference_maps_from_token(password_base)
+                except IOError as e:
+                    print(prog+": warning: ignoring line", str(line_num)+":", e, file=sys.stderr)
             yield password_base.rstrip("\r\n")
 
     # Prepare for a potential future run
@@ -2927,6 +2960,7 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
     if m_bref:  # a backreference wildcard, e.g. "%b" or "%;2b" or "%;map.txt;2b"
         m_bfile, m_bpos = match.group("bfile", "bpos")
         m_bpos = int(m_bpos) if m_bpos else 1
+        bmap = backreference_maps[m_bfile] if m_bfile else None
     else:
         # For positive (expanding) wildcards, build the set of possible characters based on the wildcard type and caseflag
         m_custom, m_nocase = match.group("custom", "nocase")
@@ -2960,33 +2994,57 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
     # If it's a backreference wildcard
     if m_bref:
         first_pos = len(full_password_prefix) - m_bpos
-        if first_pos < 0:
+        if first_pos < 0:  # if the prefix is shorter than the requested bpos
             wildcard_minlen = l_max(wildcard_minlen + first_pos, 0)
             wildcard_maxlen = l_max(wildcard_maxlen + first_pos, 0)
             m_bpos += first_pos  # will always be >= 1
         m_bpos *= -1             # is now <= -1
 
-        # Construct the first password to be produced
-        for i in xrange(0, wildcard_minlen):
-            full_password_prefix += full_password_prefix[m_bpos]
+        if bmap:  # if it's a backreference wildcard with a map file
+            # Special case for when the first password has no wildcard characters appended
+            if wildcard_minlen == 0:
+                # If the wildcard was at the end of the string, we're done
+                if password_postfix_with_wildcards == "":
+                    yield full_password_prefix
+                # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
+                else:
+                    for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix):
+                        yield password_expanded
 
-        # Iterate over the [wildcard_minlen, wildcard_maxlen) range
-        i = wildcard_minlen
-        while True:
-            # If the wildcard was at the end of the string, we're done
-            if password_postfix_with_wildcards == "":
-                yield full_password_prefix
+            # Expand the mapping backreference wildcard using the helper function (defined below)
+            # (this helper function can't handle the special case above)
+            for password_prefix_expanded in expand_mapping_backreference_wildcard(full_password_prefix, wildcard_minlen, wildcard_maxlen, m_bpos, bmap):
 
-            # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
-            else:
-                for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix):
-                    yield password_expanded
+                # If the wildcard was at the end of the string, we're done
+                if password_postfix_with_wildcards == "":
+                    yield password_prefix_expanded
+                # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
+                else:
+                    for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, password_prefix_expanded):
+                        yield password_expanded
 
-            i += 1
-            if i > wildcard_maxlen: break
+        else:  # else it's a "normal" backreference wildcard (without a map file)
+            # Construct the first password to be produced
+            for i in xrange(0, wildcard_minlen):
+                full_password_prefix += full_password_prefix[m_bpos]
 
-            # Construct the next password
-            full_password_prefix += full_password_prefix[m_bpos]
+            # Iterate over the [wildcard_minlen, wildcard_maxlen) range
+            i = wildcard_minlen
+            while True:
+
+                # If the wildcard was at the end of the string, we're done
+                if password_postfix_with_wildcards == "":
+                    yield full_password_prefix
+                # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
+                else:
+                    for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix):
+                        yield password_expanded
+
+                i += 1
+                if i > wildcard_maxlen: break
+
+                # Construct the next password
+                full_password_prefix += full_password_prefix[m_bpos]
 
     # If it's an expanding wildcard
     elif is_expanding:
@@ -3000,7 +3058,6 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
                 if password_postfix_with_wildcards == "":
                     yield full_password_prefix + "".join(wildcard_expanded_list)
                     continue
-
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
                 for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards, full_password_prefix + "".join(wildcard_expanded_list)):
                     yield password_expanded
@@ -3030,10 +3087,25 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
                 if l_len(password_postfix_with_wildcards) - remove_right == 0:
                     yield password_prefix_contracted
                     continue
-
                 # Recurse to expand any additional wildcards possibly in password_postfix_with_wildcards
                 for password_expanded in expand_wildcards_generator(password_postfix_with_wildcards[remove_right:], password_prefix_contracted):
                     yield password_expanded
+
+
+# Recursive helper generator function for expand_wildcards_generator():
+#   password_prefix -- the fully expanded password before a %b wildcard
+#   minlen, maxlen  -- the min and max from a %#,#b wildcard
+#   bpos            -- from a %;#b wildcard, this is -#
+#   bmap            -- the dict associated with the file in a %;file;b wildcard
+# This function assumes all range checking has already been performed.
+def expand_mapping_backreference_wildcard(password_prefix, minlen, maxlen, bpos, bmap):
+    for wildcard_expanded in bmap.get(password_prefix[bpos], (password_prefix[bpos],)):
+        password_prefix_expanded = password_prefix + wildcard_expanded
+        if minlen <= 1:
+            yield password_prefix_expanded
+        if maxlen > 1:
+            for password_expanded in expand_mapping_backreference_wildcard(password_prefix_expanded, minlen-1, maxlen-1, bpos, bmap):
+                yield password_expanded
 
 
 # capslock_typos_generator() is a generator function which tries swapping the case of

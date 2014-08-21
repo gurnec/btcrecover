@@ -31,6 +31,7 @@ import btcrecover, unittest, cStringIO, StringIO, os, os.path, \
        cPickle, tempfile, shutil, filecmp, argparse, sys
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
+typos_dir  = os.path.join(os.path.dirname(__file__), "typos")
 
 
 class StringIONonClosing(StringIO.StringIO):
@@ -249,6 +250,8 @@ class Test02Anchors(GeneratorTester):
     def test_not_middle(self):
         self.do_generator_test(["^2,3one"], ["2,3one"])
 
+
+LEET_MAP_FILE = os.path.join(typos_dir, "leet-map.txt")
 class Test03WildCards(GeneratorTester):
 
     def test_basics_1(self):
@@ -347,6 +350,31 @@ class Test03WildCards(GeneratorTester):
         self.do_generator_test(["%[ab]X%2,3;2b"], ["aXaX", "aXaXa", "bXbX", "bXbXb"], "--has-wildcards -d", True)
     def test_backreference_bounds(self):
         self.do_generator_test(["%[ab]%1,3;3b"], ["a", "aa", "b", "bb"], "--has-wildcards -d", True)
+
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map(self):
+        self.do_generator_test(["%[bc]%;"+LEET_MAP_FILE+";b"],
+            ["b8", "b6", "c("], "--has-wildcards -d", True)
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map_missing(self):
+        self.do_generator_test(["%[cd]%;"+LEET_MAP_FILE+";b"],
+            ["c(", "dd"], "--has-wildcards -d", True)
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map_length(self):
+        self.do_generator_test(["%[bc]%2,3;"+LEET_MAP_FILE+";b"],
+            ["b88", "b888", "b66", "b666", "c((", "c((("], "--has-wildcards -d", True)
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map_pos(self):
+        self.do_generator_test(["%[bc]X%;"+LEET_MAP_FILE+";2b"],
+            ["bX8", "bX6", "cX("], "--has-wildcards -d", True)
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map_pos_length(self):
+        self.do_generator_test(["%[bc]X%2,3;"+LEET_MAP_FILE+";2b"],
+            ["bX8%", "bX8%8", "bX6%", "bX6%6", "cX(%", "cX(%("], "--has-wildcards -d", True)
+    @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
+    def test_backreference_map_bounds(self):
+        self.do_generator_test(["%[bc]%1,3;"+LEET_MAP_FILE+";3b"],
+            ["b", "b8", "b6", "c", "c("], "--has-wildcards -d", True)
 
 
 class Test04Typos(GeneratorTester):
@@ -603,6 +631,7 @@ class Test05CommandLine(GeneratorTester):
         # Duplicate code works differently the second time around; test it also
         self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
 
+
 SAVESLOT_SIZE = 4096
 AUTOSAVE_ARGS = "--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1".split()
 AUTOSAVE_TOKENLIST    = "^one \n two \n three \n"
@@ -722,6 +751,7 @@ def can_load_armory():
         except ImportError:
             is_armory_loadable = False
     return is_armory_loadable
+
 
 class Test07WalletDecryption(unittest.TestCase):
 
@@ -843,6 +873,7 @@ def has_any_opencl_devices():
     try:   devs = btcrecover.get_opencl_devices()
     except ImportError: return False
     return len(devs) > 0
+
 
 class Test08KeyDecryption(unittest.TestCase):
 
