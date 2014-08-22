@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.5"
+__version__          = "0.8.6"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -3655,7 +3655,7 @@ def main():
     if not args.no_eta:
 
         assert args.skip >= 0
-        if hasattr(l_savestate, "total_passwords") and args.no_dupchecks:
+        if l_savestate and "total_passwords" in l_savestate and args.no_dupchecks:
             passwords_count = l_savestate["total_passwords"]  # we don't need to do a recount
             iterate_time = 0
         else:
@@ -3663,7 +3663,7 @@ def main():
             passwords_count = count_and_check_eta(est_secs_per_password)
             iterate_time = time.clock() - start
             if l_savestate:
-                if hasattr(l_savestate, "total_passwords"):
+                if "total_passwords" in l_savestate:
                     assert l_savestate["total_passwords"] == passwords_count, "main: saved password count matches actual count"
                 else:
                     l_savestate["total_passwords"] = passwords_count
