@@ -33,11 +33,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.6"
+__version__          = "0.8.7"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
-       time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json, getpass, uuid
+       time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json, getpass, uuid, numbers
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -3779,7 +3779,7 @@ def main():
     # Make est_passwords_per_5min evenly divisible by chunksize
     # (so that passwords_tried % est_passwords_per_5min will eventually == 0)
     if l_savestate:
-        assert isinstance(est_passwords_per_5min, int)
+        assert isinstance(est_passwords_per_5min, numbers.Integral)
         est_passwords_per_5min = int(round(est_passwords_per_5min / chunksize)) * chunksize
 
     # Iterate through password_found_iterator looking for a successful guess

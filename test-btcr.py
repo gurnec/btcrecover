@@ -996,6 +996,7 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-test-password"]), ("btcr-test-password", 3))
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl(self):
         btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
@@ -1013,6 +1014,7 @@ class Test08KeyDecryption(unittest.TestCase):
                 ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
                 dev.name.strip() + " failed to find password")
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl_mem_factor(self):
         btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
@@ -1030,6 +1032,7 @@ class Test08KeyDecryption(unittest.TestCase):
                 ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
                 dev.name.strip() + " failed to find password")
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
     def test_armory_cl_no_interrupts(self):
@@ -1046,6 +1049,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
+    @unittest.skipUnless(can_load_armory(), "requires Armory")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl_sli(self):
         devices_by_name = dict()
