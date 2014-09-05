@@ -59,9 +59,18 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
     ...
     Password found: xxxx
 
+Once your address has been found, you should strongly consider making a new wallet for maximum safety. Please read the technical details section below to understand why.
+
 #### Armory Technical Details ####
 
-The *extract-armory-privkey.py* script is intentionally short and should be easy to read for any Python programmer. As detailed above, it extracts a single address and private key using the official armoryengine library, putting this one address at risk. However, without access to the rest of your wallet file, the rest of your addresses and private keys are not at risk, even after a successful password guess and decryption.
+The *extract-armory-privkey.py* script is intentionally short and should be easy to read for any Python programmer. As detailed above, it extracts a single address and private key using the official armoryengine library, putting this one address at risk. However, *without access to the rest of your wallet file*, the rest of your addresses and private keys are not at risk, even after a successful password guess and decryption.
+
+If someone has one of your (decrypted) private keys and also has access to *any version* of your wallet file (normal or watching only, current or a backup, even if it's encrypted with a different password), then parts of your wallet *are* at risk. For maximum safety, you should make a new wallet and stop using your old wallet except for these limited cases, which remain safe:
+
+ * Receiving payments to old addresses (do not create new addresses for payments in the old wallet).
+ * Transferring *entire* payments to your new wallet (i.e. creating transactions that have no change).
+
+Of course, if someone has access to both your (normal) wallet and that wallet's password, then the wallet is not safe for any use.
 
 Armory automatically pre-generates 100 addresses and private keys before they are needed, which is why you can ask it to display a "new" address without a password. If you've asked for and then used 100 new addresses without providing a password, it's possible that Armory will be unable to provide a new address (without a password) as required by this procedure. If this is the case, you'll have no choice but to choose an already used address. To assist in choosing such an address, you can run `extract-armory-privkey.py list` from the command line to display a list of addresses available in the wallet which include an encrypted private key (including pre-generated addresses that may not be visible via the Armory GUI) along with the first and last known dates of use for each address. These dates of known use do not check the current block chain; you should always check a questionable address on <https://blockchain.info/> to check it's current balance before you use it with this procedure.
 
