@@ -435,12 +435,27 @@ If you encounter the error `ImportError: DLL load failed` when running *btcrecov
  3. If you have a `btcrecover-tokens-auto.txt` file, you're almost done. Copy it into the directory which contains `btcrecover.py`, and then simply double-click the `btcrecover.py` file, and *btcrecover* should begin testing passwords. (You may need to rename your wallet file if it doesn't match the file name listed insided the `btcrecover-tokens-auto.txt` file.) If you don't have a `btcrecover-tokens-auto.txt` file, continue reading below.
  4. Copy your `tokens.txt` file, or your passwordlist file if you're using one, into the directory which contains `btcrecover.py`.
  5. You will need to run `btcrecover.py` with at least two command-line options, `--wallet FILE` to identify the wallet file name and either `--tokenlist FILE` or `--passwordlist FILE` (the FILE is optional for `--passwordlist`), depending on whether you're using a [Token File](#the-token-file) or [Passwordlist](#the-passwordlist). If you're using [Typos](#typos) or [Autosave](#autosave), please refer the sections above for additional options you'll want to add.
- 6. What follows is an example on windows. The details for your system will be different, for example the download location may be different, or the wallet file name may differ, so you'll need to make some changes. Any additional options are all placed on the same line.
+ 6. What follows is an example on windows. Open a Command Prompt window, and type in the two lines below. The details for your system will be different, for example the download location may be different, or the wallet file name may differ, so you'll need to make some changes. Any additional options are all placed at the end of the *btcrecover* line.
 
         cd \Users\Chris\Downloads\btcrecover-master
         C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt --other-options...
 
-After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
+After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA as shown below. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
+
+    Counting passwords ...
+    Done
+    Using 4 worker threads
+    439 of 7661527 [-------------------------------] 0:00:10, ETA:  2 days, 0:25:56
+
+If one of the combinations is the correct password for the wallet, the password will eventually be displayed and *btcrecover* will stop running:
+
+    1298935 of 7661527 [####-----------------------] 8:12:42, ETA:  1 day, 16:13:24
+    Password found: 'Passwd42'
+
+If all of the password combinations are tried, and none of them were correct for the wallet, this message will be dislayed instead:
+
+    7661527 of 7661527 [########################################] 2 days, 0:26:06, 
+    Password search exhausted
 
 Running `btcrecover.py` with the `--help` option will give you a summary of all of the available command-line options, most of which are described in the sections above.
 
