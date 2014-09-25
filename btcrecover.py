@@ -33,7 +33,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.7"
+__version__          = "0.8.8"
 __ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -835,7 +835,7 @@ def return_multibitpk_verified_password_or_false(passwords):
         # If it looks like a base58 private key, we've found it
         # (there's a 1 in 600 billion chance this hits but the password is wrong)
         # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
-        if b58_privkey[0] in b"LK":  # private keys always start with L or K
+        if b58_privkey[0] in b"LK5":  # private keys always start with L, K, or 5
             for c in b58_privkey:
                 # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
                 if c > "z" or c < "1" or "9" < c < "A" or "Z" < c < "a" or c in b"IOl": break  # not base58
@@ -3804,6 +3804,8 @@ def main():
             if progress:
                 if args.no_eta:
                     progress.maxval = passwords_tried
+                else:
+                    progress.widgets.pop()  # remove the ETA
                 progress.finish()
             msg = "Password search exhausted"
             print(msg)
