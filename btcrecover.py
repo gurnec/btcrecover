@@ -25,7 +25,6 @@
 
 # PYTHON_ARGCOMPLETE_OK - enables optional bash tab completion
 
-# TODO: Unicode support? permit 8-bit characters (already done for passwordlist)?
 # TODO: put everything in a class?
 # TODO: pythonize comments/documentation
 
@@ -33,8 +32,22 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__          = "0.8.8"
-__ordering_version__ = "0.6.4"  # must be updated whenever password ordering changes
+# Uncomment for Unicode support (and comment out the next block)
+#from __future__ import unicode_literals
+#import locale, io
+#tstr              = unicode
+#preferredencoding = locale.getpreferredencoding()
+#tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
+#tchr              = unichr
+#__version__          =  "0.9.0-Unicode"
+#__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
+
+# Uncomment for ASCII-only support (and comment out the previous block)
+tstr            = str
+tstr_from_stdin = str
+tchr            = chr
+__version__          =  "0.9.0"
+__ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
        time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json, getpass, uuid, numbers
@@ -58,13 +71,14 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.pat
 def init_wildcards():
     global wildcard_sets, wildcard_keys, wildcard_nocase_sets, wildcard_re, \
            custom_wildcard_cache, backreference_maps, backreference_maps_sha1
-    all_ascii_symbols = "".join(map(chr, range(33, 48)+range(58, 65)+range(91, 97)+range(123, 127)))
+    # N.B. that tstr() will not convert string.*case to Unicode correctly if the locale has
+    # been set to one with a single-byte code page e.g. ISO-8859-1 (Latin1) or Windows-1252
     wildcard_sets = {
-        "d" : string.digits,
-        "a" : string.lowercase,
-        "A" : string.uppercase,
-        "n" : string.lowercase + string.digits,
-        "N" : string.uppercase + string.digits,
+        "d" : tstr(string.digits),
+        "a" : tstr(string.lowercase),
+        "A" : tstr(string.uppercase),
+        "n" : tstr(string.lowercase + string.digits),
+        "N" : tstr(string.uppercase + string.digits),
         "s" : " ",        # space
         "l" : "\n",       # line feed
         "r" : "\r",       # carriage return
@@ -73,10 +87,10 @@ def init_wildcards():
         "T" : " \t",      # space and tab
         "w" : " \r\n",    # space and newline characters
         "W" : " \r\n\t",  # space, newline, and tab
-        "y" : all_ascii_symbols,
-        "Y" : string.digits + all_ascii_symbols,
-        "p" : "".join(map(chr, xrange(33, 127))),  # all ASCII printable characters except whitespace
-        "P" : "".join(map(chr, xrange(33, 127))) + " \r\n\t",  # as above, plus space, newline, and tab
+        "y" : tstr(string.punctuation),
+        "Y" : tstr(string.digits + string.punctuation),
+        "p" : "".join(map(tchr, xrange(33, 127))),  # all ASCII printable characters except whitespace
+        "P" : "".join(map(tchr, xrange(33, 127))) + " \r\n\t",  # as above, plus space, newline, and tab
         # wildcards can be used to escape these special symbols
         "%" : "%",
         "^" : "^",
@@ -86,10 +100,10 @@ def init_wildcards():
     #
     # case-insensitive versions (e.g. %ia) of wildcard_sets for those which have them
     wildcard_nocase_sets = {
-        "a" : string.lowercase + string.uppercase,
-        "A" : string.uppercase + string.lowercase,
-        "n" : string.lowercase + string.uppercase + string.digits,
-        "N" : string.uppercase + string.lowercase + string.digits
+        "a" : tstr(string.lowercase + string.uppercase),
+        "A" : tstr(string.uppercase + string.lowercase),
+        "n" : tstr(string.lowercase + string.uppercase + string.digits),
+        "N" : tstr(string.uppercase + string.lowercase + string.digits)
     }
     #
     wildcard_re = None
@@ -229,7 +243,7 @@ def load_from_base64_key(key_crc_base64):
     if len(key_crc_data) < 8:
         error_exit("encrypted key data is corrupted (too short)")
     l_key_data = key_crc_data[:-4]
-    (key_crc,) = struct.unpack("<I", key_crc_data[-4:])
+    (key_crc,) = struct.unpack(b"<I", key_crc_data[-4:])
     if zlib.crc32(l_key_data) & 0xffffffff != key_crc:
         error_exit("encrypted key data is corrupted (failed CRC check)")
 
@@ -274,13 +288,15 @@ def load_from_raw_key(key_data):
         return_verified_password_or_false = return_blockchain_secondpass_verified_password_or_false
         return
 
-    error_exit("unrecognized encrypted key type '"+key_type+"'")
+    error_exit("unrecognized encrypted key type '"+tstr(key_type)+"'")
 
 
 ############### Armory ###############
 
 armoryengine = None
 def load_armory_library():
+    if tstr == unicode:
+        error_exit("armory wallets do not support unicode; use the ascii version of btcrecover instead")
     global measure_performance_iterations, armoryengine, SecureBinaryData, KdfRomix
     measure_performance_iterations = 2
     if armoryengine: return
@@ -334,7 +350,7 @@ def load_armory_from_privkey(privkey_data):
         SecureBinaryData(privkey_data[20:52]),  # encrypted private key
         SecureBinaryData(privkey_data[52:68])   # initialization vector
     )
-    bytes_reqd, iter_count = struct.unpack("< I I", privkey_data[68:76])
+    bytes_reqd, iter_count = struct.unpack(b"< I I", privkey_data[68:76])
     kdf = KdfRomix(bytes_reqd, iter_count, SecureBinaryData(privkey_data[76:]))  # kdf args and seed
     wallet = address, kdf
 
@@ -376,10 +392,10 @@ def init_armory_opencl_kernel(devices, global_ws, local_ws, int_rate, save_every
     # been extracted by load_armory_from_privkey() )
     if (isinstance(wallet, armoryengine.PyBtcWallet.PyBtcWallet)):
         kdf = wallet.kdf
-        wallet = wallet.addrMap['ROOT'], kdf
+        wallet = wallet.addrMap[b'ROOT'], kdf
     else:
         assert isinstance(wallet, tuple) and isinstance(wallet[0], armoryengine.PyBtcAddress.PyBtcAddress), \
-            "init_armory_opencl_kernel: armory wallet or mkey has been loaded"
+            "init_armory_opencl_kernel: armory wallet or privkey has been loaded"
         kdf = wallet[1]
 
     cl_V_buffer0s = cl_V_buffer1s = cl_V_buffer2s = cl_V_buffer3s = None            # clear any
@@ -393,8 +409,8 @@ def init_armory_opencl_kernel(devices, global_ws, local_ws, int_rate, save_every
     assert len(salt) == 32
     cl_program = pyopencl.Program(cl_context, open(
         os.path.join(os.path.dirname(os.path.realpath(__file__)), "romix-ar-kernel.cl")).read()).build(
-            "-w -D SAVE_EVERY={}U -D V_LEN={}U -D SALT0=0x{:016x}UL -D SALT1=0x{:016x}UL -D SALT2=0x{:016x}UL -D SALT3=0x{:016x}UL" \
-            .format(save_every, v_len, *struct.unpack(">4Q", salt)))
+            b"-w -D SAVE_EVERY={}U -D V_LEN={}U -D SALT0=0x{:016x}UL -D SALT1=0x{:016x}UL -D SALT2=0x{:016x}UL -D SALT3=0x{:016x}UL" \
+            .format(save_every, v_len, *struct.unpack(b">4Q", salt)))
     #
     # Configure and store for later the OpenCL kernels (the entrance functions)
     cl_kernel_fill = cl_program.kernel_fill_V    # this kernel is executed first
@@ -408,7 +424,7 @@ def init_armory_opencl_kernel(devices, global_ws, local_ws, int_rate, save_every
         max_local_ws = min(cl_kernel_fill.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device),
                            cl_kernel     .get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device))
         if local_ws[i] > max_local_ws:
-            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+device.name.strip()+"' with Armory wallets")
+            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+tstr(device.name.strip())+"' with Armory wallets")
 
     if calc_memory:
         mem_per_worker = math.ceil(v_len / save_every) * 64 + 64
@@ -574,8 +590,8 @@ def load_bitcoincore_wallet(wallet_filename):
     # This is a little fragile because it assumes the encrypted key and salt sizes are
     # 48 and 8 bytes long respectively, which although currently true may not always be
     # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
-    encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I I", mkey)
-    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(method))
+    encrypted_master_key, salt, method, iter_count = struct.unpack_from(b"< 49p 9p I I", mkey)
+    if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + tstr(method))
     wallet = encrypted_master_key, salt, iter_count
 
 # Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
@@ -584,7 +600,7 @@ def load_bitcoincore_from_mkey(mkey_data):
     load_aes256_library()
     measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
     # These are the same encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
-    wallet = struct.unpack("< 48s 8s I", mkey_data)
+    wallet = struct.unpack(b"< 48s 8s I", mkey_data)
 
 # Load a Bitcoin Core encrypted master key given an open file object created by pywallet.py --dumpwallet
 def load_bitcoincore_from_pywallet(wallet_file):
@@ -601,7 +617,7 @@ def load_bitcoincore_from_pywallet(wallet_file):
     if sum(1 for c in cur_block if ord(c)>126 or ord(c)==0) > 512: # about 3%
         raise ValueError("Unrecognized pywallet format (does not look like ASCII text)")
     while cur_block:
-        found_at = cur_block.find('"nDerivation')
+        found_at = cur_block.find(b'"nDerivation')
         if found_at >= 0: break
         last_block = cur_block
         cur_block  = wallet_file.read(16384)
@@ -609,29 +625,29 @@ def load_bitcoincore_from_pywallet(wallet_file):
         raise ValueError("Unrecognized pywallet format (can't find mkey)")
 
     cur_block = last_block + cur_block + wallet_file.read(4096)
-    found_at  = cur_block.rfind("{", 0, found_at + len(last_block))
+    found_at  = cur_block.rfind(b"{", 0, found_at + len(last_block))
     if found_at < 0:
         raise ValueError("Unrecognized pywallet format (can't find mkey opening brace)")
     wallet = json.JSONDecoder().raw_decode(cur_block[found_at:])[0]
 
-    if not all(name in wallet for name in ("nDerivationIterations", "nDerivationMethod", "nID", "salt")):
+    if not all(name in wallet for name in (u"nDerivationIterations", u"nDerivationMethod", u"nID", u"salt")):
         raise ValueError("Unrecognized pywallet format (can't find all mkey attributes)")
 
-    if wallet["nID"] != 1:
-        raise NotImplementedError("Unsupported Bitcoin Core wallet ID " + str(wallet["nID"]))
-    if wallet["nDerivationMethod"] != 0:
-        raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + str(wallet["nDerivationMethod"]))
+    if wallet[u"nID"] != 1:
+        raise NotImplementedError("Unsupported Bitcoin Core wallet ID " + tstr(wallet[u"nID"]))
+    if wallet[u"nDerivationMethod"] != 0:
+        raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + tstr(wallet[u"nDerivationMethod"]))
 
-    if "encrypted_key" in wallet:
-        encrypted_master_key = wallet["encrypted_key"]
-    elif "crypted_key" in wallet:
-        encrypted_master_key = wallet["crypted_key"]
+    if u"encrypted_key" in wallet:
+        encrypted_master_key = wallet[u"encrypted_key"]
+    elif u"crypted_key" in wallet:
+        encrypted_master_key = wallet[u"crypted_key"]
     else:
         raise ValueError("Unrecognized pywallet format (can't find [en]crypted_key attribute)")
 
     encrypted_master_key = base64.b16decode(encrypted_master_key, True)  # True means allow lowercase
-    salt                 = base64.b16decode(wallet["salt"], True)
-    iter_count           = int(wallet["nDerivationIterations"])
+    salt                 = base64.b16decode(wallet[u"salt"], True)
+    iter_count           = int(wallet[u"nDerivationIterations"])
 
     if len(encrypted_master_key) != 48: raise NotImplementedError("Unsupported encrypted master key length")
     if len(salt)                 != 8:  raise NotImplementedError("Unsupported salt length")
@@ -648,15 +664,22 @@ def load_bitcoincore_from_pywallet(wallet_file):
 def return_bitcoincore_verified_password_or_false(passwords):
     # Copy a global into local for a small speed boost
     l_sha512 = hashlib.sha512
+
+    # Convert Unicode strings (lazily) to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
     encrypted_master_key, salt, iter_count = wallet
     for count, password in enumerate(passwords, 1):
         derived_key_iv = password + salt
         for i in xrange(iter_count):
             derived_key_iv = l_sha512(derived_key_iv).digest()
         master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
+        #
         # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
-            return password, count
+            return password if tstr == str else password.decode("utf_8", "replace"), count
+
     return False, count
 
 # Load the OpenCL libraries and return a list of available devices
@@ -672,7 +695,7 @@ def get_opencl_devices():
             print(prog+": warning:", e, file=sys.stderr)
             cl_devices_avail = []
         except pyopencl.LogicError as e:
-            if "platform not found" not in str(e): raise  # unexpected error
+            if b"platform not found" not in str(e): raise  # unexpected error
             cl_devices_avail = []  # PyOpenCL loaded OK but didn't find any supported hardware
     return cl_devices_avail
 
@@ -701,7 +724,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
     # Load and compile the OpenCL program
     cl_program = pyopencl.Program(cl_context, open(
         os.path.join(os.path.dirname(os.path.realpath(__file__)), "sha512-bc-kernel.cl"))
-        .read()).build("-w")
+        .read()).build(b"-w")
     #
     # Configure and store for later the OpenCL kernel (the entrance function)
     cl_kernel  = cl_program.kernel_sha512_bc
@@ -712,7 +735,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
         if local_ws[i] is None: continue
         max_local_ws = cl_kernel.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device)
         if local_ws[i] > max_local_ws:
-            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+device.name.strip()+"' with Bitcoin Core wallets")
+            error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+tstr(device.name.strip())+"' with Bitcoin Core wallets")
 
     # Create one command queue and one I/O buffer per device
     cl_queues         = []
@@ -737,6 +760,10 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
 def return_bitcoincore_opencl_verified_password_or_false(passwords):
     assert len(passwords) <= sum(cl_global_ws), "return_bitcoincore_opencl_verified_password_or_false: at most --global-ws passwords"
     encrypted_master_key, salt, iter_count = wallet
+
+    # Convert Unicode strings to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
     # The first iter_count iteration is done by the CPU
     hashes = numpy.empty([sum(cl_global_ws), 64], numpy.uint8)
@@ -790,7 +817,7 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
         master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
         # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
-            return password, i + 1
+            return password if tstr == str else password.decode("utf_8", "replace"), i + 1
     return False, i + 1
 
 
@@ -819,13 +846,19 @@ def load_multibit_from_privkey(privkey_data):
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
-assert "1" < "9" < "A" < "Z" < "a" < "z"  # the b58 check below assumes ASCII ordering in the interest of speed
-def return_multibitpk_verified_password_or_false(passwords):
+assert b"1" < b"9" < b"A" < b"Z" < b"a" < b"z"  # the b58 check below assumes ASCII ordering in the interest of speed
+def return_multibitpk_verified_password_or_false(orig_passwords):
     # Copy a few globals into local for a small speed boost
     l_md5                 = hashlib.md5
     l_aes256_cbc_decrypt  = aes256_cbc_decrypt
-    l_match               = re.match
     encrypted_block, salt = wallet
+
+    # Convert Unicode strings (lazily) to UTF-16 bytestrings, truncating each code unit to 8 bits
+    if tstr == unicode:
+        passwords = itertools.imap(lambda p: p.encode("utf_16_le", "ignore")[::2], orig_passwords)
+    else:
+        passwords = orig_passwords
+
     for count, password in enumerate(passwords, 1):
         salted = password + salt
         key1   = l_md5(salted).digest()
@@ -838,9 +871,10 @@ def return_multibitpk_verified_password_or_false(passwords):
         if b58_privkey[0] in b"LK5":  # private keys always start with L, K, or 5
             for c in b58_privkey:
                 # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
-                if c > "z" or c < "1" or "9" < c < "A" or "Z" < c < "a" or c in b"IOl": break  # not base58
+                if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
             else:  # if the loop above doesn't break, it's base58
-                return password, count
+                return orig_passwords[count-1], count
+
     return False, count
 
 
@@ -869,20 +903,26 @@ def load_electrum_from_halfseed(seed_data):
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
-assert "0" < "9" < "a" < "f"  # the hex check below assumes ASCII ordering in the interest of speed
+assert b"0" < b"9" < b"a" < b"f"  # the hex check below assumes ASCII ordering in the interest of speed
 def return_electrum_verified_password_or_false(passwords):
     # Copy a few globals into local for a small speed boost
     l_sha256             = hashlib.sha256
     l_aes256_cbc_decrypt = aes256_cbc_decrypt
     encrypted_seed, iv   = wallet[16:], wallet[:16]
+
+    # Convert Unicode strings (lazily) to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
     for count, password in enumerate(passwords, 1):
         key  = l_sha256( l_sha256( password ).digest() ).digest()
         seed = l_aes256_cbc_decrypt(key, iv, encrypted_seed)
         # If the first 16 bytes of the encrypted seed is all lower-case hex, we've found it
         for c in seed:
-            if c > "f" or c < "0" or "9" < c < "a": break  # not hex
+            if c > b"f" or c < b"0" or b"9" < c < b"a": break  # not hex
         else:  # if the loop above doesn't break, it's all hex
-            return password, count
+            return password if tstr == str else password.decode("utf_8", "replace"), count
+
     return False, count
 
 
@@ -908,7 +948,7 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
         data, iter_count = parse_encrypted_blockchain_wallet(data)
     except KeyError as e:
         # This is the one error to expect and ignore which occurs when the wallet isn't encrypted
-        if e.message == "version": pass
+        if e.args[0] == "version": pass
         else: raise
     except StandardError as e:
         error_exit(str(e))
@@ -916,8 +956,15 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
         # If there were no problems getting the encrypted data, decrypt it
         if force_purepython:  # already loaded by parse_encrypted_blockchain_wallet(), this is just for unit tests
             load_aes256_library(force_purepython = True)
-        if not password: password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
-        if not password: error_exit("encrypted Blockchain files must be decrypted before searching for the second password")
+        if not password:
+            # Replace getpass.getpass with raw_input if there's trouble reading non-ASCII characters
+            password = getpass.getpass(b"Please enter the Blockchain wallet's main password: ")
+            if not password:
+                error_exit("encrypted Blockchain files must be decrypted before searching for the second password")
+            if isinstance(password, str):
+                password = password.decode(sys.stdin.encoding or "utf_8")
+        if isinstance(password, unicode):
+            password = password.encode("utf_8")
         data, salt_and_iv = data[16:], data[:16]
         #
         # These are a bit fragile in the interest of simplicity because they assume the guid is the first
@@ -928,16 +975,16 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
             key = pbkdf2_hmac_sha1(password, salt_and_iv, iter_count, 32)
             decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)           # CBC mode
             padding   = ord(decrypted[-1:])                                  # ISO 10126 padding length
-            return decrypted[:-padding] if 1 <= padding <= 16 and re.match('{\s*"guid"', decrypted) else None
+            return decrypted[:-padding] if 1 <= padding <= 16 and re.match(b'{\s*"guid"', decrypted) else None
         #
         # Encryption scheme only used in version 0.0 wallets (N.B. this is untested)
         def decrypt_old():
             key = pbkdf2_hmac_sha1(password, salt_and_iv, 1, 32)  # only 1 iteration
             decrypted  = aes256_ofb_decrypt(key, salt_and_iv, data)          # OFB mode
             # The 16-byte last block, reversed, with all but the first byte of ISO 7816-4 padding removed:
-            last_block = tuple(itertools.dropwhile(lambda x: x=="\0", decrypted[:15:-1]))
+            last_block = tuple(itertools.dropwhile(lambda x: x==b"\0", decrypted[:15:-1]))
             padding    = 17 - len(last_block)                                # ISO 7816-4 padding length
-            return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == "\x80" and re.match('{\s*"guid"', decrypted) else None
+            return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == b"\x80" and re.match(b'{\s*"guid"', decrypted) else None
         #
         if iter_count:  # v2.0 wallets have a single possible encryption scheme
             data = decrypt_current(iter_count)
@@ -948,22 +995,22 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
 
     # Load and parse the now-decrypted wallet
     data = json.loads(data)
-    if not data.get("double_encryption"):
+    if not data.get(u"double_encryption"):
         error_exit("double encryption with a second password is not enabled for this wallet")
 
     # Extract what we need to perform checking on the second password
-    password_hash = base64.b16decode(data["dpasswordhash"], True)  # True means allow lowercase
+    password_hash = base64.b16decode(data[u"dpasswordhash"], True)  # True means allow lowercase
     if len(password_hash) != 32:
         raise ValueError("Blockchain second password hash is not 32 bytes long")
     #
-    salt = data["sharedKey"].encode("ascii")
+    salt = data[u"sharedKey"].encode("ascii")
     if str(uuid.UUID(salt)) != salt:
         raise ValueError("Unrecognized Blockchain salt format")
     #
     try:
-        iter_count = data["options"]["pbkdf2_iterations"]
+        iter_count = data[u"options"][u"pbkdf2_iterations"]
         if not isinstance(iter_count, int) or iter_count < 1:
-            raise ValueError("Invalid Blockchain second password pbkdf2_iterations " + str(iter_count))
+            raise ValueError("Invalid Blockchain second password pbkdf2_iterations " + tstr(iter_count))
         measure_performance_iterations = int(round(50000.0 / iter_count)) or 1
     except KeyError:
         iter_count = 0
@@ -978,7 +1025,7 @@ def load_blockchain_secondpass_wallet(wallet_filename, password = None, force_pu
     # wallet data to the global key_data as if an extract script was used instead of a wallet file.
     if sys.platform == "win32":
         global key_data
-        key_data = b"bs:" + struct.pack("< 32s 16s I", password_hash, uuid.UUID(salt).bytes, iter_count)
+        key_data = b"bs:" + struct.pack(b"< 32s 16s I", password_hash, uuid.UUID(salt).bytes, iter_count)
 
 
 # Parse the contents of an encrypted blockchain wallet (either v0 or v2) returning two
@@ -992,19 +1039,19 @@ def parse_encrypted_blockchain_wallet(data):
             data = json.loads(data)
         except ValueError: pass
         else:
-            if data["version"] != 2:
-                raise NotImplementedError("Unsupported Blockchain wallet version " + str(data["version"]))
-            iter_count = data["pbkdf2_iterations"]
+            if data[u"version"] != 2:
+                raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+            iter_count = data[u"pbkdf2_iterations"]
             if not isinstance(iter_count, int) or iter_count < 1:
-                raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
-            data = data["payload"]
+                raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+            data = data[u"payload"]
 
     # Either the encrypted data was extracted from the "payload" field above, or
     # this is a v0.0 wallet file whose entire contents consist of the encrypted data
     try:
         data = base64.b64decode(data)
     except TypeError as e:
-        raise ValueError("Can't base64-decode Blockchain wallet: "+str(e))
+        raise ValueError("Can't base64-decode Blockchain wallet: "+tstr(e))
     if len(data) < 32:
         raise ValueError("Encrypted Blockchain data is too short")
     if len(data) % 16 != 0:
@@ -1040,13 +1087,13 @@ def load_blockchain_from_filedata(file_data):
     load_pbkdf2_library()
     load_aes256_library()
     # These are the same first encrypted block, salt_and_iv, iteration count retrieved by load_blockchain_wallet()
-    wallet = struct.unpack("< 16s 16s I", file_data)
+    wallet = struct.unpack(b"< 16s 16s I", file_data)
     measure_performance_iterations = int(round(float(measure_performance_iterations) / (wallet[2] or 10.0))) or 1
 
 # Import extracted Blockchain file data necessary for second password checking
 def load_blockchain_secondpass_from_filedata(file_data):
     global wallet, measure_performance_iterations
-    password_hash, uuid_salt, iter_count = struct.unpack("< 32s 16s I", file_data)
+    password_hash, uuid_salt, iter_count = struct.unpack(b"< 32s 16s I", file_data)
     uuid_salt = uuid.UUID(bytes=uuid_salt)
     # These are the same second password hash, salt, iteration count retrieved by load_blockchain_secondpass_wallet()
     wallet = password_hash, str(uuid_salt), iter_count
@@ -1060,6 +1107,11 @@ def return_blockchain_verified_password_or_false(passwords):
     l_aes256_cbc_decrypt = aes256_cbc_decrypt
     l_aes256_ofb_decrypt = aes256_ofb_decrypt
     encrypted_block, salt_and_iv, iter_count = wallet
+
+    # Convert Unicode strings (lazily) to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
+
     v0 = not iter_count     # version 0.0 wallets don't specify an iter_count
     if v0: iter_count = 10  # the default iter_count for version 0.0 wallets
     for count, password in enumerate(passwords, 1):
@@ -1067,18 +1119,20 @@ def return_blockchain_verified_password_or_false(passwords):
         unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
         # A bit fragile because it assumes the guid is in the first encrypted block,
         # although this has always been the case as of 6/2014 (since 12/2011)
-        if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
-            return password, count
+        if unencrypted_block[0] == b"{" and b'"guid"' in unencrypted_block:
+            return password if tstr == str else password.decode("utf_8", "replace"), count
+
     if v0:
         # Try the older encryption schemes possibly used in v0.0 wallets
         for count, password in enumerate(passwords, 1):
             key = l_pbkdf2(password, salt_and_iv, 1, 32)                                 # only 1 iteration
             unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
-            if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
-                return password, count
+            if unencrypted_block[0] == b"{" and b'"guid"' in unencrypted_block:
+                return password if tstr == str else password.decode("utf_8", "replace"), count
             unencrypted_block = l_aes256_ofb_decrypt(key, salt_and_iv, encrypted_block)  # OFB mode
-            if unencrypted_block[0] == "{" and '"guid"' in unencrypted_block:
-                return password, count
+            if unencrypted_block[0] == b"{" and b'"guid"' in unencrypted_block:
+                return password if tstr == str else password.decode("utf_8", "replace"), count
+
     return False, count
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
@@ -1087,6 +1141,11 @@ def return_blockchain_secondpass_verified_password_or_false(passwords):
     # Copy a global into local for a small speed boost
     l_sha256 = hashlib.sha256
     password_hash, salt, iter_count = wallet
+
+    # Convert Unicode strings (lazily) to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
     # Newer wallets specify an iter_count and use something similar to PBKDF1 with SHA-256
     if iter_count:
         for count, password in enumerate(passwords, 1):
@@ -1094,22 +1153,24 @@ def return_blockchain_secondpass_verified_password_or_false(passwords):
             for i in xrange(iter_count):
                 running_hash = l_sha256(running_hash).digest()
             if running_hash == password_hash:
-                return password, count
+                return password if tstr == str else password.decode("utf_8", "replace"), count
+
     # Older wallets used one of three password hashing schemes
     else:
         for count, password in enumerate(passwords, 1):
             running_hash = l_sha256(salt + password).digest()
             # Just a single SHA-256 hash
             if running_hash == password_hash:
-                return password, count
+                return password if tstr == str else password.decode("utf_8", "replace"), count
             # Exactly 10 hashes (the first of which was done above)
             for i in xrange(9):
                 running_hash = l_sha256(running_hash).digest()
             if running_hash == password_hash:
-                return password, count
+                return password if tstr == str else password.decode("utf_8", "replace"), count
             # A single unsalted hash
             if l_sha256(password).digest() == password_hash:
-                return password, count
+                return password if tstr == str else password.decode("utf_8", "replace"), count
+
     return False, count
 
 
@@ -1187,7 +1248,28 @@ def load_pbkdf2_library(force_purepython = False):
 
 
 # Calls sys.exit with an error message, taking unnamed arguments like print()
-def error_exit(*msgs): sys.exit(prog + ": error: " + " ".join(map(str, msgs)))
+def error_exit(*msgs): sys.exit(prog + ": error: " + " ".join(map(tstr, msgs)))
+
+# For ASCII builds, checks that the input string's chars are all 7-bit US-ASCII
+if tstr == str:
+    def check_chars_range(s, error_msg):
+        assert isinstance(s, str), "check_chars_range: s is of type str"
+        for c in s:
+            if ord(c) > 127:  # 2**7 - 1
+                error_exit(error_msg, "has character with code point", ord(c), "> max (127)")
+
+# For UTF-16 (a.k.a. "narrow" Python Unicode) builds, checks that the input unicode
+# string has no surrogate pairs (all chars fit inside one UTF-16 code unit)
+elif sys.maxunicode < 2**16:
+    def check_chars_range(s, error_msg):
+        assert isinstance(s, unicode), "check_chars_range: s is of type unicode"
+        for c in s:
+            if u'\uD800' <= c <= u'\uDBFF' or u'\uDC00' <= c <= u'\uDFFF':
+                error_exit(error_msg, "has character with code point > max ("+tstr(sys.maxunicode)+")")
+
+# For UTF-32 (a.k.a. "wide" Python Unicode) builds, UTF-32 supports all code points in a fixed width
+else:
+    def check_chars_range(s, error_msg): pass
 
 # Returns an (order preserved) list or string with duplicate elements removed
 # (if input is a string, returns a string, otherwise returns a list)
@@ -1217,8 +1299,8 @@ def build_wildcard_set(set_string):
 def expand_single_range(m):
     char_first, char_last = map(ord, m.groups())
     if char_first > char_last:
-        raise ValueError("first character in wildcard range '"+chr(char_first)+"' > last '"+chr(char_last)+"'")
-    return "".join(map(chr, xrange(char_first, char_last+1)))
+        raise ValueError("first character in wildcard range '"+tchr(char_first)+"' > last '"+tchr(char_last)+"'")
+    return "".join(map(tchr, xrange(char_first, char_last+1)))
 
 # Returns an integer count of valid wildcards in the string, or
 # a string error message if any invalid wildcards are present
@@ -1274,7 +1356,7 @@ def load_savestate(autosave_file):
         savestate0 = cPickle.load(autosave_file)
     except Exception as e:
         first_error = e
-    else:  assert autosave_file.tell() <= SAVESLOT_SIZE, "load_savestate: slot 0 data <= "+str(SAVESLOT_SIZE)+" bytes long"
+    else:  assert autosave_file.tell() <= SAVESLOT_SIZE, "load_savestate: slot 0 data <= "+tstr(SAVESLOT_SIZE)+" bytes long"
     autosave_file.seek(0, os.SEEK_END)
     autosave_len = autosave_file.tell()
     if autosave_len > SAVESLOT_SIZE:  # if the second save slot is present
@@ -1282,14 +1364,14 @@ def load_savestate(autosave_file):
         try:
             savestate1 = cPickle.load(autosave_file)
         except Exception: pass
-        else:  assert autosave_file.tell() <= 2*SAVESLOT_SIZE, "load_savestate: slot 1 data <= "+str(SAVESLOT_SIZE)+" bytes long"
+        else:  assert autosave_file.tell() <= 2*SAVESLOT_SIZE, "load_savestate: slot 1 data <= "+tstr(SAVESLOT_SIZE)+" bytes long"
     else:
         # Convert an old format file to a new one by making it at least SAVESLOT_SIZE bytes long
         autosave_file.write((SAVESLOT_SIZE - autosave_len) * b"\0")
     #
     # Determine which slot is more recent, and use it
     if savestate0 and savestate1:
-        use_slot = 0 if savestate0["skip"] >= savestate1["skip"] else 1
+        use_slot = 0 if savestate0[b"skip"] >= savestate1[b"skip"] else 1
     elif savestate0:
         if autosave_len > SAVESLOT_SIZE:
             print(prog+": warning: data in second autosave slot was corrupted, using first slot", file=sys.stderr)
@@ -1326,6 +1408,10 @@ class MakePeekable(object):
     #
     def peek(self):
         if not self.peeked:
+            if hasattr(self.file, "peek"):
+                real_peeked = self.file.peek(1)
+                if len(real_peeked) >= 1:
+                    return real_peeked[0]
             self.peeked = self.file.read(1)
         return self.peeked
     #
@@ -1379,6 +1465,9 @@ class MakePeekable(object):
 #   (These are "soft" fails which don't raise exceptions.)
 # * Tries to open (if not already opened) and return the file, letting any exception
 #   raised by open (a "hard" fail) to pass up.
+# * For Unicode builds (when tstr == unicode), returns a io.TextIOBase which produces
+#   unicode strings if and only if mode is text (is not binary / does not contain "b").
+# * The results of opening stdin more than once are undefined.
 def open_or_use(filename, mode = "r",
         funccall_file    = None,   # already-opened file used if filename == "__funccall"
         permit_stdin     = None,   # when True a filename == "-" opens stdin
@@ -1391,7 +1480,7 @@ def open_or_use(filename, mode = "r",
     assert not(require_data and new_or_empty), "open_or_use: can either require_data or be new_or_empty"
     #
     # If the already-opened file was requested
-    if funccall_file and filename == "__funccall":
+    if funccall_file and filename == b"__funccall":
         if require_data or new_or_empty:
             funccall_file.seek(0, os.SEEK_END)
             if funccall_file.tell() == 0:
@@ -1401,9 +1490,16 @@ def open_or_use(filename, mode = "r",
                 funccall_file.seek(0)
                 # The file has contents; if it shouldn't:
                 if new_or_empty: return None
+        if tstr == unicode:
+            if "b" in mode:
+                assert not isinstance(funccall_file, io.TextIOBase), "already opened file not an io.TextIOBase; produces bytes"
+            else:
+                assert isinstance(funccall_file, io.TextIOBase), "already opened file isa io.TextIOBase producing unicode"
         return MakePeekable(funccall_file) if make_peekable else funccall_file;
     #
     if permit_stdin and filename == "-":
+        if tstr == unicode and "b" not in mode:
+            sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
         if make_peekable:
             sys.stdin = MakePeekable(sys.stdin)
         return sys.stdin
@@ -1411,6 +1507,8 @@ def open_or_use(filename, mode = "r",
     # If there was no file specified, but a default exists
     if not filename and default_filename:
         if permit_stdin and default_filename == "-":
+            if tstr == unicode and "b" not in mode:
+                sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
             if make_peekable:
                 sys.stdin = MakePeekable(sys.stdin)
             return sys.stdin
@@ -1424,7 +1522,10 @@ def open_or_use(filename, mode = "r",
     if new_or_empty and os.path.exists(filename) and (os.path.getsize(filename) > 0 or not os.path.isfile(filename)):
         return None
     #
-    file = open(filename, mode)
+    if tstr == unicode and "b" not in mode:
+        file = io.open(filename, mode, encoding="utf_8_sig")
+    else:
+        file = open(filename, mode)
     return MakePeekable(file) if make_peekable else file
 
 
@@ -1458,7 +1559,7 @@ except StandardError: cpus = 1
 
 # Build the list of command-line options common to both tokenlist and passwordlist files
 parser_common = argparse.ArgumentParser(add_help=False)
-prog          = parser_common.prog
+prog          = tstr(parser_common.prog)
 parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --data-extract, or --listpass is required)")
 parser_common.add_argument("--typos",       type=int, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
 parser_common.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
@@ -1563,7 +1664,7 @@ def parse_arguments(effective_argv, **kwds):
         if not devices_avail:
             error_exit("no supported GPUs found")
         for i, dev in enumerate(devices_avail, 1):
-            print("#"+str(i), dev.name.strip())
+            print("#"+tstr(i), dev.name.strip())
         exit(0)
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
@@ -1576,12 +1677,12 @@ def parse_arguments(effective_argv, **kwds):
 
     # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
-    # TODO: handle Unicode BOM
     tokenlist_first_line_num = 1
     if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
         first_line = tokenlist_file.readline().rstrip("\r\n")[1:]
         if first_line.startswith("--"):                  # if it's additional args, not just a comment
-            print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
+            stderr_encoding = hasattr(sys.stderr, "encoding") and sys.stderr.encoding or "ascii"  # for unittest
+            print(b"Read additional options from tokenlist file: "+first_line.encode(stderr_encoding, "replace"), file=sys.stderr)
             tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
             tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
             for arg in tokenlist_args:
@@ -1610,15 +1711,15 @@ def parse_arguments(effective_argv, **kwds):
         if len(effective_argv) > 2 or "=" in effective_argv[0] and len(effective_argv) > 1:
             error_exit("the --restore option must be the only option when used")
         load_savestate(autosave_file)
-        effective_argv = savestate["argv"]  # argv is effectively being replaced; it's reparsed below
+        effective_argv = savestate[b"argv"]  # argv is effectively being replaced; it's reparsed below
         print("Restoring session:", " ".join(effective_argv))
-        print("Last session ended having finished password #", savestate["skip"])
+        print("Last session ended having finished password #", savestate[b"skip"])
         restore_filename = args.restore     # save this before it's overwritten below
         args = parser.parse_args(effective_argv)
         # Check this again as early as possible so user doesn't miss any error messages
         if args.pause: enable_pause()
         # If the order of passwords generated has changed since the last version, don't permit a restore
-        if __ordering_version__ != savestate.get("ordering_version"):
+        if __ordering_version__ != savestate.get(b"ordering_version"):
             error_exit("autosave was created with an incompatible version of "+prog)
         assert args.autosave,         "parse_arguments: autosave option enabled in restored autosave file"
         assert not args.passwordlist, "parse_arguments: passwordlist option not specified in restored autosave file"
@@ -1633,7 +1734,7 @@ def parse_arguments(effective_argv, **kwds):
                 print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
                 tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
         print("Using autosave file '"+restore_filename+"'")
-        args.skip = savestate["skip"]  # override this with the most recent value
+        args.skip = savestate[b"skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
     #
     elif args.autosave:
@@ -1642,16 +1743,16 @@ def parse_arguments(effective_argv, **kwds):
         if autosave_file:
             # Load and compare to current arguments
             load_savestate(autosave_file)
-            restored_argv = savestate["argv"]
+            restored_argv = savestate[b"argv"]
             print("Restoring session:", " ".join(restored_argv))
-            print("Last session ended having finished password #", savestate["skip"])
+            print("Last session ended having finished password #", savestate[b"skip"])
             if restored_argv != effective_argv:  # TODO: be more lenient than an exact match?
                 error_exit("can't restore previous session: the command line options have changed")
             # If the order of passwords generated has changed since the last version, don't permit a restore
-            if __ordering_version__ != savestate.get("ordering_version"):
+            if __ordering_version__ != savestate.get(b"ordering_version"):
                 error_exit("autosave was created with an incompatible version of "+prog)
             print("Using autosave file '"+args.autosave+"'")
-            args.skip = savestate["skip"]  # override this with the most recent value
+            args.skip = savestate[b"skip"]  # override this with the most recent value
             restored = True  # a global flag for future reference
         #
         # Else if the specified file is empty or doesn't exist:
@@ -1692,7 +1793,7 @@ def parse_arguments(effective_argv, **kwds):
             #
             # Sanity check --max-typos-* vs the total number of --typos
             elif args.typos and typo_max > args.typos:
-                print(prog+": warning: --max-typos-"+typo_name+" ("+str(typo_max)+") is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
+                print(prog+": warning: --max-typos-"+typo_name+" ("+tstr(typo_max)+") is limited by the number of --typos ("+tstr(args.typos)+")", file=sys.stderr)
 
     # Sanity check --typos--closecase
     if args.typos_closecase and args.typos_case:
@@ -1719,7 +1820,7 @@ def parse_arguments(effective_argv, **kwds):
     else:
         if args.typos is None:
             if args.min_typos:
-                print(prog+": warning: --typos COUNT not specified; assuming same as --min_typos ("+str(args.min_typos)+")", file=sys.stderr)
+                print(prog+": warning: --typos COUNT not specified; assuming same as --min_typos ("+tstr(args.min_typos)+")", file=sys.stderr)
                 args.typos = args.min_typos
             else:
                 print(prog+": warning: --typos COUNT not specified; assuming 1", file=sys.stderr)
@@ -1754,9 +1855,9 @@ def parse_arguments(effective_argv, **kwds):
             args.typos_insert = None
         elif args.max_adjacent_inserts > min(args.typos, args.max_typos_insert):
             if args.max_typos_insert < args.typos:
-                print(prog+": warning: --max-adjacent-inserts ("+str(args.max_adjacent_inserts)+") is limited by --max-typos-insert ("+str(args.max_typos_insert)+")", file=sys.stderr)
+                print(prog+": warning: --max-adjacent-inserts ("+tstr(args.max_adjacent_inserts)+") is limited by --max-typos-insert ("+tstr(args.max_typos_insert)+")", file=sys.stderr)
             else:
-                print(prog+": warning: --max-adjacent-inserts ("+str(args.max_adjacent_inserts)+") is limited by the number of --typos ("+str(args.typos)+")", file=sys.stderr)
+                print(prog+": warning: --max-adjacent-inserts ("+tstr(args.max_adjacent_inserts)+") is limited by the number of --typos ("+tstr(args.typos)+")", file=sys.stderr)
 
 
     # Parse the custom wildcard set option
@@ -1765,9 +1866,8 @@ def parse_arguments(effective_argv, **kwds):
         if args.passwordlist and not (args.has_wildcards or args.typos_insert or args.typos_replace):
             print(prog+": warning: ignoring unused --custom-wild", file=sys.stderr)
         else:
-            for c in args.custom_wild:
-                if ord(c) > 127:
-                    error_exit("--custom_wild has non-ASCII character '"+c+"'")
+            args.custom_wild = tstr_from_stdin(args.custom_wild)
+            check_chars_range(args.custom_wild, "--custom-wild")
             custom_set_built   = build_wildcard_set(args.custom_wild)
             wildcard_sets["c"] = custom_set_built  # (duplicates already removed by build_wildcard_set)
             wildcard_sets["C"] = duplicates_removed(custom_set_built.upper())
@@ -1783,6 +1883,8 @@ def parse_arguments(effective_argv, **kwds):
     global typos_insert_expanded, typos_replace_expanded
     for arg_name, arg_val in ("--typos-insert", args.typos_insert), ("--typos-replace", args.typos_replace):
         if arg_val:
+            arg_val = tstr_from_stdin(arg_val)
+            check_chars_range(arg_val, arg_name)
             count_or_error_msg = count_valid_wildcards(arg_val)
             if isinstance(count_or_error_msg, basestring):
                 error_exit(arg_name, arg_val, ":", count_or_error_msg)
@@ -1807,10 +1909,10 @@ def parse_arguments(effective_argv, **kwds):
             typos_map_hash = sha1.digest()
             del sha1
             if restored:
-                if typos_map_hash != savestate["typos_map_hash"]:
+                if typos_map_hash != savestate[b"typos_map_hash"]:
                     error_exit("can't restore previous session: the typos_map file has changed")
             else:
-                savestate["typos_map_hash"] = typos_map_hash
+                savestate[b"typos_map_hash"] = typos_map_hash
     #
     # Else if not args.typos_map but these were specified:
     elif args.passwordlist and args.delimiter:
@@ -1819,9 +1921,9 @@ def parse_arguments(effective_argv, **kwds):
 
     # Compile the regex options
     global regex_only, regex_never
-    try:   regex_only  = re.compile(args.regex_only)  if args.regex_only  else None
+    try:   regex_only  = re.compile(tstr_from_stdin(args.regex_only))  if args.regex_only  else None
     except re.error as e: error_exit("invalid --regex-only",  args.regex_only, ":", e)
-    try:   regex_never = re.compile(args.regex_never) if args.regex_never else None
+    try:   regex_never = re.compile(tstr_from_stdin(args.regex_never)) if args.regex_never else None
     except re.error as e: error_exit("invalid --regex-never", args.regex_only, ":", e)
 
     if args.skip < 0:
@@ -1900,17 +2002,17 @@ def parse_arguments(effective_argv, **kwds):
         key_crc = load_from_base64_key(key_crc_base64)
         #
         # Armory is currently the only supported wallet whose extract-* script provides a full private key
-        if key_data.startswith("ar:"):
+        if key_data.startswith(b"ar:"):
             print("WARNING: an Armory private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
         #
         # If autosaving, either check the key_crc during a session restore to make sure we're
         # actually restoring the exact same session, or save it for future such checks
         if savestate:
             if restored:
-                if key_crc != savestate["key_crc"]:
+                if key_crc != savestate[b"key_crc"]:
                     error_exit("can't restore previous session: the encrypted key entered is not the same")
             else:
-                savestate["key_crc"] = key_crc
+                savestate[b"key_crc"] = key_crc
 
 
     # Parse and syntax check all of the GPU related options
@@ -1935,20 +2037,20 @@ def parse_arguments(effective_argv, **kwds):
             # Create a list of names of available devices, exactly the same way as --list-gpus except all lower case
             avail_names = []  # will be the *names* of available devices
             for i, dev in enumerate(devices_avail, 1):
-                avail_names.append("#"+str(i)+" "+dev.name.strip().lower())
+                avail_names.append(b"#"+str(i)+b" "+dev.name.strip().lower())
             #
             devices = []  # will be the list of devices to actually use, taken from devices_avail
             for device_name in args.gpu_names:  # for each name specified at the command line
-                if device_name == "":
+                if device_name == b"":
                     error_exit("empty name in --gpus")
                 device_name = device_name.lower()
                 for i, avail_name in enumerate(avail_names):
                     if device_name in avail_name:  # if the name at the command line matches an available one
                         devices.append(devices_avail[i])
-                        avail_names[i] = ""  # this device isn't available a second time
+                        avail_names[i] = b""  # this device isn't available a second time
                         break
                 else:  # if for loop exits normally, and not via the break above
-                    error_exit("can't find GPU whose name contains '"+device_name+"' (use --list-gpus to display available GPUs)")
+                    error_exit("can't find GPU whose name contains '"+tstr(device_name)+"' (use --list-gpus to display available GPUs)")
         #
         # Else if specific devices weren't requested, try to build a good default list
         else:
@@ -1957,8 +2059,8 @@ def parse_arguments(effective_argv, **kwds):
                 cur_score = 0
                 if   dev.type & pyopencl.device_type.ACCELERATOR: cur_score += 8  # always best
                 elif dev.type & pyopencl.device_type.GPU:         cur_score += 4  # better than CPU
-                if   "nvidia" in dev.vendor.lower():              cur_score += 2  # is never an IGP: very good
-                elif "amd"    in dev.vendor.lower():              cur_score += 1  # sometimes an IGP: good
+                if   b"nvidia" in dev.vendor.lower():             cur_score += 2  # is never an IGP: very good
+                elif b"amd"    in dev.vendor.lower():             cur_score += 1  # sometimes an IGP: good
                 if cur_score >= best_score_sofar:                                 # (intel is always an IGP)
                     if cur_score > best_score_sofar:
                         best_score_sofar = cur_score
@@ -1984,9 +2086,9 @@ def parse_arguments(effective_argv, **kwds):
         if args.local_ws[0] is not None:  # if one is specified, they're all specified
             for i in xrange(len(args.local_ws)):
                 if args.local_ws[i] > devices[i].max_work_group_size:
-                    error_exit("--local-ws of", args.local_ws[i], "exceeds max of", devices[i].max_work_group_size, "for GPU '"+devices[i].name.strip()+"'")
+                    error_exit("--local-ws of", args.local_ws[i], "exceeds max of", devices[i].max_work_group_size, "for GPU '"+tstr(devices[i].name.strip())+"'")
                 if args.global_ws[i] % args.local_ws[i] != 0:
-                    error_exit("each --global-ws ("+str(args.global_ws[i])+") must be evenly divisible by its --local-ws ("+str(args.local_ws[i])+")")
+                    error_exit("each --global-ws ("+tstr(args.global_ws[i])+") must be evenly divisible by its --local-ws ("+tstr(args.local_ws[i])+")")
                 if args.local_ws[i] % 32 != 0 and not local_ws_warning:
                     print(prog+": warning: each --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
                     local_ws_warning = True
@@ -2050,10 +2152,16 @@ def parse_arguments(effective_argv, **kwds):
                 if not line or passwordlist_isatty and line.rstrip("\r\n") == "exit()":
                     passwordlist_allcached = True
                     break
+                try:
+                    check_chars_range(line, "line")
+                except SystemExit as e:
+                    line_msg = "last line," if passwordlist_isatty else "line "+tstr(line_num)+","
+                    print(prog+": warning: ignoring", line_msg, e.code)
+                    line = None
                 if args.has_wildcards and "%" in line:
                     count_or_error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
                     if isinstance(count_or_error_msg, basestring):
-                        line_msg = "last line:" if passwordlist_isatty else "line "+str(line_num)+":"
+                        line_msg = "last line:" if passwordlist_isatty else "line "+tstr(line_num)+":"
                         print(prog+": warning: ignoring", line_msg, count_or_error_msg, file=sys.stderr)
                         line = None  # add a None to the list so we can count line numbers correctly
                     else:
@@ -2105,7 +2213,7 @@ def parse_arguments(effective_argv, **kwds):
         global autosave_nextslot
         autosave_file = open_or_use(args.autosave, "wb", kwds.get("autosave"), new_or_empty=True)
         if not autosave_file:
-            error_exit("--autosave file '"+args.autosave+"' already exists, won't overwrite")
+            error_exit("--autosave file '"+tstr(args.autosave)+"' already exists, won't overwrite")
         autosave_nextslot = 0
         print("Using autosave file '"+args.autosave+"'")
 
@@ -2125,11 +2233,10 @@ def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_perm
         split_line = line.rstrip("\r\n").split(args.delimiter, 1)
         if len(split_line) == 0: continue  # ignore empty lines
         if len(split_line) == 1:
-            error_exit(feature_name, "file '"+map_file.name+"' has an empty replacement list on line", line_num)
+            error_exit(feature_name, "file '"+tstr(map_file.name)+"' has an empty replacement list on line", line_num)
         if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
-        for c in "".join(split_line):
-            if ord(c) > 127:
-                error_exit(feature_name, "file '"+map_file.name+"' has non-ASCII character '"+c+"' on line", line_num)
+
+        check_chars_range("".join(split_line), feature_name + " file" + (" '" + tstr(map_file.name) + "'" if hasattr(map_file, "name") else ""))
         for c in split_line[0]:  # (c is the character to be replaced)
             replacements = duplicates_removed(map_data.get(c, "") + split_line[1])
             if not same_permitted and c in replacements:
@@ -2143,7 +2250,8 @@ def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_perm
     # session, or can be saved for future such checks
     if running_hash:
         for k in sorted(map_data.keys()):  # must take the hash in a deterministic order (not in map_data order)
-            running_hash.update(k + str(map_data[k]))
+            v = map_data[k]
+            running_hash.update(k.encode("utf_8") + (v.encode("utf_8") if isinstance(v, basestring) else repr(v)))
 
     return map_data
 
@@ -2215,13 +2323,13 @@ class AnchoredToken(object):
                     else:
                         begin = int(begin)
                         if begin > 2:
-                            cached_str += str(begin)
+                            cached_str += tstr(begin)
                     cached_str += ","
                     if end is None:
                         end = sys.maxint
                     else:
                         end = int(end)
-                        cached_str += str(end)
+                        cached_str += tstr(end)
                     cached_str += "^"
                     if begin > end:
                         error_exit("anchor range of token on line", line_num, "is invalid (begin > end)")
@@ -2237,7 +2345,7 @@ class AnchoredToken(object):
                     if pos < 1:
                         error_exit("anchor position of token on line", line_num, "must be 1 or greater")
                     if pos > 1:
-                        cached_str += str(pos) + "^"
+                        cached_str += tstr(pos) + "^"
                     self.begin = pos - 1
                     self.end   = None
                 #
@@ -2275,12 +2383,15 @@ class AnchoredToken(object):
     def is_middle(self):     return self.end is not None
     # For sets
     def __hash__(self):      return self.cached_hash
-    def __eq__(self, other): return self.cached_str == str(other)
-    def __ne__(self, other): return self.cached_str != str(other)
-    # For sort (so that str() can be used as the key function)
-    def __str__(self):       return self.cached_str
+    def __eq__(self, other): return self.cached_str == other.cached_str
+    def __ne__(self, other): return self.cached_str != other.cached_str
+    # For sort (so that tstr() can be used as the key function)
+    if tstr == str:
+        def __str__(self):     return self.cached_str
+    else:
+        def __unicode__(self): return self.cached_str
     # For hashlib
-    def __repr__(self):      return self.__class__.__name__ + "(" + repr(self.cached_str) + ")"
+    def __repr__(self):      return self.__class__.__name__ + b"(" + repr(self.cached_str) + b")"
 
 def parse_tokenlist(tokenlist_file, first_line_num = 1):
     global token_lists
@@ -2299,7 +2410,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
         # Ignore comments
         if line.startswith("#"):
             if line.startswith("#--"):
-                print(prog+": warning: all options must be on the first line, ignoring options on line", str(line_num), file=sys.stderr)
+                print(prog+": warning: all options must be on the first line, ignoring options on line", tstr(line_num), file=sys.stderr)
             continue
 
         # Start off assuming these tokens are optional (no preceding "+");
@@ -2323,14 +2434,12 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
         for i, token in enumerate(new_list):
             if token is None: continue
 
-            for c in token:
-                if ord(c) > 127:
-                    error_exit("token on line", line_num, "has non-ASCII character '"+c+"'")
+            check_chars_range(token, "token on line " + tstr(line_num))
 
             # Syntax check any wildcards, and load any wildcard backreference maps
             count_or_error_msg = count_valid_wildcards(token, permit_contracting_wildcards=True)
             if isinstance(count_or_error_msg, basestring):
-                error_exit("on line", str(line_num)+":", count_or_error_msg)
+                error_exit("on line", tstr(line_num)+":", count_or_error_msg)
             elif count_or_error_msg:
                 has_any_wildcards = True  # (a global)
                 load_backreference_maps_from_token(token)
@@ -2342,7 +2451,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
                     print(prog+": warning: token on line 1 looks like an option, "
                                "but line 1 is missing the required '#--' at its beginning", file=sys.stderr)
                 else:
-                    print(prog+": warning: token on line", str(line_num), "looks like an option, "
+                    print(prog+": warning: token on line", tstr(line_num), "looks like an option, "
                                " but all options must be on the first line", file=sys.stderr)
 
             # Parse anchor if present and convert to an AnchoredToken object
@@ -2373,17 +2482,17 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
     # restoring the exact same session, or save them for future such checks
     if savestate:
         global backreference_maps_sha1
-        token_lists_hash        = hashlib.sha1(str(token_lists)).digest()
+        token_lists_hash        = hashlib.sha1(repr(token_lists)).digest()
         backreference_maps_hash = backreference_maps_sha1.digest() if backreference_maps_sha1 else None
         if restored:
-            if token_lists_hash != savestate["token_lists_hash"]:
+            if token_lists_hash != savestate[b"token_lists_hash"]:
                 error_exit("can't restore previous session: the tokenlist file has changed")
-            if backreference_maps_hash != savestate.get("backreference_maps_hash"):
+            if backreference_maps_hash != savestate.get(b"backreference_maps_hash"):
                 error_exit("can't restore previous session: one or more backreference maps have changed")
         else:
-            savestate["token_lists_hash"] = token_lists_hash
+            savestate[b"token_lists_hash"] = token_lists_hash
             if backreference_maps_hash:
-                savestate["backreference_maps_hash"] = backreference_maps_hash
+                savestate[b"backreference_maps_hash"] = backreference_maps_hash
 
 
 # Load any map files referenced in wildcard backreferences in the passed token
@@ -2696,7 +2805,7 @@ def tokenlist_base_password_generator():
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
         if l_token_combination_dups and \
-           l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, None, str))): continue
+           l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, None, tstr))): continue
 
         # The inner loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.
@@ -2892,15 +3001,20 @@ def passwordlist_base_password_generator():
     if not passwordlist_allcached:
         assert not passwordlist_file.closed
         for line_num, password_base in enumerate(passwordlist_file, line_num):  # not yet syntax-checked
+            try:
+                check_chars_range(password_base, "line")
+            except SystemExit as e:
+                print(prog+": warning: ignoring line "+tstr(line_num)+",", e.code)
+                continue
             if args.has_wildcards and "%" in password_base:
                 count_or_error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
                 if isinstance(count_or_error_msg, basestring):
-                    print(prog+": warning: ignoring line", str(line_num)+":", count_or_error_msg, file=sys.stderr)
+                    print(prog+": warning: ignoring line", tstr(line_num)+":", count_or_error_msg, file=sys.stderr)
                     continue
                 try:
                     load_backreference_maps_from_token(password_base)
                 except IOError as e:
-                    print(prog+": warning: ignoring line", str(line_num)+":", e, file=sys.stderr)
+                    print(prog+": warning: ignoring line", tstr(line_num)+":", e, file=sys.stderr)
             yield password_base.rstrip("\r\n")
 
     # Prepare for a potential future run
@@ -2917,7 +3031,7 @@ def passwordlist_base_password_generator():
 # are then used by password_generator() as base passwords that can undergo further modifications.
 def performance_base_password_generator():
     for i in itertools.count(0):
-        yield "Measure Performance " + str(i)
+        yield "Measure Performance " + tstr(i)
 
 
 # This generator function expands (or contracts) all wildcards in the string passed
@@ -3413,8 +3527,8 @@ def handle_oom():
 # (autosave_nextslot is initialized in load_savestate() or parse_arguments() )
 def do_autosave(skip, inside_interrupt_handler = False):
     global autosave_nextslot
-    assert autosave_file and not autosave_file.closed,          "do_autosave: autosave_file is open"
-    assert isinstance(savestate, dict) and "argv" in savestate, "do_autosave: savestate is initialized"
+    assert autosave_file and not autosave_file.closed,           "do_autosave: autosave_file is open"
+    assert isinstance(savestate, dict) and b"argv" in savestate, "do_autosave: savestate is initialized"
     if not inside_interrupt_handler:
         sigint_handler  = signal.signal(signal.SIGINT,  signal.SIG_IGN)    # ignore Ctrl-C,
         sigterm_handler = signal.signal(signal.SIGTERM, signal.SIG_IGN)    # SIGTERM, and
@@ -3436,9 +3550,9 @@ def do_autosave(skip, inside_interrupt_handler = False):
         autosave_file.truncate()
         try:   os.fsync(autosave_file.fileno())
         except StandardError: pass
-    savestate["skip"] = skip  # overwrite the one item which changes for each autosave
+    savestate[b"skip"] = skip  # overwrite the one item which changes for each autosave
     cPickle.dump(savestate, autosave_file, cPickle.HIGHEST_PROTOCOL)
-    assert autosave_file.tell() <= start_pos + SAVESLOT_SIZE, "do_autosave: data <= "+str(SAVESLOT_SIZE)+" bytes long"
+    assert autosave_file.tell() <= start_pos + SAVESLOT_SIZE, "do_autosave: data <= "+tstr(SAVESLOT_SIZE)+" bytes long"
     autosave_file.flush()
     try:   os.fsync(autosave_file.fileno())
     except StandardError: pass
@@ -3510,11 +3624,11 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
                     # Only display an ETA once unskipped passwords are being counted
                     if unskipped_passwords_counted > 0:
                         eta = unskipped_passwords_counted * est_secs_per_password / 60
-                        if eta < 90:     eta = str(int(eta)+1) + " minutes"  # round up
+                        if eta < 90:     eta = tstr(int(eta)+1) + " minutes"  # round up
                         else:
                             eta /= 60
-                            if eta < 48: eta = str(int(round(eta))) + " hours"
-                            else:        eta = str(round(eta / 24, 1)) + " days"
+                            if eta < 48: eta = tstr(int(round(eta))) + " hours"
+                            else:        eta = tstr(round(eta / 24, 1)) + " days"
                         msg = "\r  {:,}".format(passwords_counted)
                         if args.skip: msg += " (includes {:,} skipped)".format(args.skip)
                         msg += "  ETA: " + eta + " and counting   "
@@ -3592,12 +3706,23 @@ def main():
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
     if args.listpass:
+        if tstr == unicode:
+            stdout_encoding = sys.stderr.encoding if hasattr(sys.stdout, "encoding") else None  # for unittest
+            if not stdout_encoding:
+                print(prog+": warning: output will be UTF-8 encoded", file=sys.stderr)
+                stdout_encoding = "utf_8"
+            elif "UTF" in stdout_encoding.upper():
+                stdout_encoding = None  # let print do the encoding automatically
+            else:
+                print(prog+": warning: stdout's encoding is not Unicode compatible; data loss may occur", file=sys.stderr)
+        else:
+            stdout_encoding = None
         password_iterator, skipped_count = password_generator_factory()
-        plus_skipped = "(plus " + str(skipped_count) + " skipped)" if skipped_count else ""
+        plus_skipped = "(plus " + tstr(skipped_count) + " skipped)" if skipped_count else ""
         try:
             for password in password_iterator:
                 passwords_count += 1
-                print(password[0])
+                print(password[0] if stdout_encoding is None else password[0].encode(stdout_encoding, "replace"))
         except BaseException as e:
             print("\nInterrupted after generating", passwords_count, "passwords", plus_skipped, file=sys.stderr)
             if isinstance(e, MemoryError) and passwords_count > 0:
@@ -3605,7 +3730,7 @@ def main():
                 sys.exit(1)
             if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
-        msg = str(passwords_count) + " password combinations " + plus_skipped
+        msg = tstr(passwords_count) + " password combinations " + plus_skipped
         print("\n", msg, file=sys.stderr)
         return msg
 
@@ -3627,7 +3752,7 @@ def main():
         #
         start = time.clock()
         for o in xrange(outer_iterations):
-            return_verified_password_or_false(["measure performance "+str(i) for i in xrange(inner_iterations)])
+            return_verified_password_or_false(["measure performance "+tstr(i) for i in xrange(inner_iterations)])
         est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
         assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
 
@@ -3655,22 +3780,22 @@ def main():
     if not args.no_eta:
 
         assert args.skip >= 0
-        if l_savestate and "total_passwords" in l_savestate and args.no_dupchecks:
-            passwords_count = l_savestate["total_passwords"]  # we don't need to do a recount
+        if l_savestate and b"total_passwords" in l_savestate and args.no_dupchecks:
+            passwords_count = l_savestate[b"total_passwords"]  # we don't need to do a recount
             iterate_time = 0
         else:
             start = time.clock()
             passwords_count = count_and_check_eta(est_secs_per_password)
             iterate_time = time.clock() - start
             if l_savestate:
-                if "total_passwords" in l_savestate:
-                    assert l_savestate["total_passwords"] == passwords_count, "main: saved password count matches actual count"
+                if b"total_passwords" in l_savestate:
+                    assert l_savestate[b"total_passwords"] == passwords_count, "main: saved password count matches actual count"
                 else:
-                    l_savestate["total_passwords"] = passwords_count
+                    l_savestate[b"total_passwords"] = passwords_count
 
         passwords_count -= args.skip
         if passwords_count <= 0:
-            msg = "Skipped all "+str(passwords_count + args.skip)+" passwords, exiting"
+            msg = "Skipped all "+tstr(passwords_count + args.skip)+" passwords, exiting"
             print(msg)
             return msg
 
@@ -3702,7 +3827,7 @@ def main():
     password_iterator, skipped_count = password_generator_factory(chunksize)
     if skipped_count < args.skip:
         assert args.no_eta, "discovering all passwords have been skipped this late only happens if --no-eta"
-        msg = "Skipped all "+str(skipped_count)+" passwords, exiting"
+        msg = "Skipped all "+tstr(skipped_count)+" passwords, exiting"
         print(msg)
         return msg
     assert skipped_count == args.skip
@@ -3721,14 +3846,14 @@ def main():
         if args.no_eta:
             progress = progressbar.ProgressBar(maxval=sys.maxint, widgets=[
                 progressbar.AnimatedMarker(),
-                progressbar.FormatLabel(" %(value)d  elapsed: %(elapsed)s  rate: "),
+                progressbar.FormatLabel(b" %(value)d  elapsed: %(elapsed)s  rate: "),
                 progressbar.FileTransferSpeed(unit="P")
             ])
         else:
             progress = progressbar.ProgressBar(maxval=passwords_count, widgets=[
-                progressbar.SimpleProgress(), " ",
-                progressbar.Bar(left="[", fill="-", right="]"),
-                progressbar.FormatLabel(" %(elapsed)s, "),
+                progressbar.SimpleProgress(), b" ",
+                progressbar.Bar(left=b"[", fill=b"-", right=b"]"),
+                progressbar.FormatLabel(b" %(elapsed)s, "),
                 progressbar.ETA()
             ])
     else:
@@ -3794,7 +3919,11 @@ def main():
                     progress.update(passwords_tried)
                     print()  # move down to the line below the progress bar
                 msg = "Password found: " + repr(password_found)
-                print(msg)
+                print(msg, end="")
+                if tstr == unicode:
+                    try:    print(" ("+password_found+")", end="")
+                    except: pass
+                print()
                 break
             passwords_tried += passwords_tried_last
             if progress: progress.update(passwords_tried)
@@ -3831,6 +3960,6 @@ def main():
     if msg: return msg
 
 
-if __name__ == '__main__':
+if __name__ == b'__main__':
     parse_arguments(sys.argv[1:])
     main()

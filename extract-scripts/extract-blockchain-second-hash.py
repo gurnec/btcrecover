@@ -119,9 +119,14 @@ try:
 
     # Now that data contains the encrypted binary data, prompt for a password and decrypt it
     load_crypto_libraries()
+    # Replace getpass.getpass with raw_input if there's trouble reading non-ASCII characters
     password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
     if not password:
         sys.exit("Encrypted Blockchain files must be decrypted to extract the second password hash")
+    # Convert from the terminal's character encoding to UTF-8
+    stdin_encoding = sys.stdin.encoding
+    if stdin_encoding and stdin_encoding.upper() not in "UTF-8,UTF8":
+        password = password.decode(stdin_encoding).encode("utf_8")
 
     # Encryption scheme used in newer wallets
     def decrypt_current(iter_count):
