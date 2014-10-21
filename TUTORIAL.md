@@ -152,9 +152,9 @@ The `%d` is a wildcard which is replaced by all combinations of a single digit. 
  * `%2d`   - exactly 2 digits
  * `%1,3d` - between 1 and 3 digits (all possible permutations thereof)
  * `%0,2d` - between 0 and 2 digits (in other words, the case where there are no digits is also tried)
- * `%a`    - a single lowercase letter
+ * `%a`    - a single ASCII lowercase letter
  * `%1,3a` - between 1 and 3 lowercase letters
- * `%A`    - a single uppercase letter
+ * `%A`    - a single ASCII uppercase letter
  * `%n`    - a single digit or lowercase letter
  * `%N`    - a single digit or uppercase letter
  * `%ia`   - a “case-insensitive” version of %a: a single lower or uppercase letter
@@ -373,11 +373,11 @@ Just download the latest version from <https://github.com/gurnec/btcrecover/arch
 
 ### Armory (on any OS)###
 
-You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory versions 0.91 through 0.91.2; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
+You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory versions 0.91 through 0.92.3; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
 
 ### Windows – Armory ###
 
-In addition to requiring Armory 0.91.x, you will also need to download and install:
+In addition to requiring Armory, you will also need to download and install:
 
  * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.8 Windows Installer” available here: <https://www.python.org/download/>
 
@@ -399,7 +399,9 @@ To enable the experimental GPU acceleration features in Windows, you will need t
 
  * The latest binary version of PyOpenCL for Python 2 & Python(x,y) available here: <https://code.google.com/p/pythonxy/wiki/AdditionalPlugins>. (The download link on that page is a button to the right of “pyopencl” which has an arrow pointing downwards.)
 
- * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.8.1-win32-superpack-python2.7.exe”, available next to “Looking for the latest version?” here: <http://sourceforge.net/projects/numpy/files/NumPy/>
+ * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.9.0-win32-superpack-python2.7.exe”, available in the "1.9.0" folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
+
+* The latest version of Python setuptools. Installation instructions for setuptools can be found here: <https://pypi.python.org/pypi/setuptools#installation-instructions>
 
 If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
 
@@ -454,7 +456,7 @@ If one of the combinations is the correct password for the wallet, the password 
 
 If all of the password combinations are tried, and none of them were correct for the wallet, this message will be dislayed instead:
 
-    7661527 of 7661527 [########################################] 2 days, 0:26:06, 
+    7661527 of 7661527 [########################################] 2 days, 0:26:06,
     Password search exhausted
 
 Running `btcrecover.py` with the `--help` option will give you a summary of all of the available command-line options, most of which are described in the sections above.
@@ -595,11 +597,7 @@ None of this applies to passwordlist files, which always treat spaces and symbol
 
 ### Unicode Support ###
 
-This one’s easy... there is none.
-
-All input to *btcrecover* must be 7-bit ASCII. The current version of Armory (which is what *btcrecover* was originally developed for) has this same limitation, so there should be no problems with Armory wallets. Bitcoin Core, MultBit Classic, and Electrum support Unicode passwords. It would be theoretically possible to add Unicode support (at least for the Basic Multilingual Plane, which is what Python supports decently; the SMP would be harder, especially with support for the typos feature), however none of the software wallets normalize their Unicode strings before passing them along to their key derivation functions, and this could cause issues.
-
-In short, Unicode support is something I’d like to add if there’s a significant demand for it, but it will never be perfect. In the mean time, as long as your password consists only of ASCII characters, it should work without any issues.
+Although Unicode support is available in *btcrecover*, its use is considered experimental and is currently undocumented in this tutorial. More information may be available in the GitHub issues list.
 
 ### Resource Usage ###
 

@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.9.0-Unicode"
+#__version__          =  "0.9.1-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.9.0"
+__version__          =  "0.9.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -133,7 +133,7 @@ def typo_closecase(p, i):  # (case_id functions defined in the Password Generati
             case_id_changed(case_id_of(p[i+1]), cur_case_id):
         return p[i].swapcase(),
     return ()
-def typo_replace_wildcard(p, i): return [e      for e in typos_replace_expanded if e != p[i]]
+def typo_replace_wildcard(p, i): return [e for e in typos_replace_expanded if e != p[i]]
 def typo_map(p, i):              return typos_map.get(p[i], ())
 # (typos_replace_expanded and typos_map are initialized from args.typos_replace
 # and args.typos_map respectively in parse_arguments() )
@@ -578,9 +578,12 @@ def load_bitcoincore_wallet(wallet_filename):
     wallet_filename = os.path.abspath(wallet_filename)
     import bsddb.db
     db_env = bsddb.db.DBEnv()
-    db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
-    db = bsddb.db.DB(db_env)
-    db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+    try:
+        db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
+        db = bsddb.db.DB(db_env)
+        db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+    except UnicodeEncodeError:
+        error_exit("the entire path and filename of Bitcoin Core wallets should be entirely ASCII")
     mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
     db.close()
     db_env.close()
@@ -1256,7 +1259,7 @@ if tstr == str:
         assert isinstance(s, str), "check_chars_range: s is of type str"
         for c in s:
             if ord(c) > 127:  # 2**7 - 1
-                error_exit(error_msg, "has character with code point", ord(c), "> max (127)")
+                error_exit(error_msg, "has character with code point", ord(c), "> max (127 / ASCII)")
 
 # For UTF-16 (a.k.a. "narrow" Python Unicode) builds, checks that the input unicode
 # string has no surrogate pairs (all chars fit inside one UTF-16 code unit)
@@ -1265,7 +1268,7 @@ elif sys.maxunicode < 2**16:
         assert isinstance(s, unicode), "check_chars_range: s is of type unicode"
         for c in s:
             if u'\uD800' <= c <= u'\uDBFF' or u'\uDC00' <= c <= u'\uDFFF':
-                error_exit(error_msg, "has character with code point > max ("+tstr(sys.maxunicode)+")")
+                error_exit(error_msg, "has character with code point > max ("+tstr(sys.maxunicode)+" / BMP)")
 
 # For UTF-32 (a.k.a. "wide" Python Unicode) builds, UTF-32 supports all code points in a fixed width
 else:
@@ -1457,7 +1460,7 @@ class MakePeekable(object):
 
 
 # Opens a new or returns an already-opened file, if it passes the specified constraints.
-# * Only examines one file: if filename == "__funccall" and funccall_file is not None,
+# * Only examines one file: if filename == b"__funccall" and funccall_file is not None,
 #   use it. Otherwise if filename is not None, use it. Otherwise if default_filename
 #   exists, use it. Otherwise, return None.
 # * After deciding which one file to potentially use, check it against the require_data
@@ -1469,8 +1472,8 @@ class MakePeekable(object):
 #   unicode strings if and only if mode is text (is not binary / does not contain "b").
 # * The results of opening stdin more than once are undefined.
 def open_or_use(filename, mode = "r",
-        funccall_file    = None,   # already-opened file used if filename == "__funccall"
-        permit_stdin     = None,   # when True a filename == "-" opens stdin
+        funccall_file    = None,   # already-opened file used if filename == b"__funccall"
+        permit_stdin     = None,   # when True a filename == b"-" opens stdin
         default_filename = None,   # name of file that can be opened if filename == None
         require_data     = None,   # only if file is non-empty, else return None
         new_or_empty     = None,   # open if file is new or empty, else return None
@@ -1497,7 +1500,7 @@ def open_or_use(filename, mode = "r",
                 assert isinstance(funccall_file, io.TextIOBase), "already opened file isa io.TextIOBase producing unicode"
         return MakePeekable(funccall_file) if make_peekable else funccall_file;
     #
-    if permit_stdin and filename == "-":
+    if permit_stdin and filename == b"-":
         if tstr == unicode and "b" not in mode:
             sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
         if make_peekable:
@@ -1517,6 +1520,7 @@ def open_or_use(filename, mode = "r",
     if not filename:
         return None
     #
+    filename = tstr_from_stdin(filename)
     if require_data and (not os.path.isfile(filename) or os.path.getsize(filename) == 0):
         return None
     if new_or_empty and os.path.exists(filename) and (os.path.getsize(filename) > 0 or not os.path.isfile(filename)):
@@ -1731,9 +1735,9 @@ def parse_arguments(effective_argv, **kwds):
         if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
             first_line = tokenlist_file.readline()
             if first_line.startswith("#--"):                 # if it's additional args, not just a comment
-                print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
+                print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tstr(tokenlist_file.name)+"'", file=sys.stderr)
                 tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
-        print("Using autosave file '"+restore_filename+"'")
+        print("Using autosave file '"+tstr(restore_filename)+"'")
         args.skip = savestate[b"skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
     #

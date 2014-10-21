@@ -30,7 +30,7 @@ import os.path as path, sys, unittest
 install_dir = path.dirname(__file__)
 
 # This is a bit fragile, but it's probably good enough. It simply looks
-# for certain strings, and comments or comments blocks between them.
+# for certain strings, and comments or uncomments code between them.
 def make_unicode_version(ascii_name, unicode_name):
     ascii_version_path   = path.join(install_dir, ascii_name)
     unicode_version_path = path.join(install_dir, unicode_name)

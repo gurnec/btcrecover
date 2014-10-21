@@ -1,2 +1,4 @@
 *.pyc
 *.pyo
+/btcrecoveru.py
+/test-btcru.py
