@@ -364,7 +364,7 @@ If you need to interrupt *btcrecover* in the middle of testing, you can do so wi
 
     Interrupted after finishing password # 357449
 
-If you didn't have the autosave feature enabled, you can still manually start testing where you left off. You need to start *btcrecover* with the *exact same* token file or passwordlist, toypos-map file (if you were using one), and command-line options plus one extra option, `--skip 357449`, and it will start up right where it had left off.
+If you didn't have the autosave feature enabled, you can still manually start testing where you left off. You need to start *btcrecover* with the *exact same* token file or passwordlist, typos-map file (if you were using one), and command-line options plus one extra option, `--skip 357449`, and it will start up right where it had left off.
 
 
 ## Installation ##

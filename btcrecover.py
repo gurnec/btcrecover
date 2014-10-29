@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.9.1-Unicode"
+#__version__          =  "0.9.2-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.9.1"
+__version__          =  "0.9.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -3511,20 +3511,25 @@ def set_process_priority_idle():
     except StandardError: pass
 
 # If an out-of-memory error occurs which can be handled, free up some memory, display
-# an informative error message, and then return, otherwise re-raise the exception
+# an informative error message, and then return True, otherwise return False.
+# Generally a call to handle_oom() should be followed by a sys.exit(1)
 def handle_oom():
     global password_dups, token_combination_dups  # these are the memory-hogging culprits
     if password_dups and password_dups.run_number == 0:
         del password_dups, token_combination_dups
-        gc.collect(2)
+        gc.collect()
+        print()  # move to the next line
         print(prog+": error: out of memory", file=sys.stderr)
         print(prog+": notice: the --no-dupchecks option will reduce memory usage at the possible expense of speed", file=sys.stderr)
+        return True
     elif token_combination_dups and token_combination_dups.run_number == 0:
         del token_combination_dups
-        gc.collect(2)
+        gc.collect()
+        print()  # move to the next line
         print(prog+": error: out of memory", file=sys.stderr)
         print(prog+": notice: the --no-dupchecks option can be specified twice to further reduce memory usage", file=sys.stderr)
-    else: raise
+        return True
+    return False
 
 
 # Saves progress by overwriting the older (of two) slots in the autosave file
@@ -3674,14 +3679,14 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
             except StopIteration: pass
             return passwords_count_iterator, passwords_counted
 
+    except SystemExit: raise  # happens when error_exit is called above
     except BaseException as e:
-        if isinstance(e, SystemExit): raise  # happens when error_exit is called above
+        handled = handle_oom() if isinstance(e, MemoryError) and passwords_counted > 0 else False
+        if not handled: print()  # move to the next line
         counting_or_skipping = "counting" if est_secs_per_password else "skipping"
         including_skipped    = "(including skipped ones)" if est_secs_per_password and args.skip else ""
-        print("\nInterrupted after", counting_or_skipping, passwords_counted, "passwords", including_skipped, file=sys.stderr)
-        if isinstance(e, MemoryError) and passwords_counted > 0:
-            handle_oom()  # will re-raise if not handled
-            sys.exit(1)
+        print("Interrupted after", counting_or_skipping, passwords_counted, "passwords", including_skipped, file=sys.stderr)
+        if handled:                          sys.exit(1)
         if isinstance(e, KeyboardInterrupt): sys.exit(0)
         raise
 
@@ -3728,10 +3733,10 @@ def main():
                 passwords_count += 1
                 print(password[0] if stdout_encoding is None else password[0].encode(stdout_encoding, "replace"))
         except BaseException as e:
-            print("\nInterrupted after generating", passwords_count, "passwords", plus_skipped, file=sys.stderr)
-            if isinstance(e, MemoryError) and passwords_count > 0:
-                handle_oom()  # will re-raise if not handled
-                sys.exit(1)
+            handled = handle_oom() if isinstance(e, MemoryError) and passwords_count > 0 else False
+            if not handled: print()  # move to the next line
+            print("Interrupted after generating", passwords_count, "passwords", plus_skipped, file=sys.stderr)
+            if handled:                          sys.exit(1)
             if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
         msg = tstr(passwords_count) + " password combinations " + plus_skipped
@@ -3948,10 +3953,13 @@ def main():
     # other intentional shutdown, or an out-of-memory condition that can be handled), fall
     # through to the autosave, otherwise re-raise the exception.
     except BaseException as e:
-        print("\nInterrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
+        handled = handle_oom() if isinstance(e, MemoryError) and passwords_tried > 0 else False
+        if not handled: print()  # move to the next line
+        print("Interrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
-            print("\nInterrupted after finishing password #", args.skip + passwords_tried)
-        if isinstance(e, MemoryError): handle_oom()    # will re-raise if not handled
+            print("Interrupted after finishing password #", args.skip + passwords_tried)
+        if handled:
+            msg = "MemmoryError"
         elif not isinstance(e, KeyboardInterrupt): raise
 
     # Autosave the final state (for all non-error cases -- we're shutting down (e.g. Ctrl-C or a
