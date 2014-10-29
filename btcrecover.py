@@ -39,18 +39,19 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.9.2-Unicode"
+#__version__          =  "0.9.3-beta-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.9.2"
+__version__          =  "0.9.3-beta"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
        time, hashlib, collections, base64, struct, ast, atexit, zlib, math, json, getpass, uuid, numbers
+import timeit
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -787,15 +788,30 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
     # Because iter_count is probably not evenly divisible by iter_count_chunksize, the loop below
     # performs all but the last of these iter_count_chunksize sets of iterations.
 
+    timer = timeit.default_timer
+    times = collections.defaultdict(float)
     i = 1 - iter_count_chunksize  # used if the loop below doesn't run (when --int-rate == 1)
     for i in xrange(1, iter_count - iter_count_chunksize, iter_count_chunksize):
         done = []  # a list of OpenCL event objects
         # Start up a kernel for each device to do one set of iter_count_chunksize iterations
         for devnum in xrange(len(cl_devices)):
+            start_time = timer()
             done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
                 cl_hashes_buffers[devnum], iter_count_chunksize))
+            end_time = timer()
+            times["queue-"+str(devnum)] += end_time - start_time
+            start_time = timer()
             cl_queues[devnum].flush()  # Starts the kernel
+            end_time = timer()
+            times["flush-"+str(devnum)] += end_time - start_time
+        start_time = timer()
         pyopencl.wait_for_events(done)
+        end_time = timer()
+        times["wait"] += end_time - start_time
+
+    for k in sorted(times):
+        print(k, times[k])
+    print()
 
     # Perform the last remaining set of iterations (usually fewer then iter_count_chunksize)
     done = []  # a list of OpenCL event objects
@@ -1586,7 +1602,7 @@ parser_common.add_argument("--worker",      metavar="ID#/TOTAL#",   help="divide
 parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: %(default)s hours, i.e. 1 week)")
 parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
 parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
-parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
+parser_common.add_argument("--progress",    action="store_false",  default=True, dest="no_progress", help="enable the progress bar")
 parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
 parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
 parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
