@@ -401,7 +401,9 @@ To enable the experimental GPU acceleration features in Windows, you will need t
 
  * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.9.0-win32-superpack-python2.7.exe”, available in the "1.9.0" folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
 
-* The latest version of Python setuptools. Installation instructions for setuptools can be found here: <https://pypi.python.org/pypi/setuptools#installation-instructions>
+ * The latest version of Python setuptools. Installation instructions for setuptools can be found here: <https://pypi.python.org/pypi/setuptools#installation-instructions>
+
+ * Optional, but recommended Bitcoin Core or Litecoin-Qt (for a 2x speed improvement): The latest binary version of PyCrypto for Python 2.7. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
 
 If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
 
