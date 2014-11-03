@@ -764,6 +764,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
 def return_bitcoincore_opencl_verified_password_or_false(passwords):
     assert len(passwords) <= sum(cl_global_ws), "return_bitcoincore_opencl_verified_password_or_false: at most --global-ws passwords"
     encrypted_master_key, salt, iter_count = wallet
+    timer = timeit.default_timer
 
     # Convert Unicode strings to UTF-8 bytestrings
     if tstr == unicode:
@@ -771,24 +772,32 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
 
     # The first iter_count iteration is done by the CPU
     hashes = numpy.empty([sum(cl_global_ws), 64], numpy.uint8)
+    start_time = timer()
     for i, password in enumerate(passwords):
         hashes[i] = numpy.fromstring(hashlib.sha512(password + salt).digest(), numpy.uint8)
+    end_time = timer()
+    print("1:hash", end_time - start_time)
 
     # Divide up and copy the starting hashes into the OpenCL buffer(s) (one per device) in parallel
     done   = []  # a list of OpenCL event objects
     offset = 0
+    start_time = timer()
     for devnum, ws in enumerate(cl_global_ws):
         done.append(pyopencl.enqueue_copy(cl_queues[devnum], cl_hashes_buffers[devnum], hashes[offset : offset + ws], is_blocking=False))
         cl_queues[devnum].flush()  # Starts the copy operation
         offset += ws
+    end_time = timer()
+    print("2:queue-copy-in", end_time - start_time)
+    start_time = timer()
     pyopencl.wait_for_events(done)
+    end_time = timer()
+    print("3:copy-in", end_time - start_time)
 
     # Doing all iter_count iterations at once will hang the GPU, so instead do iter_count_chunksize
     # iterations at a time, pausing briefly while waiting for them to complete, and then continuing.
     # Because iter_count is probably not evenly divisible by iter_count_chunksize, the loop below
     # performs all but the last of these iter_count_chunksize sets of iterations.
 
-    timer = timeit.default_timer
     times = collections.defaultdict(float)
     i = 1 - iter_count_chunksize  # used if the loop below doesn't run (when --int-rate == 1)
     for i in xrange(1, iter_count - iter_count_chunksize, iter_count_chunksize):
@@ -799,44 +808,62 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
             done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
                 cl_hashes_buffers[devnum], iter_count_chunksize))
             end_time = timer()
-            times["queue-"+str(devnum)] += end_time - start_time
+            times["4:queue-"+str(devnum)] += end_time - start_time
             start_time = timer()
             cl_queues[devnum].flush()  # Starts the kernel
             end_time = timer()
-            times["flush-"+str(devnum)] += end_time - start_time
+            times["5:flush-"+str(devnum)] += end_time - start_time
         start_time = timer()
         pyopencl.wait_for_events(done)
         end_time = timer()
-        times["wait"] += end_time - start_time
-
-    for k in sorted(times):
-        print(k, times[k])
-    print()
+        times["6:kernel"] += end_time - start_time
 
     # Perform the last remaining set of iterations (usually fewer then iter_count_chunksize)
     done = []  # a list of OpenCL event objects
     for devnum in xrange(len(cl_devices)):
+        start_time = timer()
         done.append(cl_kernel(cl_queues[devnum], (cl_global_ws[devnum],), None if cl_local_ws[devnum] is None else (cl_local_ws[devnum],),
             cl_hashes_buffers[devnum], iter_count - iter_count_chunksize - i))
+        end_time = timer()
+        times["4:queue-"+str(devnum)] += end_time - start_time
+        start_time = timer()
         cl_queues[devnum].flush()  # Starts the kernel
+        end_time = timer()
+        times["5:flush-"+str(devnum)] += end_time - start_time
+    start_time = timer()
     pyopencl.wait_for_events(done)
+    end_time = timer()
+    times["6:kernel"] += end_time - start_time
+
+    for k in sorted(times):
+        print(k, times[k])
 
     # Copy the resulting fully computed hashes back to RAM in parallel
     done   = []  # a list of OpenCL event objects
     offset = 0
+    start_time = timer()
     for devnum, ws in enumerate(cl_global_ws):
         done.append(pyopencl.enqueue_copy(cl_queues[devnum], hashes[offset : offset + ws], cl_hashes_buffers[devnum], is_blocking=False))
         offset += ws
         cl_queues[devnum].flush()  # Starts the copy operation
+    end_time = timer()
+    print("7:queue-copy-out", end_time - start_time)
+    start_time = timer()
     pyopencl.wait_for_events(done)
+    end_time = timer()
+    print("7:copy-out", end_time - start_time)
 
     # Using the computed hashes, try to decrypt the master key (in CPU)
+    start_time = timer()
     for i, password in enumerate(passwords):
         derived_key_iv = hashes[i].tostring()
         master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
         # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
         if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
             return password if tstr == str else password.decode("utf_8", "replace"), i + 1
+    end_time = timer()
+    print("8:decrypt", end_time - start_time)
+    print()
     return False, i + 1
 
 
