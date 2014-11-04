@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.9.2-Unicode"
+#__version__          =  "0.10.0-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.9.2"
+__version__          =  "0.10.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -196,6 +196,17 @@ def load_wallet(wallet_filename):
             load_multibit_privkey_file(wallet_file)  # passing in a file object
             return_verified_password_or_false = return_multibitpk_verified_password_or_false
             return
+
+        # bitcoinj
+        wallet_file.seek(0)
+        if wallet_file.read(1) == b"\x0a":  # protobuf field number 1 of type length-delimited
+            network_identifier_len = ord(wallet_file.read(1))
+            if 1 <= network_identifier_len < 128:
+                wallet_file.seek(2 + network_identifier_len)
+                if wallet_file.read(1) in b"\x12\x1a":   # field number 2 or 3 of type length-delimited
+                    load_bitcoinj_wallet(wallet_file)  # passing in a file object
+                    return_verified_password_or_false = return_bitcoinj_verified_password_or_false
+                    return
 
         # Electrum
         wallet_file.seek(0)
@@ -877,6 +888,66 @@ def return_multibitpk_verified_password_or_false(orig_passwords):
                 if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
             else:  # if the loop above doesn't break, it's base58
                 return orig_passwords[count-1], count
+
+    return False, count
+
+
+############### bitcoinj ###############
+
+# Load a bitcoinj wallet file (the part of it we need) given an opened file object
+def load_bitcoinj_wallet(wallet_file):
+    global pylibscrypt, measure_performance_iterations, wallet
+    import wallet_pb2, pylibscrypt
+    load_aes256_library()
+    measure_performance_iterations = 8  # load_aes256_library sets this, but it's changed here
+
+    pb_wallet = wallet_pb2.Wallet()
+    wallet_file.seek(0)
+    pb_wallet.ParseFromString(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+    if pb_wallet.encryption_type == wallet_pb2.Wallet.UNENCRYPTED:
+        raise ValueError("bitcoinj wallet is not encrypted")
+    if pb_wallet.encryption_type != wallet_pb2.Wallet.ENCRYPTED_SCRYPT_AES:
+        raise NotImplementedError("Unsupported bitcoinj encryption type "+tstr(pb_wallet.encryption_type))
+    if not pb_wallet.HasField("encryption_parameters"):
+        raise ValueError("bitcoinj wallet is missing its scrypt encryption parameters")
+
+    for key in pb_wallet.key:
+        if key.HasField("encrypted_data"):
+            encrypted_len = len(key.encrypted_data.encrypted_private_key)
+            if encrypted_len == 48:
+                wallet = (key.encrypted_data, pb_wallet.encryption_parameters)
+                return
+            print(prog+": warning: ignoring encrypted key of unexpected length ("+tstr(encrypted_len)+")", file=sys.stderr)
+
+    raise ValueError("No encrypted keys found in bitcoinj wallet")
+
+
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_bitcoinj_verified_password_or_false(passwords):
+    # Copy a few globals into local for a small speed boost
+    l_scrypt              = pylibscrypt.scrypt
+    l_aes256_cbc_decrypt  = aes256_cbc_decrypt
+    encrypted_data        = wallet[0]
+    encryption_parameters = wallet[1]
+    encrypted_key         = encrypted_data.encrypted_private_key
+    iv                    = encrypted_data.initialisation_vector
+    scrypt_salt           = encryption_parameters.salt
+    scrypt_n              = encryption_parameters.n
+    scrypt_r              = encryption_parameters.r
+    scrypt_p              = encryption_parameters.p
+
+    # Convert strings (lazily) to UTF-16BE bytestrings
+    passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
+
+    for count, password in enumerate(passwords, 1):
+        derived_key = l_scrypt(password, scrypt_salt, scrypt_n, scrypt_r, scrypt_p, 32)
+        key         = l_aes256_cbc_decrypt(derived_key, iv, encrypted_key)
+        #
+        # If the 48 byte private encrypted_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+        if key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            password = password.decode("utf_16_be", "replace")
+            return password.encode("ascii", "replace") if tstr == str else password, count
 
     return False, count
 

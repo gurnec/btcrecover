@@ -399,7 +399,7 @@ To enable the experimental GPU acceleration features in Windows, you will need t
 
  * The latest binary version of PyOpenCL for Python 2 & Python(x,y) available here: <https://code.google.com/p/pythonxy/wiki/AdditionalPlugins>. (The download link on that page is a button to the right of “pyopencl” which has an arrow pointing downwards.)
 
- * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.9.0-win32-superpack-python2.7.exe”, available in the "1.9.0" folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
+ * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.9.1-win32-superpack-python2.7.exe”, available in the "1.9.1" folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
 
  * The latest version of Python setuptools. Installation instructions for setuptools can be found here: <https://pypi.python.org/pypi/setuptools#installation-instructions>
 

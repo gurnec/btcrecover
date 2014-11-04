@@ -790,6 +790,13 @@ def can_load_armory():
             else: raise
     return is_armory_loadable
 
+def can_load_bitcoinj_requirements():
+    try:
+        import wallet_pb2, pylibscrypt
+    except ImportError:
+        return False
+    return True
+
 
 class Test07WalletDecryption(unittest.TestCase):
 
@@ -834,6 +841,10 @@ class Test07WalletDecryption(unittest.TestCase):
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
+
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    def test_bitcoinj(self):
+        self.wallet_tester("bitcoinj-wallet.wallet")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
                          btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
@@ -883,6 +894,10 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_multibit_pp(self):
         self.wallet_tester("multibit-wallet.key", force_purepython=True)
+
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    def test_bitcoinj_pp(self):
+        self.wallet_tester("bitcoinj-wallet.wallet", force_purepython=True)
 
     def test_blockchain_v0_pp(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json", force_purepython=True, force_kdf_purepython=True)
