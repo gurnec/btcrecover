@@ -20,3 +20,8 @@ curl -fsS --retry 10 -o 'armory.deb' "$LATEST"
 sudo apt-get -q update
 sudo apt-get -yq install gdebi-core
 sudo gdebi -nq armory.deb
+
+# Download, compile, and install prerequisites for bitcoinj wallets
+
+sudo apt-get -yq install python-pip
+sudo /usr/bin/pip install -q protobuf scrypt pylibscrypt
