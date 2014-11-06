@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.10.1-Unicode"
+#__version__          =  "0.10.2-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.10.1"
+__version__          =  "0.10.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -836,6 +836,12 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
 
 
 ############### MultiBit ###############
+# - MultiBit .key backup files
+# - MultiDoge .key backup files
+# - Bitcoin Wallet for Android 4.x wallet backup files
+# - Bitcoin Wallet for Android old-style key backup files
+# - KnC for Android key backup files (same as the above)
+# TODO: The Android formats probably fail to find Unicode passwords
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
 def load_multibit_privkey_file(privkey_file):
@@ -882,11 +888,15 @@ def return_multibitpk_verified_password_or_false(orig_passwords):
         # If it looks like a base58 private key, we've found it
         # (there's a 1 in 600 billion chance this hits but the password is wrong)
         # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
-        if b58_privkey[0] in b"LK5Q":  # private keys always start with L, K, or 5, or for MultiDoge Q
-            for c in b58_privkey:
-                # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
-                if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
-            else:  # if the loop above doesn't break, it's base58
+        if b58_privkey[0] in b"LK5Q\x0a#":
+            if b58_privkey[0] in b"LK5Q":  # private keys always start with L, K, or 5, or for MultiDoge Q
+                for c in b58_privkey:
+                    # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
+                    if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
+                else:  # if the loop above doesn't break, it's base58
+                    return orig_passwords[count-1], count
+            # Does it look like a bitcoinj protobuf (Bitcoin for Android backup) or a KnC for Android key backup?
+            elif b58_privkey == b"\x0a\x16org.bitcoin.pr" or b58_privkey == b"# KEEP YOUR PRIV":
                 return orig_passwords[count-1], count
 
     return False, count
