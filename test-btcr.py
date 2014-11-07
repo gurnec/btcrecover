@@ -964,6 +964,42 @@ class Test08KeyDecryption(unittest.TestCase):
         self.key_tester("bWI6YK6OX8bVP2Ar/j2dZBBQ+F0pEn8kZK6rlXiAWA==", unicode_pw=True)
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_multidoge(self):
+        self.key_tester("bWI6IdK25nMhHI9n4zlb1cUtWBl7mL7gh7ZtxkYaDw==")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_multidoge_unicode(self):
+        self.key_tester("bWI6ry78W+RkeTi2dVt2omZMfXRi46xDsIhr0jKN3g==", unicode_pw=True)
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_androidwallet(self):
+        self.key_tester("bWI6Ii/ZEeDjUJKq704wzUxKudpvAralnrOQtXM4og==")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_androidwallet_unicode(self):
+        self.key_tester("bWI6f1QdX7xXtC0zG7XK9pTGTifie5FUeAGhJ05esw==", unicode_pw=True)
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_androidknc(self):
+        self.key_tester("bWI6n6ccPSkbrmxQpdfKNAOBFppQLGloPDHE2sOucQ====")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_androidknc_unicode(self):
+        self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", unicode_pw=True)
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_bitcoinj(self):
+        self.key_tester("Ymo6Ii11my9wAPv/OsjWOHAAMjGnF4gndfuv6rT3Oawmo+qiBiW7ubV9j10F6heA3/5B7ZYfMICF7z7WYPx5gxeL0WuM0YwMweqvAEAAAAgAAQBj+AFK")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_bitcoinj_unicode(self):
+        self.key_tester("Ymo6quzTe66EyBuPmZTiYOmxAIYFk3o8VWHy/yyxeGn/I9kXxLIuctepE0IRAlp5/Ygrs2Aq9br0dx3+5qKixPFlyXwCYZY+g+iZAEAAAAgAAQCOmWUF", unicode_pw=True)
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum(self):
         self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT")
     #
@@ -1017,6 +1053,34 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_multibit_unicode_pp(self):
         self.key_tester("bWI6YK6OX8bVP2Ar/j2dZBBQ+F0pEn8kZK6rlXiAWA==", force_purepython=True, unicode_pw=True)
+
+    def test_multidoge_pp(self):
+        self.key_tester("bWI6IdK25nMhHI9n4zlb1cUtWBl7mL7gh7ZtxkYaDw==", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_multidoge_unicode_pp(self):
+        self.key_tester("bWI6ry78W+RkeTi2dVt2omZMfXRi46xDsIhr0jKN3g==", force_purepython=True, unicode_pw=True)
+
+    def test_androidwallet_pp(self):
+        self.key_tester("bWI6Ii/ZEeDjUJKq704wzUxKudpvAralnrOQtXM4og==", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_androidwallet_unicode_pp(self):
+        self.key_tester("bWI6f1QdX7xXtC0zG7XK9pTGTifie5FUeAGhJ05esw==", force_purepython=True, unicode_pw=True)
+
+    def test_androidknc_pp(self):
+        self.key_tester("bWI6n6ccPSkbrmxQpdfKNAOBFppQLGloPDHE2sOucQ==", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_androidknc_unicode_pp(self):
+        self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", force_purepython=True, unicode_pw=True)
+
+    def test_bitcoinj_pp(self):
+        self.key_tester("Ymo6Ii11my9wAPv/OsjWOHAAMjGnF4gndfuv6rT3Oawmo+qiBiW7ubV9j10F6heA3/5B7ZYfMICF7z7WYPx5gxeL0WuM0YwMweqvAEAAAAgAAQBj+AFK", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_bitcoinj_unicode_pp(self):
+        self.key_tester("Ymo6quzTe66EyBuPmZTiYOmxAIYFk3o8VWHy/yyxeGn/I9kXxLIuctepE0IRAlp5/Ygrs2Aq9br0dx3+5qKixPFlyXwCYZY+g+iZAEAAAAgAAQCOmWUF", force_purepython=True, unicode_pw=True)
 
     def test_electrum_pp(self):
         self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT", force_purepython=True)
@@ -1265,6 +1329,14 @@ class QuickTests(unittest.TestSuite) :
                 "test_bitcoincore_unicode_pp",
                 "test_multibit",
                 "test_multibit_unicode",
+                "test_multidoge",
+                "test_multidoge_unicode",
+                "test_androidwallet",
+                "test_androidwallet_unicode",
+                "test_androidknc",
+                "test_androidknc_unicode",
+                "test_bitcoinj",
+                "test_bitcoinj_unicode",
                 "test_electrum",
                 "test_electrum_unicode",
                 "test_blockchain_v0",
@@ -1275,6 +1347,14 @@ class QuickTests(unittest.TestSuite) :
                 "test_blockchain_secondpass_no_iter_count",
                 "test_multibit_pp",
                 "test_multibit_unicode_pp",
+                "test_multidoge_pp",
+                "test_multidoge_unicode_pp",
+                "test_androidwallet_pp",
+                "test_androidwallet_unicode_pp",
+                "test_androidknc_pp",
+                "test_androidknc_unicode_pp",
+                "test_bitcoinj_pp",
+                "test_bitcoinj_unicode_pp",
                 "test_electrum_pp",
                 "test_electrum_unicode_pp",
                 "test_blockchain_v0_pp",

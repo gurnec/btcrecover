@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.10.2-Unicode"
+#__version__          =  "0.10.3-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.10.2"
+__version__          =  "0.10.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -282,6 +282,11 @@ def load_from_raw_key(key_data):
     if key_type == b"mb:":
         load_multibit_from_privkey(key_data[3:])
         return_verified_password_or_false = return_multibitpk_verified_password_or_false
+        return
+
+    if key_type == b"bj:":
+        load_bitcoinj_from_privkey(key_data[3:])
+        return_verified_password_or_false = return_bitcoinj_verified_password_or_false
         return
 
     if key_type == b"el:":
@@ -838,10 +843,10 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
 ############### MultiBit ###############
 # - MultiBit .key backup files
 # - MultiDoge .key backup files
-# - Bitcoin Wallet for Android 4.x wallet backup files
-# - Bitcoin Wallet for Android old-style key backup files
+# - Bitcoin Wallet for Android v3.47+ wallet backup files
+# - Bitcoin Wallet for Android v2.24 and older key backup files
+# - Bitcoin Wallet for Android v2.3 - v3.46 key backup files
 # - KnC for Android key backup files (same as the above)
-# TODO: The Android formats probably fail to find Unicode passwords
 
 # Load a Multibit private key backup file (the part of it we need) given an opened file object
 def load_multibit_privkey_file(privkey_file):
@@ -885,18 +890,21 @@ def return_multibitpk_verified_password_or_false(orig_passwords):
         key2   = l_md5(key1 + salted).digest()
         iv     = l_md5(key2 + salted).digest()
         b58_privkey = l_aes256_cbc_decrypt(key1 + key2, iv, encrypted_block)
-        # If it looks like a base58 private key, we've found it
-        # (there's a 1 in 600 billion chance this hits but the password is wrong)
-        # (may be fragile, e.g. what if comments or whitespace precede the first key in future MultiBit versions?)
+
+        # (all this may be fragile, e.g. what if comments or whitespace precede what's expected in future versions?)
         if b58_privkey[0] in b"LK5Q\x0a#":
+            # Does it look like a base58 private key (MultiBit, MultiDoge, or oldest-format Android key backup)?
+            # (there's a 1 in 300 billion chance this hits but the password is wrong)
             if b58_privkey[0] in b"LK5Q":  # private keys always start with L, K, or 5, or for MultiDoge Q
-                for c in b58_privkey:
+                for c in b58_privkey[1:]:
                     # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
                     if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
                 else:  # if the loop above doesn't break, it's base58
                     return orig_passwords[count-1], count
-            # Does it look like a bitcoinj protobuf (Bitcoin for Android backup) or a KnC for Android key backup?
-            elif b58_privkey == b"\x0a\x16org.bitcoin.pr" or b58_privkey == b"# KEEP YOUR PRIV":
+            # Does it look like a bitcoinj protobuf (newest Bitcoin for Android backup) or a KnC for Android key backup?
+            # (there's a 1 in 2 trillion chance this hits but the password is wrong)
+            elif b58_privkey[2:6] == b"org." and b58_privkey[0] == b"\x0a" and ord(b58_privkey[1]) < 128 or \
+                 b58_privkey == b"# KEEP YOUR PRIV":
                 return orig_passwords[count-1], count
 
     return False, count
@@ -925,12 +933,25 @@ def load_bitcoinj_wallet(wallet_file):
         if key.HasField("encrypted_data"):
             encrypted_len = len(key.encrypted_data.encrypted_private_key)
             if encrypted_len == 48:
-                wallet = (key.encrypted_data, pb_wallet.encryption_parameters)
+                wallet = key.encrypted_data, pb_wallet.encryption_parameters
                 return
             print(prog+": warning: ignoring encrypted key of unexpected length ("+tstr(encrypted_len)+")", file=sys.stderr)
 
     raise ValueError("No encrypted keys found in bitcoinj wallet")
 
+# Import a bitcoinj private key that was extracted by extract-bitcoinj-privkey.py
+def load_bitcoinj_from_privkey(privkey_data):
+    global pylibscrypt, measure_performance_iterations, wallet
+    import pylibscrypt
+    load_aes256_library()
+    measure_performance_iterations = 8  # load_aes256_library sets this, but it's changed here
+
+    # Create namedtuples with the same attributes as the protobuf message objects from wallet_pb2
+    EncryptedData     = collections.namedtuple("EncryptedData",    "encrypted_private_key initialisation_vector")
+    EncryptionParams  = collections.namedtuple("EncryptionParams", "salt n r p")
+    encrypted_data    = EncryptedData   ._make(struct.unpack(b"48s 16s", privkey_data[:64]))
+    encryption_params = EncryptionParams._make(struct.unpack(b"< 8s I H H", privkey_data[64:]))
+    wallet = encrypted_data, encryption_params
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
