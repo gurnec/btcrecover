@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.10.3-Unicode"
+#__version__          =  "0.11.0-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.10.3"
+__version__          =  "0.11.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -208,6 +208,14 @@ def load_wallet(wallet_filename):
                     return_verified_password_or_false = return_bitcoinj_verified_password_or_false
                     return
 
+        # mSIGNA
+        wallet_file.seek(0)
+        if wallet_file.read(16) == b"SQLite format 3\0":  # SQLite 3 magic
+            wallet_file.close()
+            load_msigna_wallet(wallet_filename)  # passing in a filename
+            return_verified_password_or_false = return_msigna_verified_password_or_false
+            return
+
         # Electrum
         wallet_file.seek(0)
         if wallet_file.read(2) == b"{'":  # best we can easily do short of just trying to load it
@@ -287,6 +295,11 @@ def load_from_raw_key(key_data):
     if key_type == b"bj:":
         load_bitcoinj_from_privkey(key_data[3:])
         return_verified_password_or_false = return_bitcoinj_verified_password_or_false
+        return
+
+    if key_type == b"ms:":
+        load_msigna_from_privkey(key_data[3:])
+        return_verified_password_or_false = return_msigna_verified_password_or_false
         return
 
     if key_type == b"el:":
@@ -979,6 +992,90 @@ def return_bitcoinj_verified_password_or_false(passwords):
         if key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
             password = password.decode("utf_16_be", "replace")
             return password.encode("ascii", "replace") if tstr == str else password, count
+
+    return False, count
+
+
+############### mSIGNA ###############
+
+# Load an encrypted privkey and salt from the specified keychain given a filename of an mSIGNA vault
+def load_msigna_wallet(wallet_filename):
+    global measure_performance_iterations, wallet
+    load_aes256_library()
+    # Decrease this (which is initialized in load_aes256_library() ) by a factor of 2:
+    measure_performance_iterations //= 2
+
+    # Find the one keychain to test passwords against or exit trying
+    import sqlite3
+    wallet_conn = sqlite3.connect(wallet_filename)
+    wallet_conn.row_factory = sqlite3.Row
+    select = b"SELECT * FROM Keychain"
+    if args.msigna_keychain:
+        wallet_cur = wallet_conn.execute(select + b" WHERE name LIKE '%' || ? || '%'", (args.msigna_keychain,))
+    else:
+        wallet_cur = wallet_conn.execute(select)
+    keychain = wallet_cur.fetchone()
+    if not keychain:
+        error_exit("no such keychain found in the mSIGNA vault")
+    keychain_extra = wallet_cur.fetchone()
+    if keychain_extra:
+        print("Multiple matching keychains found in the mSIGNA vault:", file=sys.stderr)
+        print("  ", keychain[b"name"])
+        print("  ", keychain_extra[b"name"])
+        for keychain_extra in wallet_cur:
+            print("  ", keychain_extra[b"name"])
+        error_exit("use --msigna-keychain NAME to specify a specific keychain")
+
+    privkey_ciphertext = str(keychain[b"privkey_ciphertext"])
+    if len(privkey_ciphertext) == 32:
+        error_exit("mSIGNA keychain '"+tstr(keychain[b"name"])+"' is not encrypted")
+    if len(privkey_ciphertext) != 48:
+        error_exit("mSIGNA keychain '"+tstr(keychain[b"name"])+"' has an unexpected privkey length")
+
+    wallet = privkey_ciphertext, struct.pack(b"< q", keychain[b"privkey_salt"])
+
+    # Workaround for Windows: if multi-processing searches are used, the wallet data gathered above
+    # doesn't survive the process fork. This means that when the wallet file is re-parsed in each
+    # child process, the keychain name (which we don't save) would be needed again. Instead, save the
+    # wallet data to the global key_data as if an extract script was used instead of a wallet file.
+    if sys.platform == "win32":
+        global key_data
+        key_data = b"ms:" + b"".join(wallet)
+
+# Import an encrypted privkey and salt that was extracted by extract-msigna-privkey.py
+def load_msigna_from_privkey(privkey_data):
+    global wallet
+    load_aes256_library()
+    wallet = privkey_data[:48], privkey_data[48:]
+
+# This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+# is correct return it, else return False for item 0; return a count of passwords checked for item 1
+def return_msigna_verified_password_or_false(passwords):
+    # Copy a global into local for a small speed boost
+    l_sha1   = hashlib.sha1
+    l_sha256 = hashlib.sha256
+
+    # Convert Unicode strings (lazily) to UTF-8 bytestrings
+    if tstr == unicode:
+        passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
+    encrypted_privkey, salt = wallet
+    for count, password in enumerate(passwords, 1):
+        password_hashed = l_sha256(l_sha256(password).digest()).digest()  # mSIGNA does this first
+        #
+        # mSIGNA's remaining KDF is OpenSSL's EVP_BytesToKey using SHA1 and an iteration count of 5
+        derived_key_iv = derived_part = b""
+        for o in xrange(3):  # 160 bits (from SHA1) * 3 > 48 bytes (what's needed for an AES256 key + IV)
+            derived_part += password_hashed + salt
+            for i in xrange(5):  # 5 is mSIGNA's hard coded iteration count
+                derived_part = l_sha1(derived_part).digest()
+            derived_key_iv += derived_part
+        #
+        privkey = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_privkey)
+        #
+        # If the 48 byte encrypted_privkey decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
+        if privkey.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+            return password if tstr == str else password.decode("utf_8", "replace"), count
 
     return False, count
 
@@ -1690,6 +1787,7 @@ parser_common.add_argument("--no-eta",      action="store_true",    help="disabl
 parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
 parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
 parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
+parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain whose password to search for in an mSIGNA vault")
 parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
 parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
 parser_common.add_argument("--privkey",     action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
@@ -2086,6 +2184,8 @@ def parse_arguments(effective_argv, **kwds):
             load_blockchain_secondpass_wallet(args.wallet)
         else:
             load_wallet(args.wallet)
+            if args.msigna_keychain and return_verified_password_or_false != return_msigna_verified_password_or_false:
+                print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
 
     # Prompt for data extracted by one of the extract-* scripts instead of using a wallet file
     if args.data_extract:
@@ -2107,9 +2207,17 @@ def parse_arguments(effective_argv, **kwds):
         # (this sets the key_data global, and returns the validated CRC)
         key_crc = load_from_base64_key(key_crc_base64)
         #
-        # Armory is currently the only supported wallet whose extract-* script provides a full private key
+        # Armory's extract script provides an encrpyted full private key (but not the master private key nor the chaincode)
         if key_data.startswith(b"ar:"):
             print("WARNING: an Armory private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
+        #
+        # mSIGNA's extract script provides an encrpyted full master private key (but not an extended one with the chaincode)
+        if key_data.startswith(b"ms:"):
+            print("WARNING: an mSIGNA master private key, once decrypted, might provide access to the entire keychain's Bitcoin", file=sys.stderr)
+            if args.msigna_keychain:
+                print(prog+": warning: ignoring --msigna-keychain (the extract script has already chosen the keychain)")
+        elif args.msigna_keychain:
+            print(prog+": warning: ignoring --msigna-keychain (--data-extract is not from an mSIGNA vault)")
         #
         # If autosaving, either check the key_crc during a session restore to make sure we're
         # actually restoring the exact same session, or save it for future such checks

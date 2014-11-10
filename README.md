@@ -9,7 +9,8 @@
      * [Bitcoin Core (Bitcoin-Qt)](https://bitcoinarmory.com/download/)
      * [MultiBit Classic](https://multibit.org/)
      * [Electrum](https://electrum.org/)
-     * Most wallets based on [bitcoinj](https://bitcoinj.github.io/)
+     * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://hivewallet.com/#native)
+     * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain](https://blockchain.info/wallet)
      * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Core wallets
      * [Bitcoin Wallet for Android](https://play.google.com/store/apps/details?id=de.schildbach.wallet) encrypted backups
