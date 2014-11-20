@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.11.0-Unicode"
+#__version__          =  "0.11.1-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.11.0"
+__version__          =  "0.11.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -2597,8 +2597,8 @@ class AnchoredToken(object):
     def is_middle(self):     return self.end is not None
     # For sets
     def __hash__(self):      return self.cached_hash
-    def __eq__(self, other): return self.cached_str == other.cached_str
-    def __ne__(self, other): return self.cached_str != other.cached_str
+    def __eq__(self, other): return     isinstance(other, AnchoredToken) and self.cached_str == other.cached_str
+    def __ne__(self, other): return not isinstance(other, AnchoredToken) or  self.cached_str != other.cached_str
     # For sort (so that tstr() can be used as the key function)
     if tstr == str:
         def __str__(self):     return self.cached_str

@@ -277,6 +277,10 @@ class Test02Anchors(GeneratorTester):
     def test_not_middle(self):
         self.do_generator_test(["^2,3one"], ["2,3one"])
 
+    # test for the bug fixed in v0.11.1
+    def test_tokens_duplicate(self):
+        self.do_generator_test(["one", "one", "^,$two"], ["one", "oneone", "onetwoone"], b"-d")
+
 
 LEET_MAP_FILE = os.path.join(typos_dir, "leet-map.txt")
 class Test03WildCards(GeneratorTester):
