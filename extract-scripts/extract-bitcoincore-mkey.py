@@ -16,7 +16,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-# If you find this program helpful, please consider a small donation
+# If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
 #           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8

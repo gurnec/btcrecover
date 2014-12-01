@@ -16,7 +16,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-# If you find this program helpful, please consider a small donation
+# If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
 #           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
@@ -1090,7 +1090,7 @@ def load_electrum_wallet(wallet_file):
     load_aes256_library()
     seed_version = wallet.get("seed_version")
     if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")
-    if seed_version != 4:                raise NotImplementedError("Unsupported Electrum seed version " + seed_version)
+    if seed_version != 4:                raise NotImplementedError("Unsupported Electrum seed version " + tstr(seed_version))
     if not wallet.get("use_encryption"): raise ValueError("Electrum wallet is not encrypted")
     wallet = base64.b64decode(wallet["seed"])
     if len(wallet) != 64:                raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
