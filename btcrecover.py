@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.11.1-Unicode"
+#__version__          =  "0.11.2-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.11.1"
+__version__          =  "0.11.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -943,7 +943,7 @@ def load_bitcoinj_wallet(wallet_file):
         raise ValueError("bitcoinj wallet is missing its scrypt encryption parameters")
 
     for key in pb_wallet.key:
-        if key.HasField("encrypted_data"):
+        if  key.type in (wallet_pb2.Key.ENCRYPTED_SCRYPT_AES, wallet_pb2.Key.DETERMINISTIC_KEY) and key.HasField("encrypted_data"):
             encrypted_len = len(key.encrypted_data.encrypted_private_key)
             if encrypted_len == 48:
                 wallet = key.encrypted_data, pb_wallet.encryption_parameters
