@@ -958,12 +958,12 @@ class Test08KeyDecryption(unittest.TestCase):
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoincore(self):
-        self.key_tester("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+        self.key_tester("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoincore_unicode(self):
-        self.key_tester("YmM6yoFsZ9HNc/LlZ40n0obzH1wC9l9fVX85SiX3PuyyHjawdigvBPQ1ntWIYTnIT6Apb8H7W7qo1ypH3QAAhey4aw==", unicode_pw=True)
+        self.key_tester("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo", unicode_pw=True)
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
@@ -1003,21 +1003,21 @@ class Test08KeyDecryption(unittest.TestCase):
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj(self):
-        self.key_tester("Ymo6Ii11my9wAPv/OsjWOHAAMjGnF4gndfuv6rT3Oawmo+qiBiW7ubV9j10F6heA3/5B7ZYfMICF7z7WYPx5gxeL0WuM0YwMweqvAEAAAAgAAQBj+AFK")
+        self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj_unicode(self):
-        self.key_tester("Ymo6quzTe66EyBuPmZTiYOmxAIYFk3o8VWHy/yyxeGn/I9kXxLIuctepE0IRAlp5/Ygrs2Aq9br0dx3+5qKixPFlyXwCYZY+g+iZAEAAAAgAAQCOmWUF", unicode_pw=True)
+        self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
-        self.key_tester("bXM6mLAJQJ2Seu6BQtL7mma4cklnelPqkyjs0A38/GrgS9f7c7tJGqezTDqnLbe1NJwPFziOo+gQo8SvfuPg")
+        self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna_unicode(self):
-        self.key_tester("bXM6Uj7Ih4mGgeqv6p+uMt8x8YvTpDM6yCalr6TPg8au/eY3hRcYgeg7QcLhpnhLXxyyzozL6CUQFnnjWYr+", unicode_pw=True)
+        self.key_tester("bXM6i9OkMzrIJqWvpM+Dxq795jeFFxiB6DtBwuGmeEtfHLLOjMvoJRAWeSsf+Pg=", unicode_pw=True)
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum(self):
@@ -1061,11 +1061,11 @@ class Test08KeyDecryption(unittest.TestCase):
         self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaAAAAAE/24yM=")
 
     def test_bitcoincore_pp(self):
-        self.key_tester("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==", force_purepython=True)
+        self.key_tester("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_bitcoincore_unicode_pp(self):
-        self.key_tester("YmM6yoFsZ9HNc/LlZ40n0obzH1wC9l9fVX85SiX3PuyyHjawdigvBPQ1ntWIYTnIT6Apb8H7W7qo1ypH3QAAhey4aw==", force_purepython=True, unicode_pw=True)
+        self.key_tester("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo", force_purepython=True, unicode_pw=True)
 
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", force_purepython=True)
@@ -1096,18 +1096,18 @@ class Test08KeyDecryption(unittest.TestCase):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", force_purepython=True, unicode_pw=True)
 
     def test_bitcoinj_pp(self):
-        self.key_tester("Ymo6Ii11my9wAPv/OsjWOHAAMjGnF4gndfuv6rT3Oawmo+qiBiW7ubV9j10F6heA3/5B7ZYfMICF7z7WYPx5gxeL0WuM0YwMweqvAEAAAAgAAQBj+AFK", force_purepython=True)
+        self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_bitcoinj_unicode_pp(self):
-        self.key_tester("Ymo6quzTe66EyBuPmZTiYOmxAIYFk3o8VWHy/yyxeGn/I9kXxLIuctepE0IRAlp5/Ygrs2Aq9br0dx3+5qKixPFlyXwCYZY+g+iZAEAAAAgAAQCOmWUF", force_purepython=True, unicode_pw=True)
+        self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
 
     def test_msigna_pp(self):
-        self.key_tester("bXM6mLAJQJ2Seu6BQtL7mma4cklnelPqkyjs0A38/GrgS9f7c7tJGqezTDqnLbe1NJwPFziOo+gQo8SvfuPg", force_purepython=True)
+        self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_msigna_unicode_pp(self):
-        self.key_tester("bXM6Uj7Ih4mGgeqv6p+uMt8x8YvTpDM6yCalr6TPg8au/eY3hRcYgeg7QcLhpnhLXxyyzozL6CUQFnnjWYr+", force_purepython=True, unicode_pw=True)
+        self.key_tester("bXM6i9OkMzrIJqWvpM+Dxq795jeFFxiB6DtBwuGmeEtfHLLOjMvoJRAWeSsf+Pg=", force_purepython=True, unicode_pw=True)
 
     def test_electrum_pp(self):
         self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT", force_purepython=True)
@@ -1138,7 +1138,7 @@ class Test08KeyDecryption(unittest.TestCase):
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):
-        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
 
         dev_names_tested = set()
         for dev in btcrecover.get_opencl_devices():
@@ -1156,7 +1156,7 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl_unicode(self):
-        btcrecover.load_from_base64_key("YmM6yoFsZ9HNc/LlZ40n0obzH1wC9l9fVX85SiX3PuyyHjawdigvBPQ1ntWIYTnIT6Apb8H7W7qo1ypH3QAAhey4aw==")
+        btcrecover.load_from_base64_key("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo")
 
         dev_names_tested = set()
         for dev in btcrecover.get_opencl_devices():
@@ -1171,7 +1171,7 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
     def test_bitcoincore_cl_no_interrupts(self):
-        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
 
         dev_names_tested = set()
         for dev in btcrecover.get_opencl_devices():
@@ -1193,7 +1193,7 @@ class Test08KeyDecryption(unittest.TestCase):
         else:
             self.skipTest("requires two identical OpenCL devices")
 
-        btcrecover.load_from_base64_key("YmM6Liw7m1jpszyXmbRHLoPBNuYkYSDEXjkNqmpXR25/vk9X2D9511+bTB22gP5ahGy4RZOv9WORecdECQEA9h79LQ==")
+        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
         btcrecover.init_bitcoincore_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [None, None], 200)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(

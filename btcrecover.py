@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.11.2-Unicode"
+#__version__          =  "0.11.3-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.11.2"
+__version__          =  "0.11.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -599,7 +599,7 @@ def return_armory_opencl_verified_password_or_false(passwords):
 
 ############### Bitcoin Core ###############
 
-# Load a Bitcoin Core BDB wallet file given the filename and extract the first encrypted master key
+# Load a Bitcoin Core BDB wallet file given the filename and extract part of the first encrypted master key
 def load_bitcoincore_wallet(wallet_filename):
     global measure_performance_iterations, wallet
     load_aes256_library()
@@ -624,15 +624,17 @@ def load_bitcoincore_wallet(wallet_filename):
     # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
     encrypted_master_key, salt, method, iter_count = struct.unpack_from(b"< 49p 9p I I", mkey)
     if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + tstr(method))
-    wallet = encrypted_master_key, salt, iter_count
+
+    # only need the final 2 encrypted blocks plus the salt and iter_count
+    wallet = encrypted_master_key[-32:], salt, iter_count
 
 # Import a Bitcoin Core encrypted master key that was extracted by extract-mkey.py
 def load_bitcoincore_from_mkey(mkey_data):
     global measure_performance_iterations, wallet
     load_aes256_library()
     measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
-    # These are the same encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
-    wallet = struct.unpack(b"< 48s 8s I", mkey_data)
+    # These are the same partial encrypted_master_key, salt, iter_count retrieved by load_bitcoincore_wallet()
+    wallet = struct.unpack(b"< 32s 8s I", mkey_data)
 
 # Load a Bitcoin Core encrypted master key given an open file object created by pywallet.py --dumpwallet
 def load_bitcoincore_from_pywallet(wallet_file):
@@ -689,7 +691,7 @@ def load_bitcoincore_from_pywallet(wallet_file):
     measure_performance_iterations = 5  # load_aes256_library sets this, but it's overwritten here
 
     # These are the same as retrieved by load_bitcoincore_wallet()
-    wallet = encrypted_master_key, salt, iter_count
+    wallet = encrypted_master_key[-32:], salt, iter_count
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -701,15 +703,15 @@ def return_bitcoincore_verified_password_or_false(passwords):
     if tstr == unicode:
         passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
 
-    encrypted_master_key, salt, iter_count = wallet
+    part_encrypted_master_key, salt, iter_count = wallet
     for count, password in enumerate(passwords, 1):
-        derived_key_iv = password + salt
+        derived_key = password + salt
         for i in xrange(iter_count):
-            derived_key_iv = l_sha512(derived_key_iv).digest()
-        master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
+            derived_key = l_sha512(derived_key).digest()
+        part_master_key = aes256_cbc_decrypt(derived_key[:32], part_encrypted_master_key[:16], part_encrypted_master_key[16:])
         #
-        # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-        if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+        # If the last block (bytes 16-31) of part_encrypted_master_key is all padding, we've found it
+        if part_master_key == b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10":
             return password if tstr == str else password.decode("utf_8", "replace"), count
 
     return False, count
@@ -791,7 +793,7 @@ def init_bitcoincore_opencl_kernel(devices, global_ws, local_ws, int_rate):
 
 def return_bitcoincore_opencl_verified_password_or_false(passwords):
     assert len(passwords) <= sum(cl_global_ws), "return_bitcoincore_opencl_verified_password_or_false: at most --global-ws passwords"
-    encrypted_master_key, salt, iter_count = wallet
+    part_encrypted_master_key, salt, iter_count = wallet
 
     # Convert Unicode strings to UTF-8 bytestrings
     if tstr == unicode:
@@ -845,10 +847,10 @@ def return_bitcoincore_opencl_verified_password_or_false(passwords):
 
     # Using the computed hashes, try to decrypt the master key (in CPU)
     for i, password in enumerate(passwords):
-        derived_key_iv = hashes[i].tostring()
-        master_key = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_master_key)
-        # If the 48 byte encrypted_master_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-        if master_key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+        derived_key = hashes[i].tostring()
+        part_master_key = aes256_cbc_decrypt(derived_key[:32], part_encrypted_master_key[:16], part_encrypted_master_key[16:])
+        # If the last block (bytes 16-31) of part_encrypted_master_key is all padding, we've found it
+        if part_master_key == b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10":
             return password if tstr == str else password.decode("utf_8", "replace"), i + 1
     return False, i + 1
 
@@ -946,7 +948,8 @@ def load_bitcoinj_wallet(wallet_file):
         if  key.type in (wallet_pb2.Key.ENCRYPTED_SCRYPT_AES, wallet_pb2.Key.DETERMINISTIC_KEY) and key.HasField("encrypted_data"):
             encrypted_len = len(key.encrypted_data.encrypted_private_key)
             if encrypted_len == 48:
-                wallet = key.encrypted_data, pb_wallet.encryption_parameters
+                # only need the final 2 encrypted blocks plus the scrypt parameters
+                wallet = key.encrypted_data.encrypted_private_key[-32:], pb_wallet.encryption_parameters
                 return
             print(prog+": warning: ignoring encrypted key of unexpected length ("+tstr(encrypted_len)+")", file=sys.stderr)
 
@@ -959,12 +962,10 @@ def load_bitcoinj_from_privkey(privkey_data):
     load_aes256_library()
     measure_performance_iterations = 8  # load_aes256_library sets this, but it's changed here
 
-    # Create namedtuples with the same attributes as the protobuf message objects from wallet_pb2
-    EncryptedData     = collections.namedtuple("EncryptedData",    "encrypted_private_key initialisation_vector")
+    # Create namedtuple with the same attributes as the protobuf message object from wallet_pb2
     EncryptionParams  = collections.namedtuple("EncryptionParams", "salt n r p")
-    encrypted_data    = EncryptedData   ._make(struct.unpack(b"48s 16s", privkey_data[:64]))
-    encryption_params = EncryptionParams._make(struct.unpack(b"< 8s I H H", privkey_data[64:]))
-    wallet = encrypted_data, encryption_params
+    encryption_params = EncryptionParams._make(struct.unpack(b"< 8s I H H", privkey_data[32:]))
+    wallet = privkey_data[:32], encryption_params
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -972,10 +973,8 @@ def return_bitcoinj_verified_password_or_false(passwords):
     # Copy a few globals into local for a small speed boost
     l_scrypt              = pylibscrypt.scrypt
     l_aes256_cbc_decrypt  = aes256_cbc_decrypt
-    encrypted_data        = wallet[0]
+    part_encrypted_key    = wallet[0]
     encryption_parameters = wallet[1]
-    encrypted_key         = encrypted_data.encrypted_private_key
-    iv                    = encrypted_data.initialisation_vector
     scrypt_salt           = encryption_parameters.salt
     scrypt_n              = encryption_parameters.n
     scrypt_r              = encryption_parameters.r
@@ -986,10 +985,10 @@ def return_bitcoinj_verified_password_or_false(passwords):
 
     for count, password in enumerate(passwords, 1):
         derived_key = l_scrypt(password, scrypt_salt, scrypt_n, scrypt_r, scrypt_p, 32)
-        key         = l_aes256_cbc_decrypt(derived_key, iv, encrypted_key)
+        part_key    = l_aes256_cbc_decrypt(derived_key, part_encrypted_key[:16], part_encrypted_key[16:])
         #
-        # If the 48 byte private encrypted_key decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-        if key.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+        # If the last block (bytes 16-31) of part_encrypted_key is all padding, we've found it
+        if part_key == b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10":
             password = password.decode("utf_16_be", "replace")
             return password.encode("ascii", "replace") if tstr == str else password, count
 
@@ -1010,7 +1009,7 @@ def load_msigna_wallet(wallet_filename):
     wallet_conn = sqlite3.connect(wallet_filename)
     wallet_conn.row_factory = sqlite3.Row
     select = b"SELECT * FROM Keychain"
-    if args.msigna_keychain:
+    if 'args' in globals() and args.msigna_keychain:
         wallet_cur = wallet_conn.execute(select + b" WHERE name LIKE '%' || ? || '%'", (args.msigna_keychain,))
     else:
         wallet_cur = wallet_conn.execute(select)
@@ -1032,7 +1031,8 @@ def load_msigna_wallet(wallet_filename):
     if len(privkey_ciphertext) != 48:
         error_exit("mSIGNA keychain '"+tstr(keychain[b"name"])+"' has an unexpected privkey length")
 
-    wallet = privkey_ciphertext, struct.pack(b"< q", keychain[b"privkey_salt"])
+    # only need the final 2 encrypted blocks plus the salt
+    wallet = privkey_ciphertext[-32:], struct.pack(b"< q", keychain[b"privkey_salt"])
 
     # Workaround for Windows: if multi-processing searches are used, the wallet data gathered above
     # doesn't survive the process fork. This means that when the wallet file is re-parsed in each
@@ -1046,7 +1046,7 @@ def load_msigna_wallet(wallet_filename):
 def load_msigna_from_privkey(privkey_data):
     global wallet
     load_aes256_library()
-    wallet = privkey_data[:48], privkey_data[48:]
+    wallet = privkey_data[:32], privkey_data[32:]
 
 # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
 # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -1059,22 +1059,22 @@ def return_msigna_verified_password_or_false(passwords):
     if tstr == unicode:
         passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
 
-    encrypted_privkey, salt = wallet
+    part_encrypted_privkey, salt = wallet
     for count, password in enumerate(passwords, 1):
         password_hashed = l_sha256(l_sha256(password).digest()).digest()  # mSIGNA does this first
         #
         # mSIGNA's remaining KDF is OpenSSL's EVP_BytesToKey using SHA1 and an iteration count of 5
-        derived_key_iv = derived_part = b""
-        for o in xrange(3):  # 160 bits (from SHA1) * 3 > 48 bytes (what's needed for an AES256 key + IV)
+        derived_key = derived_part = b""
+        for o in xrange(2):  # 160 bits (from SHA1) * 2 > 32 bytes (what's needed for an AES256 key)
             derived_part += password_hashed + salt
             for i in xrange(5):  # 5 is mSIGNA's hard coded iteration count
                 derived_part = l_sha1(derived_part).digest()
-            derived_key_iv += derived_part
+            derived_key += derived_part
         #
-        privkey = aes256_cbc_decrypt(derived_key_iv[0:32], derived_key_iv[32:48], encrypted_privkey)
+        part_privkey = aes256_cbc_decrypt(derived_key[0:32], part_encrypted_privkey[:16], part_encrypted_privkey[16:])
         #
-        # If the 48 byte encrypted_privkey decrypts to exactly 32 bytes long (padded with 16 16s), we've found it
-        if privkey.endswith(b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10"):
+        # If the last block (bytes 16-31) of part_encrypted_privkey is all padding, we've found it
+        if part_privkey == b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10":
             return password if tstr == str else password.decode("utf_8", "replace"), count
 
     return False, count

@@ -61,7 +61,7 @@ if method != 0:
 
 print("Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:", file=sys.stderr)
 
-bytes = b"bc:" + encrypted_master_key + salt + struct.pack("<I", iter_count)
+bytes = b"bc:" + encrypted_master_key[16:] + salt + struct.pack("<I", iter_count)
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))
