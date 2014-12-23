@@ -59,9 +59,10 @@ encrypted_master_key, salt, method, iter_count = struct.unpack_from("< 49p 9p I 
 if method != 0:
     print(prog+": warning: unexpected Bitcoin Core key derivation method", str(method), file=sys.stderr)
 
-print("Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:", file=sys.stderr)
+print("Partial Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:", file=sys.stderr)
 
-bytes = b"bc:" + encrypted_master_key[16:] + salt + struct.pack("<I", iter_count)
+# Only include the last two AES blocks (last 32 bytes) of the 48-byte encrypted master key
+bytes = b"bc:" + encrypted_master_key[-32:] + salt + struct.pack("<I", iter_count)
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))
