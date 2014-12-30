@@ -46,10 +46,14 @@ tstr = str
 tchr = chr
 
 import warnings
+# Convert warnings to errors:
 warnings.simplefilter("error")
+# except this from Intel's OpenCL compiler:
 warnings.filterwarnings("ignore", r"Non-empty compiler output encountered\. Set the environment variable PYOPENCL_COMPILER_OUTPUT=1 to see more\.", UserWarning)
+# and except this from Armory:
+warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
 
-import unittest, os, os.path, cPickle, tempfile, shutil, filecmp, argparse, sys
+import unittest, os, os.path, cPickle, tempfile, shutil, filecmp, sys
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 typos_dir  = os.path.join(os.path.dirname(__file__), "typos")
@@ -1399,9 +1403,18 @@ class QuickTests(unittest.TestSuite) :
 
 
 if __name__ == b'__main__':
+
+    import argparse, atexit
+
+    # Add two new arguments to those already provided by unittest.main()
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--no-buffer", action="store_true")
+    parser.add_argument("--no-pause",  action="store_true")
     args, unittest_args = parser.parse_known_args()
     sys.argv[1:] = unittest_args
+
+    # By default, pause before exiting
+    if not args.no_pause:
+        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
 
     unittest.main(buffer = not args.no_buffer)

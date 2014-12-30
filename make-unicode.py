@@ -24,7 +24,7 @@
 #                      Thank You!
 
 from __future__ import print_function
-import os.path as path, sys, unittest
+import os.path as path, sys
 
 
 install_dir = path.dirname(__file__)
@@ -77,17 +77,29 @@ def make_unicode_version(ascii_name, unicode_name):
 
 if __name__ == '__main__':
 
+    import argparse, atexit, unittest
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-quicktests", action="store_true", help="don't run the QuickTests suite")
+    parser.add_argument("--no-pause",      action="store_true", help="don't prompt 'Press Enter to exit'")
+    args = parser.parse_args()
+
+    # By default, pause before exiting
+    if not args.no_pause:
+        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
+
     # Build the Unicode versions of btcrecover and the test-btcr test suite
     modified1 = make_unicode_version("btcrecover.py", "btcrecoveru.py")
     modified2 = make_unicode_version("test-btcr.py",  "test-btcru.py")
     if not modified1 and not modified2:
         exit("nothing left to do, exiting")
 
-    # If at least one of the files were updated, run the QuickTests suite
-    print("\nRunning quick tests\n")
+    # If at least one of the files were updated, by default run the QuickTests suite
+    if not args.no_quicktests:
+        print("\nRunning quick tests\n")
 
-    test_btcr = __import__("test-btcru")
-    if unittest.TextTestRunner(buffer=True).run(test_btcr.QuickTests()).wasSuccessful():
-        print("\nuse 'python test-btcru.py' to run the full test suite.\n")
-    else:
-        exit(1)
+        test_btcr = __import__("test-btcru")
+        if unittest.TextTestRunner(buffer=True).run(test_btcr.QuickTests()).wasSuccessful():
+            print("\nStart test-btcru.py to run the full test suite.")
+        else:
+            exit(1)
