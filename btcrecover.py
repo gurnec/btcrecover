@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.11.3-Unicode"
+#__version__          =  "0.11.4-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.11.3"
+__version__          =  "0.11.4"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -1873,9 +1873,12 @@ def parse_arguments(effective_argv, **kwds):
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
+    TOKENS_AUTO_FILENAME = "btcrecover-tokens-auto.txt"
     if not args.restore and not args.passwordlist and not args.performance:
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
-            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True, make_peekable=True)
+            default_filename=TOKENS_AUTO_FILENAME, permit_stdin=True, make_peekable=True)
+        if hasattr(tokenlist_file, "name") and tokenlist_file.name == TOKENS_AUTO_FILENAME:
+            enable_pause()  # enabled by default when using btcrecover-tokens-auto.txt
     else:
         tokenlist_file = None
 
@@ -1930,7 +1933,9 @@ def parse_arguments(effective_argv, **kwds):
         #
         # We finally know the tokenlist filename; open it here
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
-            default_filename="btcrecover-tokens-auto.txt", permit_stdin=True, make_peekable=True)
+            default_filename=TOKENS_AUTO_FILENAME, permit_stdin=True, make_peekable=True)
+        if hasattr(tokenlist_file, "name") and tokenlist_file.name == TOKENS_AUTO_FILENAME:
+            enable_pause()  # enabled by default when using btcrecover-tokens-auto.txt
         # Display a warning if any options (all ignored) were specified in the tokenlist file
         if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
             first_line = tokenlist_file.readline()
@@ -1976,7 +1981,7 @@ def parse_arguments(effective_argv, **kwds):
     # or we're using a tokenlist file it it should have been found and opened by now,
     # or we're running a performance test (and neither is open; already checked above).
     if not args.passwordlist and not tokenlist_file and not args.performance and not args.calc_memory:
-        error_exit("argument --tokenlist or --passwordlist is required (or file btcrecover-tokens-auto.txt must be present)")
+        error_exit("argument --tokenlist or --passwordlist is required (or file "+TOKENS_AUTO_FILENAME+" must be present)")
 
     if tokenlist_file and args.max_tokens < args.min_tokens:
         error_exit("--max-tokens must be greater than --min-tokens")
