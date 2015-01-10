@@ -24,7 +24,7 @@
 #                      Thank You!
 
 from __future__ import print_function
-import os.path as path, sys
+import os.path as path
 
 
 install_dir = path.dirname(__file__)
@@ -40,10 +40,10 @@ def make_unicode_version(ascii_name, unicode_name):
 
     if path.isfile  (unicode_version_path) and \
        path.getmtime(unicode_version_path) >= path.getmtime(ascii_version_path):
-        print("existing Unicode version "+unicode_name+" is up-to-date", file=sys.stderr)
+        print("existing Unicode version "+unicode_name+" is up-to-date")
         return False
 
-    print("making "+unicode_name, file=sys.stderr)
+    print("making "+unicode_name)
     with open(ascii_version_path, "rb") as ascii_version:
         with open(unicode_version_path, "wb") as unicode_version:
 
@@ -92,10 +92,10 @@ if __name__ == '__main__':
     modified1 = make_unicode_version("btcrecover.py", "btcrecoveru.py")
     modified2 = make_unicode_version("test-btcr.py",  "test-btcru.py")
     if not modified1 and not modified2:
-        exit("nothing left to do, exiting")
+        print("nothing left to do, exiting")
 
     # If at least one of the files were updated, by default run the QuickTests suite
-    if not args.no_quicktests:
+    elif not args.no_quicktests:
         print("\nRunning quick tests\n")
 
         test_btcr = __import__("test-btcru")

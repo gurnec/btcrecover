@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.11.4-Unicode"
+#__version__          =  "0.11.5-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.11.4"
+__version__          =  "0.11.5"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, os.path, cPickle, gc, \
@@ -2189,6 +2189,8 @@ def parse_arguments(effective_argv, **kwds):
             load_blockchain_secondpass_wallet(args.wallet)
         else:
             load_wallet(args.wallet)
+            if return_verified_password_or_false == return_bitcoinj_verified_password_or_false:
+                print(prog+": warning: for MultiBit, use a .key file instead of a .wallet file if possible")
             if args.msigna_keychain and return_verified_password_or_false != return_msigna_verified_password_or_false:
                 print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
 
