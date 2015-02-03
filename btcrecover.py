@@ -1063,15 +1063,17 @@ def return_msigna_verified_password_or_false(passwords):
     for count, password in enumerate(passwords, 1):
         password_hashed = l_sha256(l_sha256(password).digest()).digest()  # mSIGNA does this first
         #
-        # mSIGNA's remaining KDF is OpenSSL's EVP_BytesToKey using SHA1 and an iteration count of 5
-        derived_key = derived_part = b""
-        for o in xrange(2):  # 160 bits (from SHA1) * 2 > 32 bytes (what's needed for an AES256 key)
-            derived_part += password_hashed + salt
-            for i in xrange(5):  # 5 is mSIGNA's hard coded iteration count
-                derived_part = l_sha1(derived_part).digest()
-            derived_key += derived_part
+        # mSIGNA's remaining KDF is OpenSSL's EVP_BytesToKey using SHA1 and an iteration count of
+        # 5. The EVP_BytesToKey outer loop is unrolled with two iterations below which produces
+        # 320 bits (2x SHA1's output) which is > 32 bytes (what's needed for the AES-256 key)
+        derived_part1 = password_hashed + salt
+        for i in xrange(5):  # 5 is mSIGNA's hard coded iteration count
+            derived_part1 = l_sha1(derived_part1).digest()
+        derived_part2 = derived_part1 + password_hashed + salt
+        for i in xrange(5):
+            derived_part2 = l_sha1(derived_part2).digest()
         #
-        part_privkey = aes256_cbc_decrypt(derived_key[0:32], part_encrypted_privkey[:16], part_encrypted_privkey[16:])
+        part_privkey = aes256_cbc_decrypt(derived_part1 + derived_part2[:12], part_encrypted_privkey[:16], part_encrypted_privkey[16:])
         #
         # If the last block (bytes 16-31) of part_encrypted_privkey is all padding, we've found it
         if part_privkey == b"\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10\x10":
