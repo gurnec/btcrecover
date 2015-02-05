@@ -609,20 +609,20 @@ class Test05CommandLine(GeneratorTester):
     def test_skip_end2end(self):
         btcrecover.parse_arguments(b"--skip 2 --tokenlist __funccall --listpass".split(),
             tokenlist = StringIO("one \n two"))
-        self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main())
+        self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main()[1])
     def test_skip_end2end_all_exact(self):
         btcrecover.parse_arguments(b"--skip 4 --tokenlist __funccall --listpass".split(),
             tokenlist = StringIO("one \n two"))
-        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main()[1])
     def test_skip_end2end_all_pastend(self):
         btcrecover.parse_arguments(b"--skip 5 --tokenlist __funccall --listpass".split(),
             tokenlist = StringIO("one \n two"))
-        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main())
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main()[1])
     def test_skip_end2end_all_noeta(self):
         btcrecover.parse_arguments(b"--skip 5 --tokenlist __funccall --no-eta --data-extract".split(),
             tokenlist    = StringIO("one \n two"),
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
-        self.assertIn("Skipped all 4 passwords", btcrecover.main())
+        self.assertIn("Skipped all 4 passwords", btcrecover.main()[1])
 
     def test_max_eta(self):
         btcrecover.parse_arguments(b"--max-eta 1 --tokenlist __funccall --data-extract".split(),
@@ -630,7 +630,7 @@ class Test05CommandLine(GeneratorTester):
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
-        self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
+        self.assertIn("at least 11 passwords to try, ETA > --max-eta option (1 hours)", cm.exception.code)
     def test_max_eta_ok(self):
         btcrecover.parse_arguments(b"--max-eta 1 --tokenlist __funccall --data-extract".split(),
             tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10"),
@@ -642,7 +642,7 @@ class Test05CommandLine(GeneratorTester):
             data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
             btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
-        self.assertIn("at least 11 passwords to try, ETA > max_eta option (1 hours)", cm.exception.code)
+        self.assertIn("at least 11 passwords to try, ETA > --max-eta option (1 hours)", cm.exception.code)
     def test_max_eta_skip_ok(self):
         btcrecover.parse_arguments(b"--max-eta 1 --skip 5 --tokenlist __funccall --data-extract".split(),
             tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
@@ -700,7 +700,7 @@ class Test06AutosaveRestore(unittest.TestCase):
     def test_autosave(self):
         autosave_file = self.__class__.autosave_file
         self.run_autosave_parse_arguments(autosave_file)
-        self.assertIn("Password search exhausted", btcrecover.main())
+        self.assertIn("Password search exhausted", btcrecover.main()[1])
         #
         # Load slot 0, and verify it was created before any passwords were tested
         autosave_file.seek(0)
@@ -718,13 +718,13 @@ class Test06AutosaveRestore(unittest.TestCase):
     # and make sure all of the passwords have already been tested
     def test_autosave_restore(self):
         self.run_autosave_parse_arguments(BytesIONonClosing(self.__class__.autosave_file.getvalue()))
-        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main())
+        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main()[1])
 
     # Using --restore, restore (a copy of) the autosave data created by test_autosave(),
     # and make sure all of the passwords have already been tested
     def test_restore(self):
         self.run_restore_parse_arguments(BytesIONonClosing(self.__class__.autosave_file.getvalue()))
-        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main())
+        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main()[1])
 
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
     # but change the arguments to generate an error
@@ -766,7 +766,7 @@ class Test06AutosaveRestore(unittest.TestCase):
         #
         # Slot 1 had the final save, but since it is invalid, the loader should fall
         # back to slot 0 with the initial save, so the passwords should be tried again.
-        self.assertIn("Password search exhausted", btcrecover.main())
+        self.assertIn("Password search exhausted", btcrecover.main()[1])
         #
         # Because slot 1 was invalid, it is the first slot overwritten. Load it, and
         # verify it was written to before any passwords were tested
@@ -819,18 +819,20 @@ class Test07WalletDecryption(unittest.TestCase):
         shutil.copyfile(wallet_filename, temp_wallet_filename)
 
         if blockchain_mainpass is None:
-            btcrecover.load_wallet(temp_wallet_filename)
+            wallet = btcrecover.load_wallet(temp_wallet_filename)
         else:
-            btcrecover.load_blockchain_secondpass_wallet(temp_wallet_filename, blockchain_mainpass, force_purepython)
+            wallet = btcrecover.WalletBlockchainSecondpass.load_from_filename(
+                temp_wallet_filename, blockchain_mainpass, force_purepython)
+
         if force_purepython:     btcrecover.load_aes256_library(force_purepython=True)
         if force_kdf_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
 
-        self.assertEqual(btcrecover.return_verified_password_or_false(
+        self.assertEqual(wallet.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
+        self.assertEqual(wallet.return_verified_password_or_false(
             ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
 
-        btcrecover.unload_wallet()
+        del wallet
         self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
         shutil.rmtree(temp_dir)
 
@@ -893,9 +895,8 @@ class Test07WalletDecryption(unittest.TestCase):
     # base64 data that doesn't look entirely encrypted (random) are not Blockchain wallets
     def test_blockchain_invalid(self):
         # A base64-containing file that's mostly but not entirely encrypted (random)
-        with open(os.path.join(wallet_dir, "multibit-wallet.key"), "rb") as wallet_file:
-            with self.assertRaises(ValueError) as cm:
-                btcrecover.load_blockchain_wallet(wallet_file)
+        with self.assertRaises(ValueError) as cm:
+            btcrecover.WalletBlockchain.load_from_filename(os.path.join(wallet_dir, "multibit-wallet.key"))
         self.assertIn("Doesn't look random enough to be an encrypted Blockchain wallet", cm.exception.args[0])
 
     def test_bitcoincore_pp(self):
@@ -1148,7 +1149,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 200)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [None], 200)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
@@ -1166,7 +1167,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 200)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [None], 200)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-тест-пароль", "btcr-wrong-password-4"]), ("btcr-тест-пароль", 2),
@@ -1181,7 +1182,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_bitcoincore_opencl_kernel([dev], [4], [None], 1)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [None], 1)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
@@ -1198,7 +1199,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.skipTest("requires two identical OpenCL devices")
 
         btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
-        btcrecover.init_bitcoincore_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [None, None], 200)
+        btcrecover.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [None, None], 200)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4"]), (False, 4))
@@ -1216,7 +1217,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 200)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [None], 200)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
@@ -1234,7 +1235,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_armory_opencl_kernel([dev], [8], [None], 200, save_every=3)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [8], [None], 200, save_every=3)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
@@ -1253,7 +1254,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrecover.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.init_armory_opencl_kernel([dev], [4], [None], 1)
+            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [None], 1)
 
             self.assertEqual(btcrecover.return_verified_password_or_false(
                 ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
@@ -1271,7 +1272,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.skipTest("requires two identical OpenCL devices")
 
         btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
-        btcrecover.init_armory_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [None, None], 200)
+        btcrecover.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [None, None], 200)
 
         self.assertEqual(btcrecover.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4",
@@ -1305,7 +1306,7 @@ class Test09EndToEnd(unittest.TestCase):
             tokenlist    = StringIO(E2E_TOKENLIST),
             data_extract = E2E_DATA_EXTRACT,
             autosave     = autosave_file)
-        self.assertIn("'btcr-test-password'", btcrecover.main())
+        self.assertEqual("btcr-test-password", btcrecover.main()[0])
 
         # Verify the exact password number where it was found to ensure password ordering hasn't changed
         autosave_file.seek(SAVESLOT_SIZE)
@@ -1329,7 +1330,7 @@ class Test09EndToEnd(unittest.TestCase):
             tokenlist    = StringIO(E2E_TOKENLIST),
             data_extract = E2E_DATA_EXTRACT,
             autosave     = autosave_file)
-        self.assertIn("Password search exhausted", btcrecover.main())
+        self.assertIn("Password search exhausted", btcrecover.main()[1])
 
         # Verify the password number where the search started
         autosave_file.seek(0)
