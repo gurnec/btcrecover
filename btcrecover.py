@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.12.0-Unicode"
+#__version__          =  "0.12.1-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.12.0"
+__version__          =  "0.12.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2009,10 +2009,13 @@ def register_simple_typo(name, help = None):
 # inserted_items - instead of specifying "--typos-insert items-to-insert", this can be
 #                  an iterable of the items to insert (useful if the wildcard language
 #                  is not flexible enough or if the items to insert are not strings)
+# check_only     - (similar in concept to --regex-only) a boolean function accepting an
+#                  item just before it is passed to return_verified_password_or_false()
+#                  which should return False if the the item should not be checked.
 #
 # TODO: document kwds usage (as used by unit tests)
 def parse_arguments(effective_argv, wallet = None, base_iterator = None,
-                    perf_iterator = None, inserted_items = None, **kwds):
+                    perf_iterator = None, inserted_items = None, check_only = None, **kwds):
     # Do some basic globals initialization; the rest are all done below
     init_wildcards()
     init_password_generator()
@@ -2350,6 +2353,9 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     except re.error as e: error_exit("invalid --regex-only",  args.regex_only, ":", e)
     try:   regex_never = re.compile(tstr_from_stdin(args.regex_never)) if args.regex_never else None
     except re.error as e: error_exit("invalid --regex-never", args.regex_only, ":", e)
+
+    global custom_final_checker
+    custom_final_checker = check_only
 
     if args.skip < 0:
         print(prog+": warning: --skip must be >= 0, assuming 0", file=sys.stderr)
@@ -3089,9 +3095,13 @@ def password_generator(chunksize = 1, only_yield_count = False):
             if l_regex_only  and not l_regex_only .search(password): continue
             if l_regex_never and     l_regex_never.search(password): continue
 
+            # This is the check_only argument optionally passed
+            # by external libraries to parse_arguments()
+            if custom_final_checker and not custom_final_checker(password): continue
+
             # This duplicate check can be disabled via --no-dupchecks
             # because it can take up a lot of memory, sometimes needlessly
-            if l_password_dups and l_password_dups.is_duplicate(password): continue
+            if l_password_dups and l_password_dups.is_duplicate(password):  continue
 
             # Workers in a server pool ignore passwords not assigned to them
             if l_args_worker:
@@ -3731,7 +3741,7 @@ def swap_typos_generator(password_base):
                 for i in swap_indexes:
                     if password[i] == password[i+1] and l_args_nodupchecks < 4:  # "swapping" these would result in generating a duplicate guess
                         break
-                    password = password[:i] + password[i+1] + password[i] + password[i+2:]
+                    password = password[:i] + password[i+1:i+2] + password[i:i+1] + password[i+2:]
                 else:  # if we left the loop normally (didn't break)
                     yield password
 
@@ -3902,7 +3912,7 @@ def insert_typos_generator(password_base):
             # If multiple inserts are permitted at a single location, make sure they're
             # limited to args.max_adjacent_inserts. (If multiple inserts are not permitted,
             # they are never produced by the combinations_function selected earlier.)
-            if l_max_adjacent_inserts > 1:
+            if l_max_adjacent_inserts > 1 and inserts_count > l_max_adjacent_inserts:
                 too_many_adjacent = False
                 last_index = -1
                 for index in insert_indexes:
