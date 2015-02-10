@@ -798,12 +798,16 @@ def can_load_armory():
             else: raise
     return is_armory_loadable
 
+is_bitcoinj_loadable = None
 def can_load_bitcoinj_requirements():
-    try:
-        import wallet_pb2, pylibscrypt
-    except ImportError:
-        return False
-    return True
+    global is_bitcoinj_loadable
+    if is_bitcoinj_loadable is None:
+        try:
+            import wallet_pb2, pylibscrypt
+            is_bitcoinj_loadable = pylibscrypt._done
+        except ImportError:
+            is_bitcoinj_loadable = False
+    return is_bitcoinj_loadable
 
 
 class Test07WalletDecryption(unittest.TestCase):
@@ -1006,11 +1010,13 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_androidknc_unicode(self):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", unicode_pw=True)
 
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj_unicode(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
@@ -1100,10 +1106,12 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_androidknc_unicode_pp(self):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", force_purepython=True, unicode_pw=True)
 
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
     def test_bitcoinj_pp(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
     def test_bitcoinj_unicode_pp(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
 

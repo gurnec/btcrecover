@@ -997,6 +997,8 @@ class WalletBitcoinj(object):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
         global pylibscrypt
         import pylibscrypt
+        if not pylibscrypt._done:
+            print(prog+": warning: can't find an scrypt library, using pure python version instead", file=sys.stderr)
         load_aes256_library()
 
     def __setstate__(self, state):
@@ -1122,6 +1124,7 @@ class WalletMsigna(object):
             for keychain_extra in wallet_cur:
                 print("  ", keychain_extra[b"name"])
             error_exit("use --msigna-keychain NAME to specify a specific keychain")
+        wallet_conn.close()
 
         privkey_ciphertext = str(keychain[b"privkey_ciphertext"])
         if len(privkey_ciphertext) == 32:
