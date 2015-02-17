@@ -1014,7 +1014,6 @@ class WalletBitcoinj(object):
         import wallet_pb2
         pb_wallet = wallet_pb2.Wallet()
         with open(wallet_filename, "rb") as wallet_file:
-            wallet_file.seek(0)
             pb_wallet.ParseFromString(wallet_file.read(1048576))  # up to 1M, typical size is a few k
         if pb_wallet.encryption_type == wallet_pb2.Wallet.UNENCRYPTED:
             raise ValueError("bitcoinj wallet is not encrypted")
@@ -1622,8 +1621,36 @@ def load_pbkdf2_library(force_purepython = False):
 ################################### Argument Parsing ###################################
 
 
-# Calls sys.exit with an error message, taking unnamed arguments like print()
-def error_exit(*msgs): sys.exit(prog + ": error: " + " ".join(map(tstr, msgs)))
+# Replace the builtin print with one which won't die when attempts are made to print
+# unicode strings which contain characters unsupported by the destination console
+#
+builtin_print = print
+#
+def safe_print(*args, **kwargs):
+    if kwargs.get("file") in (None, sys.stdout, sys.stderr):
+        builtin_print(*_do_safe_print(*args, **kwargs), **kwargs)
+    else:
+        builtin_print(*args, **kwargs)
+#
+def _do_safe_print(*args, **kwargs):
+    try:
+        encoding = kwargs.get("file", sys.stdout).encoding or "ascii"
+    except AttributeError:
+        encoding = "ascii"
+    converted_args = []
+    for arg in args:
+        if isinstance(arg, unicode):
+            arg = arg.encode(encoding, errors="replace")
+        converted_args.append(arg)
+    return converted_args
+#
+if tstr == unicode:  # only replace it for Unicode builds
+    print = safe_print
+
+# Calls sys.exit with an error message, taking unnamed arguments as print() does
+def error_exit(*messages):
+    messages = _do_safe_print(*messages)  # convert to safely-encoded byte strings
+    sys.exit(str(prog) + b": error: " + b" ".join(map(tstr, messages)))
 
 # For ASCII builds, checks that the input string's chars are all 7-bit US-ASCII
 if tstr == str:
@@ -2096,8 +2123,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
         first_line = tokenlist_file.readline().rstrip("\r\n")[1:]
         if first_line.startswith("--"):                  # if it's additional args, not just a comment
-            stderr_encoding = hasattr(sys.stderr, "encoding") and sys.stderr.encoding or "ascii"  # for unittest
-            print(b"Read additional options from tokenlist file: "+first_line.encode(stderr_encoding, "replace"), file=sys.stderr)
+            print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
             tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
             tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
             for arg in tokenlist_args:
@@ -4189,12 +4215,12 @@ def main():
     passwords_count = 0
     if args.listpass:
         if tstr == unicode:
-            stdout_encoding = sys.stderr.encoding if hasattr(sys.stdout, "encoding") else None  # for unittest
+            stdout_encoding = sys.stdout.encoding if hasattr(sys.stdout, "encoding") else None  # for unittest
             if not stdout_encoding:
                 print(prog+": warning: output will be UTF-8 encoded", file=sys.stderr)
                 stdout_encoding = "utf_8"
             elif "UTF" in stdout_encoding.upper():
-                stdout_encoding = None  # let print do the encoding automatically
+                stdout_encoding = None  # let the builtin print do the encoding automatically
             else:
                 print(prog+": warning: stdout's encoding is not Unicode compatible; data loss may occur", file=sys.stderr)
         else:
@@ -4204,7 +4230,7 @@ def main():
         try:
             for password in password_iterator:
                 passwords_count += 1
-                print(password[0] if stdout_encoding is None else password[0].encode(stdout_encoding, "replace"))
+                builtin_print(password[0] if stdout_encoding is None else password[0].encode(stdout_encoding, "replace"))
         except BaseException as e:
             handled = handle_oom() if isinstance(e, MemoryError) and passwords_count > 0 else False
             if not handled: print()  # move to the next line
@@ -4233,7 +4259,8 @@ def main():
         start = time.clock()
         # Emulate calling the verification function with lists of size inner_iterations
         for o in xrange(outer_iterations):
-            loaded_wallet.return_verified_password_or_false(list(itertools.islice(performance_generator, inner_iterations)))
+            loaded_wallet.return_verified_password_or_false(list(
+                itertools.islice(itertools.ifilter(custom_final_checker, performance_generator), inner_iterations)))
         est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
         del performance_generator
         assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
@@ -4441,12 +4468,9 @@ if __name__ == b'__main__':
     (password_found, not_found_msg) = main()
 
     if password_found:
-        print("Password found:", repr(password_found), end="")
+        print(    "Password found: '" + password_found + "'")
         if any(ord(c) < 32 or ord(c) > 126 for c in password_found):
-            # control and non-ASCII characters may be unprintable, but try anyways
-            try:    print(" ("+password_found+")", end="")
-            except: pass
-        print()
+            print("HTML encoded:   '" + password_found.encode("ascii", "xmlcharrefreplace") + "'")
 
     if not_found_msg:
         print(not_found_msg, file=sys.stderr if args.listpass else sys.stdout)

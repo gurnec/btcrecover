@@ -1356,7 +1356,7 @@ class Test09EndToEnd(unittest.TestCase):
 # Test08KeyDecryption
 class QuickTests(unittest.TestSuite) :
     def __init__(self):
-        super(self.__class__, self).__init__()
+        super(QuickTests, self).__init__()
         tl = unittest.defaultTestLoader
         self.addTests(tl.loadTestsFromTestCase(TestCase)
             for TestCase in (Test01Basics, Test02Anchors, Test03WildCards, Test04Typos))
