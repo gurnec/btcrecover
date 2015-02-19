@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.12.1-Unicode"
+#__version__          =  "0.12.2-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.12.1"
+__version__          =  "0.12.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -263,8 +263,15 @@ def load_armory_library():
 
     # Try to add the Armory libraries to the path for various platforms
     if sys.platform == "win32":
-        win32_path = os.environ.get("ProgramFiles",  r"C:\Program Files (x86)") + r"\Armory"
-        sys.path.extend((win32_path, win32_path + r"\library.zip"))
+        progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")
+        armory_path    = progfiles_path + r"\Armory"
+        sys.path.extend((armory_path, armory_path + r"\library.zip"))
+        # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
+        if struct.calcsize('P') * 8 == 64:
+            assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
+            progfiles_path += " (x86)"
+            armory_path     = progfiles_path + r"\Armory"
+            sys.path.extend((armory_path, armory_path + r"\library.zip"))
     elif sys.platform.startswith("linux"):
         sys.path.append("/usr/lib/armory")
     elif sys.platform == "darwin":  # untested
@@ -285,6 +292,10 @@ def load_armory_library():
                 if i<9 and e.filename.endswith(r"\armorylog.txt"):
                     time.sleep(random.uniform(0.05, 0.15))
                 else: raise  # unexpected failure
+            except ImportError as e:
+                if "not a valid Win32 application" in str(e):
+                    print(prog+": error: can't load Armory, 32/64 bit mismatch between it and Python", file=sys.stderr)
+                raise
             else: break  # when it succeeds
 
         # Fixed https://github.com/etotheipi/BitcoinArmory/issues/196
@@ -1715,7 +1726,7 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
             re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i?[{}]|i?\[.+?\]{}|(?:;.+?;(\d+)?|;(\d+))?b)"
                     .format(wildcard_keys, "|["+contracting_wildcards+"]" if contracting_wildcards else ""),
                     syntax_check_range, str_with_wildcards)
-    except ValueError as e: return str(e)
+    except ValueError as e: return tstr(e)
     if "%" in valid_wildcards_removed:
         invalid_wildcard_msg = "invalid wildcard (%) syntax (use %% to escape a %)"
         # If checking with permit_contracting_wildcards==True returns something different,
@@ -1732,7 +1743,7 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
     for wildcard_set in re.findall(r"%[\d,i]*\[(.+?)\]|%%", str_with_wildcards):
         if wildcard_set:
             try:   re.sub(r"(.)-(.)", expand_single_range, wildcard_set)
-            except ValueError as e: return str(e)
+            except ValueError as e: return tstr(e)
     return count
 #
 def syntax_check_range(m):
