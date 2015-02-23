@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -637,16 +637,15 @@ class WalletBIP32(object):
 @register_selectable_wallet_class("Generic BIP39/BIP44 account 0 (Mycelium, TREZOR)")
 class WalletBIP39(WalletBIP32):
 
-    # Load all the wordlists for all languages if not already loaded
-    # (the actual wordlist to be used is selected in config_mnemonic() )
+    # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
     _language_words = {}
     @classmethod
     def _load_wordlists(cls, name = "bip39"):
-        if not cls._language_words:
-            for filename in glob.iglob(os.path.join(wordlists_dir, name + "-??*.txt")):
-                wordlist_lang = os.path.basename(filename)[6:-4]  # e.g. "en", or "zh-hant"
-                cls._language_words[wordlist_lang] = load_wordlist(name, wordlist_lang)
-                assert len(cls._language_words[wordlist_lang]) == 2048, "BIP39 wordlist has 2048 words"
+        for filename in glob.iglob(os.path.join(wordlists_dir, name + "-??*.txt")):
+            wordlist_lang = os.path.basename(filename)[len(name)+1:-4]  # e.g. "en", or "zh-hant"
+            wordlist      = load_wordlist(name, wordlist_lang)
+            assert len(wordlist) == 2048 or cls is not WalletBIP39, "BIP39 wordlist has 2048 words"
+            cls._language_words[wordlist_lang] = wordlist
 
     @property
     def word_ids(self): return self._words
@@ -655,7 +654,8 @@ class WalletBIP39(WalletBIP32):
 
     def __init__(self, loading = False):
         super(WalletBIP39, self).__init__(loading)
-        self._load_wordlists()
+        if not self._language_words:
+            self._load_wordlists()
         btcr.load_pbkdf2_library()  # btcr's pbkdf2 library is used in _derive_seed()
 
     def __setstate__(self, state):
@@ -865,6 +865,80 @@ class WalletBitcoinj(WalletBIP39):
     def create_from_params(cls, mpk = None, address = None, address_limit = None):
         # Just calls WalletBIP39's version with a hardcoded path
         return super(WalletBitcoinj, cls).create_from_params(mpk, address, address_limit, path="m/0'/0/")
+
+
+############### Electrum2 ###############
+
+@register_selectable_wallet_class("Electrum 2.x")
+@btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
+class WalletElectrum2(WalletBIP39):
+
+    # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
+    @classmethod
+    def _load_wordlists(cls):
+        super(WalletElectrum2, cls)._load_wordlists()             # the default bip39 word lists
+        super(WalletElectrum2, cls)._load_wordlists("electrum2")  # any additional Electrum2 word lists
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        data = wallet_file.read(20).split()
+        return len(data) >= 2 and data[0] == '{' and data[1] == '"accounts":'
+
+    # Load an Electrum2 wallet file (the part of it we need, just the master public key)
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        import json
+        with open(wallet_filename) as wallet_file:
+            wallet = json.load(wallet_file)
+        seed_version = wallet.get("seed_version")
+        if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum2 seed_version not found)")
+        if seed_version != 11:               raise NotImplementedError("Unsupported Electrum2 seed version " + seed_version)
+        if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
+        mpks = wallet.get("master_public_keys", ())
+        if len(mpks) == 0:                   raise ValueError("No master public keys found in Electrum2 wallet")
+        if len(mpks) >  1:                   raise ValueError("Multiple master public keys found in Electrum2 wallet")
+        return cls.create_from_params(mpks.values()[0])
+
+    # Creates a wallet instance from either an mpk or an address and address_limit.
+    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    @classmethod
+    def create_from_params(cls, mpk = None, address = None, address_limit = None):
+        # Just calls WalletBIP39's version with a hardcoded path
+        return super(WalletElectrum2, cls).create_from_params(mpk, address, address_limit, path="m/0/")
+
+    # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
+    # into a bytestring (of type str) in the method as Electrum 2.x
+    @staticmethod
+    def _unicode_to_bytes(word):
+        assert isinstance(word, unicode)
+        word = unicodedata.normalize("NFKD", word)
+        word = u"".join(c for c in word if not unicodedata.combining(c))  # Electrum 2.x removes combining marks
+        return intern(word.encode("utf_8"))
+
+    def config_mnemonic(self, mnemonic_guess = None, lang = None):
+        # Calls WalletBIP39's generic version (note the leading _) with a hardcoded mnemonic length
+        self._config_mnemonic(mnemonic_guess, lang, expected_len=13)
+
+    # Performs basic checks so that clearly invalid mnemonic_ids can be completely skipped
+    @staticmethod
+    def verify_mnemonic_syntax(mnemonic_ids):
+        # Length must be == 13 and all ids must be present
+        return len(mnemonic_ids) == 13 and None not in mnemonic_ids
+
+    # Called by WalletBIP32.return_verified_password_or_false() to verify an Electrum2 checksum
+    @staticmethod
+    def _verify_checksum(mnemonic_words):
+        # TODO: if a logographic word list is added to Electrum2, might need to revisit this (no spaces)
+        return hmac.new("Seed version", " ".join(mnemonic_words), hashlib.sha512) \
+               .digest()[0] == "\x01"
+
+    # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
+    @staticmethod
+    def _derive_seed(mnemonic_words):
+        # TODO: if a logographic word list is added to Electrum2, might need to revisit this (no spaces)
+        # Note: the words are already in Electrum2's normalized form
+        return btcr.pbkdf2_hmac("sha512", " ".join(mnemonic_words), "electrum", 2048)
 
 
 ################################### Main ###################################
