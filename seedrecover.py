@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -927,7 +927,7 @@ def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False
     # Number of words that were definitely wrong in the guess
     num_wrong = sum(map(lambda id: id is None, mnemonic_ids_guess))
 
-    btcr_args = "--threads 1    --typos " + str(typos)
+    btcr_args = "--typos " + str(typos)
 
     if is_peformance:
         btcr_args += " --performance"
