@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.12.2-Unicode"
+#__version__          =  "0.12.3-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.12.2"
+__version__          =  "0.12.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -263,11 +263,11 @@ def load_armory_library():
 
     # Try to add the Armory libraries to the path for various platforms
     if sys.platform == "win32":
-        progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")
+        progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")  # default is for XP
         armory_path    = progfiles_path + r"\Armory"
         sys.path.extend((armory_path, armory_path + r"\library.zip"))
         # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
-        if struct.calcsize('P') * 8 == 64:
+        if struct.calcsize('P') * 8 == 64:  # calcsize('P') is a pointer's size in bytes
             assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
             progfiles_path += " (x86)"
             armory_path     = progfiles_path + r"\Armory"
@@ -467,7 +467,7 @@ class WalletArmory(object):
                 print("    est. max --global-ws: {}".format((int(device.global_mem_size // mem_per_worker) // 32 * 32)))
                 print("    with --global-ws {},".format(global_ws[i] if global_ws[i]!=4096 else "4096 (the default)"))
                 print("      est. memory usage:  {:,} MB\n".format(int(round(global_ws[i] * mem_per_worker / float(1024**2)))))
-            exit(0)
+            sys.exit(0)
 
         # Create one command queue, one I/O buffer, and four "V" buffers per device
         self._cl_queues         = []
@@ -1381,7 +1381,7 @@ class WalletBlockchain(object):
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
         # Copy a few globals into local for a small speed boost
-        l_pbkdf2             = pbkdf2_hmac_sha1
+        l_pbkdf2_hmac        = pbkdf2_hmac
         l_aes256_cbc_decrypt = aes256_cbc_decrypt
         l_aes256_ofb_decrypt = aes256_ofb_decrypt
         encrypted_block      = self._encrypted_block
@@ -1395,7 +1395,7 @@ class WalletBlockchain(object):
         v0 = not iter_count     # version 0.0 wallets don't specify an iter_count
         if v0: iter_count = 10  # the default iter_count for version 0.0 wallets
         for count, password in enumerate(passwords, 1):
-            key = l_pbkdf2(password, salt_and_iv, iter_count, 32)                        # iter_count iterations
+            key = l_pbkdf2_hmac(b"sha1", password, salt_and_iv, iter_count, 32)          # iter_count iterations
             unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
             # A bit fragile because it assumes the guid is in the first encrypted block,
             # although this has always been the case as of 6/2014 (since 12/2011)
@@ -1405,7 +1405,7 @@ class WalletBlockchain(object):
         if v0:
             # Try the older encryption schemes possibly used in v0.0 wallets
             for count, password in enumerate(passwords, 1):
-                key = l_pbkdf2(password, salt_and_iv, 1, 32)                                 # only 1 iteration
+                key = l_pbkdf2_hmac(b"sha1", password, salt_and_iv, 1, 32)                   # only 1 iteration
                 unencrypted_block = l_aes256_cbc_decrypt(key, salt_and_iv, encrypted_block)  # CBC mode
                 if unencrypted_block[0] == b"{" and b'"guid"' in unencrypted_block:
                     return password if tstr == str else password.decode("utf_8", "replace"), count
@@ -1464,18 +1464,18 @@ class WalletBlockchainSecondpass(WalletBlockchain):
             #
             # Encryption scheme used in newer wallets
             def decrypt_current(iter_count):
-                key = pbkdf2_hmac_sha1(password, salt_and_iv, iter_count, 32)
-                decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)           # CBC mode
-                padding   = ord(decrypted[-1:])                                  # ISO 10126 padding length
+                key = pbkdf2_hmac(b"sha1", password, salt_and_iv, iter_count, 32)
+                decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)    # CBC mode
+                padding   = ord(decrypted[-1:])                           # ISO 10126 padding length
                 return decrypted[:-padding] if 1 <= padding <= 16 and re.match(b'{\s*"guid"', decrypted) else None
             #
             # Encryption scheme only used in version 0.0 wallets (N.B. this is untested)
             def decrypt_old():
-                key = pbkdf2_hmac_sha1(password, salt_and_iv, 1, 32)  # only 1 iteration
-                decrypted  = aes256_ofb_decrypt(key, salt_and_iv, data)          # OFB mode
+                key = pbkdf2_hmac(b"sha1", password, salt_and_iv, 1, 32)  # only 1 iteration
+                decrypted  = aes256_ofb_decrypt(key, salt_and_iv, data)   # OFB mode
                 # The 16-byte last block, reversed, with all but the first byte of ISO 7816-4 padding removed:
                 last_block = tuple(itertools.dropwhile(lambda x: x==b"\0", decrypted[:15:-1]))
-                padding    = 17 - len(last_block)                                # ISO 7816-4 padding length
+                padding    = 17 - len(last_block)                         # ISO 7816-4 padding length
                 return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == b"\x80" and re.match(b'{\s*"guid"', decrypted) else None
             #
             if iter_count:  # v2.0 wallets have a single possible encryption scheme
@@ -1606,18 +1606,16 @@ def load_aes256_library(force_purepython = False):
     return aespython  # just so the caller can check which version was loaded
 
 
-# Creates a key derivation function (in global namespace) named pbkdf2_hmac_sha1() using either
+# Creates a key derivation function (in global namespace) named pbkdf2_hmac() using either the
 # hashlib.pbkdf2_hmac from Python 2.7.8+ if it's available, or a pure python library (passlib).
-# The created function takes two bytestring arguments and two integer arguments:
-# password, salt, iter_count, key_len (the length of the returned derived key)
+# The created function takes a hash name, two bytestring arguments and two integer arguments:
+# hash_name (e.g. b"sha1"), password, salt, iter_count, key_len (the length of the returned key)
 missing_pbkdf2_warned = False
 def load_pbkdf2_library(force_purepython = False):
-    global pbkdf2_hmac_sha1, missing_pbkdf2_warned
+    global pbkdf2_hmac, missing_pbkdf2_warned
     if not force_purepython:
         try:
-            hashlib_pbkdf2 = hashlib.pbkdf2_hmac
-            pbkdf2_hmac_sha1 = lambda password, salt, iter_count, key_len: \
-                hashlib_pbkdf2("sha1", password, salt, iter_count, key_len)
+            pbkdf2_hmac = hashlib.pbkdf2_hmac
             return hashlib  # just so the caller can check which version was loaded
         except AttributeError:
             if not missing_pbkdf2_warned:
@@ -1625,7 +1623,8 @@ def load_pbkdf2_library(force_purepython = False):
                 missing_pbkdf2_warned = True
     #
     import passlib.utils.pbkdf2
-    pbkdf2_hmac_sha1 = passlib.utils.pbkdf2.pbkdf2
+    passlib_pbkdf2 = passlib.utils.pbkdf2.pbkdf2
+    pbkdf2_hmac = lambda hash_name, *args: passlib_pbkdf2(*args, prf= b"hmac-" + hash_name)
     return passlib  # just so the caller can check which version was loaded
 
 
@@ -1661,7 +1660,7 @@ if tstr == unicode:  # only replace it for Unicode builds
 # Calls sys.exit with an error message, taking unnamed arguments as print() does
 def error_exit(*messages):
     messages = _do_safe_print(*messages)  # convert to safely-encoded byte strings
-    sys.exit(str(prog) + b": error: " + b" ".join(map(tstr, messages)))
+    sys.exit(str(prog) + b": error: " + b" ".join(map(str, messages)))
 
 # For ASCII builds, checks that the input string's chars are all 7-bit US-ASCII
 if tstr == str:
@@ -2106,7 +2105,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         sys.exit(0)
 
 
-    if args.performance and (args.tokenlist or args.passwordlist):
+    if args.performance and (base_iterator or args.tokenlist or args.passwordlist):
         error_exit("--performance cannot be used with --tokenlist or --passwordlist")
 
     if args.list_gpus:
@@ -2115,7 +2114,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             error_exit("no supported GPUs found")
         for i, dev in enumerate(devices_avail, 1):
             print("#"+tstr(i), dev.name.strip())
-        exit(0)
+        sys.exit(0)
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
@@ -4085,9 +4084,8 @@ def count_and_check_eta(est):
 # Creates a password iterator from the chosen password_generator() and advances it past skipped passwords (as
 # per args.skip), returning a tuple: new_iterator, #_of_passwords_skipped. Displays messages to the user if the
 # process is taking a while. (Or does the work of count_and_check_eta() when passed est_secs_per_password.)
-PASSWORDS_BEFORE_DISPLAY  = 3000000  # on my CPU takes between 2 and 15 seconds depending on complexity, YMMV
+SECONDS_BEFORE_DISPLAY    = 5.0
 PASSWORDS_BETWEEN_UPDATES = 100000
-assert PASSWORDS_BEFORE_DISPLAY % PASSWORDS_BETWEEN_UPDATES == 0
 def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
     # If est_secs_per_password is zero, only skipping is performed;
     # if est_secs_per_password is non-zero, all passwords (including skipped ones) are counted.
@@ -4108,29 +4106,27 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
             except StopIteration: pass
             return passwords_count_iterator, passwords_counted
 
-    # If not counting all passwords (therefore the runtime is bounded by args.skip), don't bother
-    # displaying any messages if they would only be displayed for a moment.
-    if not est_secs_per_password and args.skip < 1.5 * PASSWORDS_BEFORE_DISPLAY:
-        l_passwords_before_display = int(1.5 * PASSWORDS_BEFORE_DISPLAY)
-    else:
-        l_passwords_before_display = PASSWORDS_BEFORE_DISPLAY
-
     assert args.skip >= 0
     sys_stderr_isatty = sys.stderr.isatty()
     max_seconds = args.max_eta * 3600  # max_eta is in hours
     passwords_count_iterator = password_generator(PASSWORDS_BETWEEN_UPDATES, only_yield_count=True)
     passwords_counted = 0
+    is_displayed = False
+    start = time.clock() if sys_stderr_isatty else None
     try:
         # Iterate though the password counts in increments of size PASSWORDS_BETWEEN_UPDATES
         for passwords_counted_last in passwords_count_iterator:
             passwords_counted += passwords_counted_last
             unskipped_passwords_counted = passwords_counted - args.skip
 
-            # If it's taking a while, display/update the on-screen message
-            if passwords_counted >= l_passwords_before_display and sys_stderr_isatty:
-                if passwords_counted == l_passwords_before_display:
-                    print("Counting passwords ..." if est_secs_per_password else "Skipping passwords ...", file=sys.stderr)
-                #
+            # If it's taking a while, and if we're not almost done, display/update the on-screen message
+
+            if not is_displayed and sys_stderr_isatty and time.clock() - start > SECONDS_BEFORE_DISPLAY and (
+                    est_secs_per_password or passwords_counted * 1.5 < args.skip):
+                print("Counting passwords ..." if est_secs_per_password else "Skipping passwords ...", file=sys.stderr)
+                is_displayed = True
+
+            if is_displayed:
                 # If ETAs were requested, calculate and possibly display one
                 if est_secs_per_password:
                     # Only display an ETA once unskipped passwords are being counted
@@ -4155,8 +4151,7 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
 
             # If the ETA is past its max permitted limit, exit
             if unskipped_passwords_counted * est_secs_per_password > max_seconds:
-                print("\r", file=sys.stderr)
-                error_exit("at least {:,} passwords to try, ETA > --max-eta option ({} hours), exiting" \
+                error_exit("\rat least {:,} passwords to try, ETA > --max-eta option ({} hours), exiting" \
                     .format(passwords_counted - args.skip, args.max_eta))
 
             # If not counting all the passwords, then break out of this loop before it's gone past args.skip
@@ -4165,8 +4160,8 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
                 break
 
         # Erase the on-screen counter if it was being displayed
-        if passwords_counted >= l_passwords_before_display and sys_stderr_isatty:
-            print("\rDone" + " "*74)
+        if is_displayed:
+            print("\rDone" + " "*74, file=sys.stderr)
 
         # If all passwords were being/have been counted
         if est_secs_per_password:
@@ -4185,7 +4180,7 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
     except SystemExit: raise  # happens when error_exit is called above
     except BaseException as e:
         handled = handle_oom() if isinstance(e, MemoryError) and passwords_counted > 0 else False
-        if not handled: print()  # move to the next line if handle_oom() hasn't already done so
+        if not handled: print(file=sys.stderr)  # move to the next line if handle_oom() hasn't already done so
 
         counting_or_skipping = "counting" if est_secs_per_password else "skipping"
         including_skipped    = "(including skipped ones)" if est_secs_per_password and args.skip else ""
@@ -4483,5 +4478,8 @@ if __name__ == b'__main__':
         if any(ord(c) < 32 or ord(c) > 126 for c in password_found):
             print("HTML encoded:   '" + password_found.encode("ascii", "xmlcharrefreplace") + "'")
 
-    if not_found_msg:
+    elif not_found_msg:
         print(not_found_msg, file=sys.stderr if args.listpass else sys.stdout)
+
+    else:
+        sys.exit(1)  # An error occurred or Ctrl-C was pressed

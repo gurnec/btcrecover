@@ -31,14 +31,23 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-import btcrecover as btcr, sys, os, base64, hashlib, difflib, itertools, atexit
+import btcrecover as btcr
+import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
+       unicodedata, collections, struct, glob, atexit
 
 # Try to add the Armory libraries to the path for various platforms
 if sys.platform == "win32":
-    win32_path = os.environ.get("ProgramFiles", r"C:\Program Files (x86)") + r"\Armory"
-    sys.path.extend((win32_path, win32_path + r"\library.zip"))
+    progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")  # default is for XP
+    armory_path    = progfiles_path + r"\Armory"
+    sys.path.extend((armory_path, armory_path + r"\library.zip"))
+    # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
+    if struct.calcsize('P') * 8 == 64:  # calcsize('P') is a pointer's size in bytes
+        assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
+        progfiles_path += " (x86)"
+        armory_path     = progfiles_path + r"\Armory"
+        sys.path.extend((armory_path, armory_path + r"\library.zip"))
 elif sys.platform.startswith("linux"):
     sys.path.append("/usr/lib/armory")
 elif sys.platform == "darwin":  # untested
@@ -64,7 +73,7 @@ def bytes_to_int(bytes_rep):
     """
     return long(base64.b16encode(bytes_rep), 16)
 
-def int_to_bytes(int_rep, min_length=0):
+def int_to_bytes(int_rep, min_length = 0):
     """convert an unsigned integer to a string of bytes (in big-endian order)
 
     :param int_rep: a non-negative integer
@@ -84,13 +93,16 @@ def int_to_bytes(int_rep, min_length=0):
 dec_digit_to_base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 base58_digit_to_dec = { b58:dec for dec,b58 in enumerate(dec_digit_to_base58) }
 
-def base58check_to_hash160(base58_rep):
-    """convert from a base58check address to its hash160 form
 
-    :param base58_rep: check-code appended base58-encoded address
+def base58check_to_bytes(base58_rep, expected_size):
+    """decode a base58check string to its raw bytes
+
+    :param base58_rep: check-code appended base58-encoded string
     :type base58_rep: str
-    :return: ripemd160(sha256()) hash of the pubkey/redeemScript and the version byte
-    :rtype: (str, str)
+    :param expected_size: the expected number of decoded bytes (excluding the check code)
+    :type expected_size: int
+    :return: the base58-decoded bytes
+    :rtype: str
     """
     base58_stripped = base58_rep.lstrip("1")
 
@@ -100,17 +112,42 @@ def base58check_to_hash160(base58_rep):
         int_rep += base58_digit_to_dec[base58_digit]
 
     # Convert int to raw bytes
-    all_bytes  = int_to_bytes(int_rep, 1 + 20 + 4)
+    all_bytes  = int_to_bytes(int_rep, expected_size + 4)
 
     zero_count = next(zeros for zeros,byte in enumerate(all_bytes) if byte != "\0")
     if len(base58_rep) - len(base58_stripped) != zero_count:
         raise ValueError("prepended zeros mismatch")
 
-    version_byte, hash160_bytes, check_bytes = all_bytes[:1], all_bytes[1:-4], all_bytes[-4:]
-    if hashlib.sha256(hashlib.sha256(version_byte + hash160_bytes).digest()).digest()[:4] != check_bytes:
+    if hashlib.sha256(hashlib.sha256(all_bytes[:-4]).digest()).digest()[:4] != all_bytes[-4:]:
         raise ValueError("base58 check code mismatch")
 
-    return hash160_bytes, version_byte
+    return all_bytes[:-4]
+
+def base58check_to_hash160(base58_rep):
+    """convert from a base58check address to its hash160 form
+
+    :param base58_rep: check-code appended base58-encoded address
+    :type base58_rep: str
+    :return: the ripemd160(sha256()) hash of the pubkey/redeemScript, then the version byte
+    :rtype: (str, str)
+    """
+    decoded_bytes = base58check_to_bytes(base58_rep, 1 + 20)
+    return decoded_bytes[1:], decoded_bytes[0]
+
+BIP32ExtendedKey = collections.namedtuple("BIP32ExtendedKey",
+    "version depth fingerprint child_number chaincode key")
+#
+def base58check_to_bip32(base58_rep):
+    """decode a bip32-serialized extended key from its base58check form
+
+    :param base58_rep: check-code appended base58-encoded bip32 extended key
+    :type base58_rep: str
+    :return: a namedtuple containing: version depth fingerprint child_number chaincode key
+    :rtype: BIP32ExtendedKey
+    """
+    decoded_bytes = base58check_to_bytes(base58_rep, 4 + 1 + 4 + 4 + 32 + 33)
+    return BIP32ExtendedKey(decoded_bytes[0:4],  ord(decoded_bytes[ 4:5]), decoded_bytes[ 5:9],
+        struct.unpack(">I", decoded_bytes[9:13])[0], decoded_bytes[13:45], decoded_bytes[45:])
 
 def pubkey_to_hash160(pubkey_bytes):
     """convert from a raw public key to its a hash160 form
@@ -121,30 +158,71 @@ def pubkey_to_hash160(pubkey_bytes):
     :rtype: str
     """
     assert len(pubkey_bytes) == 65 and pubkey_bytes[0] == "\x04" or \
-           len(pubkey_bytes) == 33 and pubkey_bytes[0] in "\x00\x01"
+           len(pubkey_bytes) == 33 and pubkey_bytes[0] in "\x02\x03"
     return hashlib.new("ripemd160", hashlib.sha256(pubkey_bytes).digest()).digest()
+
+def compress_pubkey(uncompressed_pubkey):
+    """convert an uncompressed public key into a compressed public key
+
+    :param uncompressed_pubkey: the uncompressed public key
+    :type uncompressed_pubkey: str
+    :return: the compressed public key
+    :rtype: str
+    """
+    assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == "\x04"
+    return chr((ord(uncompressed_pubkey[-1]) & 1) + 2) + uncompressed_pubkey[1:33]
+
+
+print = btcr.safe_print  # use btcr's print which never dies from printing Unicode
 
 
 ################################### Wallets ###################################
-# TODO: implement other wallets; bitcoinj? Electrum 2? generic BIP39?
+# TODO: implement other wallets; Electrum 2? MutliBit HD? (both are still in beta...)
 
-btcr.clear_registered_wallets()
+# A class decorator which adds a wallet class to a registered
+# list that can later be selected by a user in GUI mode
+selectable_wallet_classes = []
+def register_selectable_wallet_class(description):
+    def _register_selectable_wallet_class(cls):
+        selectable_wallet_classes.append((cls, description))
+        return cls
+    return _register_selectable_wallet_class
+
+
+# Loads a wordlist from a file into a list of Python unicodes. Note that the
+# unicodes are normalized in NFC format, which is not what BIP39 requires (NFKD).
+wordlists_dir = os.path.join(os.path.dirname(__file__), "wordlists")
+def load_wordlist(name, lang):
+    filename = os.path.join(wordlists_dir, "{}-{}.txt".format(name, lang))
+    with io.open(filename, encoding="utf_8_sig") as wordlist_file:
+        wordlist = []
+        for word in wordlist_file:
+            word = word.strip()
+            if word and not word.startswith(u"#"):
+                wordlist.append(unicodedata.normalize("NFC", word))
+    return wordlist
+
+
+btcr.clear_registered_wallets()  # clears btcr's default wallet file auto-detection list
+
 
 ############### Electrum1 ###############
 
+@register_selectable_wallet_class("Electrum 1.x")
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletElectrum1(object):
 
-    # This is the Electrum1 wordlist
-    _words      = ( "like", "just", "love", "know", "never", "want", "time", "out", "there", "make", "look", "eye", "down", "only", "think", "heart", "back", "then", "into", "about", "more", "away", "still", "them", "take", "thing", "even", "through", "long", "always", "world", "too", "friend", "tell", "try", "hand", "thought", "over", "here", "other", "need", "smile", "again", "much", "cry", "been", "night", "ever", "little", "said", "end", "some", "those", "around", "mind", "people", "girl", "leave", "dream", "left", "turn", "myself", "give", "nothing", "really", "off", "before", "something", "find", "walk", "wish", "good", "once", "place", "ask", "stop", "keep", "watch", "seem", "everything", "wait", "got", "yet", "made", "remember", "start", "alone", "run", "hope", "maybe", "believe", "body", "hate", "after", "close", "talk", "stand", "own", "each", "hurt", "help", "home", "god", "soul", "new", "many", "two", "inside", "should", "true", "first", "fear", "mean", "better", "play", "another", "gone", "change", "use", "wonder", "someone", "hair", "cold", "open", "best", "any", "behind", "happen", "water", "dark", "laugh", "stay", "forever", "name", "work", "show", "sky", "break", "came", "deep", "door", "put", "black", "together", "upon", "happy", "such", "great", "white", "matter", "fill", "past", "please", "burn", "cause", "enough", "touch", "moment", "soon", "voice", "scream", "anything", "stare", "sound", "red", "everyone", "hide", "kiss", "truth", "death", "beautiful", "mine", "blood", "broken", "very", "pass", "next", "forget", "tree", "wrong", "air", "mother", "understand", "lip", "hit", "wall", "memory", "sleep", "free", "high", "realize", "school", "might", "skin", "sweet", "perfect", "blue", "kill", "breath", "dance", "against", "fly", "between", "grow", "strong", "under", "listen", "bring", "sometimes", "speak", "pull", "person", "become", "family", "begin", "ground", "real", "small", "father", "sure", "feet", "rest", "young", "finally", "land", "across", "today", "different", "guy", "line", "fire", "reason", "reach", "second", "slowly", "write", "eat", "smell", "mouth", "step", "learn", "three", "floor", "promise", "breathe", "darkness", "push", "earth", "guess", "save", "song", "above", "along", "both", "color", "house", "almost", "sorry", "anymore", "brother", "okay", "dear", "game", "fade", "already", "apart", "warm", "beauty", "heard", "notice", "question", "shine", "began", "piece", "whole", "shadow", "secret", "street", "within", "finger", "point", "morning", "whisper", "child", "moon", "green", "story", "glass", "kid", "silence", "since", "soft", "yourself", "empty", "shall", "angel", "answer", "baby", "bright", "dad", "path", "worry", "hour", "drop", "follow", "power", "war", "half", "flow", "heaven", "act", "chance", "fact", "least", "tired", "children", "near", "quite", "afraid", "rise", "sea", "taste", "window", "cover", "nice", "trust", "lot", "sad", "cool", "force", "peace", "return", "blind", "easy", "ready", "roll", "rose", "drive", "held", "music", "beneath", "hang", "mom", "paint", "emotion", "quiet", "clear", "cloud", "few", "pretty", "bird", "outside", "paper", "picture", "front", "rock", "simple", "anyone", "meant", "reality", "road", "sense", "waste", "bit", "leaf", "thank", "happiness", "meet", "men", "smoke", "truly", "decide", "self", "age", "book", "form", "alive", "carry", "escape", "damn", "instead", "able", "ice", "minute", "throw", "catch", "leg", "ring", "course", "goodbye", "lead", "poem", "sick", "corner", "desire", "known", "problem", "remind", "shoulder", "suppose", "toward", "wave", "drink", "jump", "woman", "pretend", "sister", "week", "human", "joy", "crack", "grey", "pray", "surprise", "dry", "knee", "less", "search", "bleed", "caught", "clean", "embrace", "future", "king", "son", "sorrow", "chest", "hug", "remain", "sat", "worth", "blow", "daddy", "final", "parent", "tight", "also", "create", "lonely", "safe", "cross", "dress", "evil", "silent", "bone", "fate", "perhaps", "anger", "class", "scar", "snow", "tiny", "tonight", "continue", "control", "dog", "edge", "mirror", "month", "suddenly", "comfort", "given", "loud", "quickly", "gaze", "plan", "rush", "stone", "town", "battle", "ignore", "spirit", "stood", "stupid", "yours", "brown", "build", "dust", "hey", "kept", "pay", "phone", "twist", "although", "ball", "beyond", "hidden", "nose", "taken", "fail", "float", "pure", "somehow", "wash", "wrap", "angry", "cheek", "creature", "forgotten", "heat", "rip", "single", "space", "special", "weak", "whatever", "yell", "anyway", "blame", "job", "choose", "country", "curse", "drift", "echo", "figure", "grew", "laughter", "neck", "suffer", "worse", "yeah", "disappear", "foot", "forward", "knife", "mess", "somewhere", "stomach", "storm", "beg", "idea", "lift", "offer", "breeze", "field", "five", "often", "simply", "stuck", "win", "allow", "confuse", "enjoy", "except", "flower", "seek", "strength", "calm", "grin", "gun", "heavy", "hill", "large", "ocean", "shoe", "sigh", "straight", "summer", "tongue", "accept", "crazy", "everyday", "exist", "grass", "mistake", "sent", "shut", "surround", "table", "ache", "brain", "destroy", "heal", "nature", "shout", "sign", "stain", "choice", "doubt", "glance", "glow", "mountain", "queen", "stranger", "throat", "tomorrow", "city", "either", "fish", "flame", "rather", "shape", "spin", "spread", "ash", "distance", "finish", "image", "imagine", "important", "nobody", "shatter", "warmth", "became", "feed", "flesh", "funny", "lust", "shirt", "trouble", "yellow", "attention", "bare", "bite", "money", "protect", "amaze", "appear", "born", "choke", "completely", "daughter", "fresh", "friendship", "gentle", "probably", "six", "deserve", "expect", "grab", "middle", "nightmare", "river", "thousand", "weight", "worst", "wound", "barely", "bottle", "cream", "regret", "relationship", "stick", "test", "crush", "endless", "fault", "itself", "rule", "spill", "art", "circle", "join", "kick", "mask", "master", "passion", "quick", "raise", "smooth", "unless", "wander", "actually", "broke", "chair", "deal", "favorite", "gift", "note", "number", "sweat", "box", "chill", "clothes", "lady", "mark", "park", "poor", "sadness", "tie", "animal", "belong", "brush", "consume", "dawn", "forest", "innocent", "pen", "pride", "stream", "thick", "clay", "complete", "count", "draw", "faith", "press", "silver", "struggle", "surface", "taught", "teach", "wet", "bless", "chase", "climb", "enter", "letter", "melt", "metal", "movie", "stretch", "swing", "vision", "wife", "beside", "crash", "forgot", "guide", "haunt", "joke", "knock", "plant", "pour", "prove", "reveal", "steal", "stuff", "trip", "wood", "wrist", "bother", "bottom", "crawl", "crowd", "fix", "forgive", "frown", "grace", "loose", "lucky", "party", "release", "surely", "survive", "teacher", "gently", "grip", "speed", "suicide", "travel", "treat", "vein", "written", "cage", "chain", "conversation", "date", "enemy", "however", "interest", "million", "page", "pink", "proud", "sway", "themselves", "winter", "church", "cruel", "cup", "demon", "experience", "freedom", "pair", "pop", "purpose", "respect", "shoot", "softly", "state", "strange", "bar", "birth", "curl", "dirt", "excuse", "lord", "lovely", "monster", "order", "pack", "pants", "pool", "scene", "seven", "shame", "slide", "ugly", "among", "blade", "blonde", "closet", "creek", "deny", "drug", "eternity", "gain", "grade", "handle", "key", "linger", "pale", "prepare", "swallow", "swim", "tremble", "wheel", "won", "cast", "cigarette", "claim", "college", "direction", "dirty", "gather", "ghost", "hundred", "loss", "lung", "orange", "present", "swear", "swirl", "twice", "wild", "bitter", "blanket", "doctor", "everywhere", "flash", "grown", "knowledge", "numb", "pressure", "radio", "repeat", "ruin", "spend", "unknown", "buy", "clock", "devil", "early", "false", "fantasy", "pound", "precious", "refuse", "sheet", "teeth", "welcome", "add", "ahead", "block", "bury", "caress", "content", "depth", "despite", "distant", "marry", "purple", "threw", "whenever", "bomb", "dull", "easily", "grasp", "hospital", "innocence", "normal", "receive", "reply", "rhyme", "shade", "someday", "sword", "toe", "visit", "asleep", "bought", "center", "consider", "flat", "hero", "history", "ink", "insane", "muscle", "mystery", "pocket", "reflection", "shove", "silently", "smart", "soldier", "spot", "stress", "train", "type", "view", "whether", "bus", "energy", "explain", "holy", "hunger", "inch", "magic", "mix", "noise", "nowhere", "prayer", "presence", "shock", "snap", "spider", "study", "thunder", "trail", "admit", "agree", "bag", "bang", "bound", "butterfly", "cute", "exactly", "explode", "familiar", "fold", "further", "pierce", "reflect", "scent", "selfish", "sharp", "sink", "spring", "stumble", "universe", "weep", "women", "wonderful", "action", "ancient", "attempt", "avoid", "birthday", "branch", "chocolate", "core", "depress", "drunk", "especially", "focus", "fruit", "honest", "match", "palm", "perfectly", "pillow", "pity", "poison", "roar", "shift", "slightly", "thump", "truck", "tune", "twenty", "unable", "wipe", "wrote", "coat", "constant", "dinner", "drove", "egg", "eternal", "flight", "flood", "frame", "freak", "gasp", "glad", "hollow", "motion", "peer", "plastic", "root", "screen", "season", "sting", "strike", "team", "unlike", "victim", "volume", "warn", "weird", "attack", "await", "awake", "built", "charm", "crave", "despair", "fought", "grant", "grief", "horse", "limit", "message", "ripple", "sanity", "scatter", "serve", "split", "string", "trick", "annoy", "blur", "boat", "brave", "clearly", "cling", "connect", "fist", "forth", "imagination", "iron", "jock", "judge", "lesson", "milk", "misery", "nail", "naked", "ourselves", "poet", "possible", "princess", "sail", "size", "snake", "society", "stroke", "torture", "toss", "trace", "wise", "bloom", "bullet", "cell", "check", "cost", "darling", "during", "footstep", "fragile", "hallway", "hardly", "horizon", "invisible", "journey", "midnight", "mud", "nod", "pause", "relax", "shiver", "sudden", "value", "youth", "abuse", "admire", "blink", "breast", "bruise", "constantly", "couple", "creep", "curve", "difference", "dumb", "emptiness", "gotta", "honor", "plain", "planet", "recall", "rub", "ship", "slam", "soar", "somebody", "tightly", "weather", "adore", "approach", "bond", "bread", "burst", "candle", "coffee", "cousin", "crime", "desert", "flutter", "frozen", "grand", "heel", "hello", "language", "level", "movement", "pleasure", "powerful", "random", "rhythm", "settle", "silly", "slap", "sort", "spoken", "steel", "threaten", "tumble", "upset", "aside", "awkward", "bee", "blank", "board", "button", "card", "carefully", "complain", "crap", "deeply", "discover", "drag", "dread", "effort", "entire", "fairy", "giant", "gotten", "greet", "illusion", "jeans", "leap", "liquid", "march", "mend", "nervous", "nine", "replace", "rope", "spine", "stole", "terror", "accident", "apple", "balance", "boom", "childhood", "collect", "demand", "depression", "eventually", "faint", "glare", "goal", "group", "honey", "kitchen", "laid", "limb", "machine", "mere", "mold", "murder", "nerve", "painful", "poetry", "prince", "rabbit", "shelter", "shore", "shower", "soothe", "stair", "steady", "sunlight", "tangle", "tease", "treasure", "uncle", "begun", "bliss", "canvas", "cheer", "claw", "clutch", "commit", "crimson", "crystal", "delight", "doll", "existence", "express", "fog", "football", "gay", "goose", "guard", "hatred", "illuminate", "mass", "math", "mourn", "rich", "rough", "skip", "stir", "student", "style", "support", "thorn", "tough", "yard", "yearn", "yesterday", "advice", "appreciate", "autumn", "bank", "beam", "bowl", "capture", "carve", "collapse", "confusion", "creation", "dove", "feather", "girlfriend", "glory", "government", "harsh", "hop", "inner", "loser", "moonlight", "neighbor", "neither", "peach", "pig", "praise", "screw", "shield", "shimmer", "sneak", "stab", "subject", "throughout", "thrown", "tower", "twirl", "wow", "army", "arrive", "bathroom", "bump", "cease", "cookie", "couch", "courage", "dim", "guilt", "howl", "hum", "husband", "insult", "led", "lunch", "mock", "mostly", "natural", "nearly", "needle", "nerd", "peaceful", "perfection", "pile", "price", "remove", "roam", "sanctuary", "serious", "shiny", "shook", "sob", "stolen", "tap", "vain", "void", "warrior", "wrinkle", "affection", "apologize", "blossom", "bounce", "bridge", "cheap", "crumble", "decision", "descend", "desperately", "dig", "dot", "flip", "frighten", "heartbeat", "huge", "lazy", "lick", "odd", "opinion", "process", "puzzle", "quietly", "retreat", "score", "sentence", "separate", "situation", "skill", "soak", "square", "stray", "taint", "task", "tide", "underneath", "veil", "whistle", "anywhere", "bedroom", "bid", "bloody", "burden", "careful", "compare", "concern", "curtain", "decay", "defeat", "describe", "double", "dreamer", "driver", "dwell", "evening", "flare", "flicker", "grandma", "guitar", "harm", "horrible", "hungry", "indeed", "lace", "melody", "monkey", "nation", "object", "obviously", "rainbow", "salt", "scratch", "shown", "shy", "stage", "stun", "third", "tickle", "useless", "weakness", "worship", "worthless", "afternoon", "beard", "boyfriend", "bubble", "busy", "certain", "chin", "concrete", "desk", "diamond", "doom", "drawn", "due", "felicity", "freeze", "frost", "garden", "glide", "harmony", "hopefully", "hunt", "jealous", "lightning", "mama", "mercy", "peel", "physical", "position", "pulse", "punch", "quit", "rant", "respond", "salty", "sane", "satisfy", "savior", "sheep", "slept", "social", "sport", "tuck", "utter", "valley", "wolf", "aim", "alas", "alter", "arrow", "awaken", "beaten", "belief", "brand", "ceiling", "cheese", "clue", "confidence", "connection", "daily", "disguise", "eager", "erase", "essence", "everytime", "expression", "fan", "flag", "flirt", "foul", "fur", "giggle", "glorious", "ignorance", "law", "lifeless", "measure", "mighty", "muse", "north", "opposite", "paradise", "patience", "patient", "pencil", "petal", "plate", "ponder", "possibly", "practice", "slice", "spell", "stock", "strife", "strip", "suffocate", "suit", "tender", "tool", "trade", "velvet", "verse", "waist", "witch", "aunt", "bench", "bold", "cap", "certainly", "click", "companion", "creator", "dart", "delicate", "determine", "dish", "dragon", "drama", "drum", "dude", "everybody", "feast", "forehead", "former", "fright", "fully", "gas", "hook", "hurl", "invite", "juice", "manage", "moral", "possess", "raw", "rebel", "royal", "scale", "scary", "several", "slight", "stubborn", "swell", "talent", "tea", "terrible", "thread", "torment", "trickle", "usually", "vast", "violence", "weave", "acid", "agony", "ashamed", "awe", "belly", "blend", "blush", "character", "cheat", "common", "company", "coward", "creak", "danger", "deadly", "defense", "define", "depend", "desperate", "destination", "dew", "duck", "dusty", "embarrass", "engine", "example", "explore", "foe", "freely", "frustrate", "generation", "glove", "guilty", "health", "hurry", "idiot", "impossible", "inhale", "jaw", "kingdom", "mention", "mist", "moan", "mumble", "mutter", "observe", "ode", "pathetic", "pattern", "pie", "prefer", "puff", "rape", "rare", "revenge", "rude", "scrape", "spiral", "squeeze", "strain", "sunset", "suspend", "sympathy", "thigh", "throne", "total", "unseen", "weapon", "weary" )
-    _word_to_id = { word:id for id,word in enumerate(_words) }
+    _words = None
+    @classmethod
+    def _load_wordlist(cls):
+        if not cls._words:
+            cls._words      = tuple(map(str, load_wordlist("electrum1", "en")))  # also converts to ASCII
+            cls._word_to_id = { word:id for id,word in enumerate(cls._words) }
 
     @property
-    def word_ids(self):        return xrange(len(self.__class__._words))
+    def word_ids(self):      return xrange(len(self._words))
     @classmethod
-    def id_to_word(cls, id):   return cls._words[id]
-    @classmethod
-    def word_to_id(cls, word): return cls._word_to_id[word]
+    def id_to_word(cls, id): return cls._words[id]
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -154,7 +232,10 @@ class WalletElectrum1(object):
 
     def __init__(self, loading = False):
         assert loading, "use load_from_filename or create_from_params to create a " + self.__class__.__name__
-        self._master_pubkey   = None
+        self._master_pubkey = None
+
+        self._load_wordlist()
+        self._num_words = len(self._words)  # needs to be an instance variable so it can be pickled
 
     def __getstate__(self):
         # Convert unpicklable Armory library object to a standard binary string
@@ -192,29 +273,37 @@ class WalletElectrum1(object):
     # Creates a wallet instance from either an mpk or an address and address_limit.
     # If neither an mpk nor address is supplied, prompts the user for one or the other.
     @classmethod
-    def create_from_params(cls, mpk=None, address=None, address_limit=None):
+    def create_from_params(cls, mpk = None, address = None, address_limit = None):
         self = cls(loading=True)
 
         # Process the mpk (master public key) argument
         if mpk:
-            mpk = base64.b16decode(mpk, casefold=True)
-            # (it's assigned to the self._master_pubkey later)
+            if len(mpk) != 128:
+                raise ValueError("an Electrum 1.x master public key must be exactly 128 hex digits long")
+            try:
+                mpk = base64.b16decode(mpk, casefold=True)
+                # (it's assigned to the self._master_pubkey later)
+            except TypeError as e:
+                raise ValueError(e)  # consistently raise ValueError for any bad inputs
 
         # Process the address argument
         if address:
             if mpk:
                 print("address is ignored when an mpk is provided", file=sys.stderr)
             else:
-                assert address_limit and address_limit > 0, "a positive address-limit is required when an address is provided"
+                assert isinstance(address_limit, int), "an int address-limit is required when an address is provided"
+                if address_limit <= 0:
+                    raise ValueError("a positive address-limit is required when an address is provided")
                 self._known_hash160, version_byte = base58check_to_hash160(address)
                 self._addrs_to_generate = address_limit
-                assert version_byte == "\0", "Electrum1 only supports P2PKH addresses"
+                if ord(version_byte) != 0:
+                    raise ValueError("the address must be a P2PKH address")
 
         # If neither mpk nor address arguments were provided, prompt the user for an mpk first
         if not mpk and not address:
             init_gui()
             while True:
-                mpk = tkSimpleDialog.askstring("Master public key",
+                mpk = tkSimpleDialog.askstring("Electrum 1.x master public key",
                     "Please enter your master public key if you have it, or click Cancel to search by an address instead:")
                 if not mpk:
                     break  # if they pressed Cancel, stop prompting for an mpk
@@ -225,7 +314,7 @@ class WalletElectrum1(object):
                     mpk = base64.b16decode(mpk, casefold=True)  # raises TypeError() on failure
                     break
                 except TypeError:
-                    tkMessageBox.showerror("Master public key", "The entered key is not exactly 128 hex digits long")
+                    tkMessageBox.showerror("Master public key", "The entered Electrum 1.x key is not exactly 128 hex digits long")
 
         # If an mpk has been provided (in the function call or from a user), convert it to the needed format
         if mpk:
@@ -251,7 +340,7 @@ class WalletElectrum1(object):
                     tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
 
             self._addrs_to_generate = tkSimpleDialog.askinteger("Address limit",
-                "Please enter the address generation limit. Smaller is faster, but it should be\n"
+                "Please enter the address generation limit. Smaller is faster, but it must be\n"
                 "larger than the number of addresses created before the one you just entered:", minvalue=1)
             if not self._addrs_to_generate:
                 sys.exit("canceled")
@@ -268,7 +357,7 @@ class WalletElectrum1(object):
     def return_verified_password_or_false(self, mnemonic_ids_list):
         # Copy some vars into local for a small speed boost
         l_sha256     = hashlib.sha256
-        num_words    = len(self.__class__._words)
+        num_words    = self._num_words
         num_words2   = num_words * num_words
         crypto_ecdsa = CryptoECDSA()
 
@@ -327,6 +416,8 @@ class WalletElectrum1(object):
             if not mnemonic_guess:
                 sys.exit("canceled")
 
+        mnemonic_guess = str(mnemonic_guess)  # ensures it's ASCII
+
         # Convert the mnemonic words into numeric ids and pre-calculate similar mnemonic words
         global mnemonic_ids_guess, close_mnemonic_ids
         mnemonic_ids_guess = ()
@@ -340,8 +431,8 @@ class WalletElectrum1(object):
                 if close_words[0] != word:
                     print("'{}' was in your guess, but it's not a valid Electrum seed word;\n"
                           "    trying '{}' instead.".format(word, close_words[0]))
-                mnemonic_ids_guess += cls.word_to_id(close_words[0]),
-                close_mnemonic_ids[mnemonic_ids_guess[-1]] = tuple( (cls.word_to_id(w),) for w in close_words[1:] )
+                mnemonic_ids_guess += cls._word_to_id[close_words[0]],
+                close_mnemonic_ids[mnemonic_ids_guess[-1]] = tuple( (cls._word_to_id[w],) for w in close_words[1:] )
             else:
                 print("'{}' was in your guess, but there is no similar Electrum seed word;\n"
                       "    trying all possible seed words here instead.".format(word))
@@ -363,22 +454,437 @@ class WalletElectrum1(object):
         return itertools.product(xrange(len(WalletElectrum1._words)), repeat = 12)
 
 
+############### BIP32 ###############
+
+class WalletBIP32(object):
+
+    def __init__(self, loading = False):
+        assert loading, "use load_from_filename or create_from_params to create a " + self.__class__.__name__
+        self._chaincode = None
+
+    # Creates a wallet instance from either an mpk or an address and address_limit.
+    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    # (the BIP32 key derivation path is by default BIP44's)
+    @classmethod
+    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = "m/44'/0'/0'/0/"):
+        self = cls(loading=True)
+
+        # Split the BIP32 key derivation path into its constituent indexes
+        # (doesn't support the last path element for the address as hardened)
+        if not self._chaincode:
+            path_indexes = path.split('/')
+            if path_indexes[0] == "m" or path_indexes[0] == "":
+                del path_indexes[0]   # the optional leading "m/"
+            assert path_indexes[-1] != "'", "the last path element is not hardened"
+            if path_indexes[-1] == "":
+                del path_indexes[-1]  # the optional trailing "/"
+            self._path_indexes = ()
+            for path_index in path_indexes:
+                if path_index.endswith("'"):
+                    self._path_indexes += int(path_index[:-1]) + 2**31,
+                else:
+                    self._path_indexes += int(path_index),
+
+        # Process the mpk (master public key) argument
+        if mpk:
+            if not mpk.startswith("xpub"):
+                raise ValueError("the BIP32 extended public key must begin with 'xpub'")
+            mpk = base58check_to_bip32(mpk)
+            # (it's processed more later)
+
+        # Process the address argument
+        if address:
+            if mpk:
+                print("address is ignored when an mpk is provided", file=sys.stderr)
+            else:
+                assert isinstance(address_limit, int), "an int address-limit is required when an address is provided"
+                if address_limit <= 0:
+                    raise ValueError("a positive address-limit is required when an address is provided")
+                assert path, "a path is required when an address is provided"
+                self._known_hash160, version_byte = base58check_to_hash160(address)
+                self._addrs_to_generate = address_limit
+                if ord(version_byte) != 0:
+                    raise ValueError("the address must be a P2PKH address")
+
+        # If neither mpk nor address arguments were provided, prompt the user for an mpk first
+        if not mpk and not address:
+            address_allowed = " if you have it, or click Cancel to search by an address instead" if path else ""
+            init_gui()
+            while True:
+                mpk = tkSimpleDialog.askstring("Master extended public key",
+                                               "Please enter your master extended public key (xpub){}:".format(address_allowed))
+                if not mpk:              # if they pressed Cancel and
+                    if address_allowed:  # if using an address instead is allowed, then
+                        break            # stop prompting for an mpk (so we can prompt for an address)
+                    sys.exit("canceled") # unless addresses aren't allowed, then give up
+                mpk = mpk.strip()
+                try:
+                    if not mpk.startswith("xpub"):
+                        raise ValueError("not a BIP32 extended public key (doesn't start with 'xpub')")
+                    mpk = base58check_to_bip32(mpk)
+                    break
+                except ValueError as e:
+                    tkMessageBox.showerror("Master extended public key", "The entered key is invalid ({})".format(e))
+
+        # If an mpk has been provided (in the function call or from a user), extract the required chaincode
+        if mpk:
+            if mpk.depth != 0 or mpk.fingerprint != "\0\0\0\0" or mpk.child_number != 0:
+                print("xpub depth:       {}\n"
+                      "xpub fingerprint: {}\n"
+                      "xpub child #:     {}"
+                      .format(mpk.depth, base64.b16encode(mpk.fingerprint), mpk.child_number),
+                      file=sys.stderr)
+                raise ValueError("the extended public key must be a master key")
+            self._chaincode = mpk.chaincode
+
+        # If an mpk wasn't provided (at all), and an address also wasn't provided
+        # (in the original function call), prompt the user for an address.
+        if not mpk and not address:
+            while True:
+                address = tkSimpleDialog.askstring("Bitcoin address",
+                    "Please enter an address from your wallet, preferably one created early in your wallet's lifetime:")
+                if not address:
+                    sys.exit("canceled")
+                address = address.strip()
+                try:
+                    # (raises ValueError() on failure):
+                    self._known_hash160, version_byte = base58check_to_hash160(address)
+                    if ord(version_byte) != 0:
+                        raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                    break
+                except ValueError as e:
+                    tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
+
+            self._addrs_to_generate = tkSimpleDialog.askinteger("Address limit",
+                "Please enter the address generation limit. Smaller is faster, but it must be\n"
+                "larger than the number of addresses created before the one you just entered:", minvalue=1)
+            if not self._addrs_to_generate:
+                sys.exit("canceled")
+
+        return self
+
+    # Performs basic checks so that clearly invalid mnemonic_ids can be completely skipped
+    @staticmethod
+    def verify_mnemonic_syntax(mnemonic_ids):
+        # Length must be divisible by 3 and all ids must be present
+        return len(mnemonic_ids) % 3 == 0 and None not in mnemonic_ids
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a mnemonic
+    # is correct return it, else return False for item 0; return a count of mnemonics checked for item 1
+    def return_verified_password_or_false(self, mnemonic_ids_list):
+        hardened_min = 2**31  # BIP32 path indexes >= this are hardened/private
+        crypto_ecdsa = CryptoECDSA()
+
+        for count, mnemonic_ids in enumerate(mnemonic_ids_list, 1):
+
+            # Check the (BIP39 or Electrum2) checksum; most guesses will fail this test
+            if not self._verify_checksum(mnemonic_ids):
+                continue
+
+            # Convert the mnemonic sentence to seed bytes (according to BIP39 or Electrum2)
+            seed_bytes = hmac.new("Bitcoin seed", self._derive_seed(mnemonic_ids), hashlib.sha512).digest()
+
+            # If an extended public key was provided, check the chain code derived from the seed against it
+            if self._chaincode:
+                if seed_bytes[32:] == self._chaincode:
+                    return mnemonic_ids, count  # found it
+
+            # Else derive addrs_to_generate addresses from the seed, searching for a match with known_hash160
+            else:
+                # Derive the chain of private keys for the specified path as per BIP32
+                privkey_bytes   = seed_bytes[:32]
+                chaincode_bytes = seed_bytes[32:]
+                for i in self._path_indexes:
+
+                    if i < hardened_min:  # if it's a normal child key
+                        data_to_hmac = compress_pubkey(  # derive the compressed public key
+                            crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+                    else:                 # else it's a hardened child key
+                        data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
+                    data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
+
+                    seed_bytes    = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
+
+                    # The child private key is the parent one + the first half of the seed_bytes (mod n)
+                    privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
+                                                    bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
+                    chaincode_bytes = seed_bytes[32:]
+
+                # (note: the rest doesn't support the last path element being hardened)
+
+                # Derive the final public keys (the first step below is a loop invariant)
+                data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
+                    crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+                #
+                for i in xrange(self._addrs_to_generate):
+                    seed_bytes = hmac.new(chaincode_bytes,
+                        data_to_hmac + struct.pack(">I", i), hashlib.sha512).digest()
+
+                    # The final derived private key is the parent one + the first half of the seed_bytes
+                    d_privkey_bytes = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
+                                                    bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
+
+                    d_pubkey = compress_pubkey(  # a compressed public key as per BIP32
+                        crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey_bytes)).toBinStr())
+                    if pubkey_to_hash160(d_pubkey) == self._known_hash160:
+                        return mnemonic_ids, count  # found it
+
+        return False, count
+
+
+############### BIP39 ###############
+
+@register_selectable_wallet_class("Generic BIP39/BIP44 account 0 (Mycelium, TREZOR)")
+class WalletBIP39(WalletBIP32):
+
+    # Load all the wordlists for all languages if not already loaded
+    # (the actual wordlist to be used is selected in config_mnemonic() )
+    _language_words = {}
+    @classmethod
+    def _load_wordlists(cls, name = "bip39"):
+        if not cls._language_words:
+            for filename in glob.iglob(os.path.join(wordlists_dir, name + "-??*.txt")):
+                wordlist_lang = os.path.basename(filename)[6:-4]  # e.g. "en", or "zh-hant"
+                cls._language_words[wordlist_lang] = load_wordlist(name, wordlist_lang)
+                assert len(cls._language_words[wordlist_lang]) == 2048, "BIP39 wordlist has 2048 words"
+
+    @property
+    def word_ids(self): return self._words
+    @staticmethod
+    def id_to_word(id): return id  # returns a UTF-8 encoded bytestring
+
+    def __init__(self, loading = False):
+        super(WalletBIP39, self).__init__(loading)
+        self._load_wordlists()
+        btcr.load_pbkdf2_library()  # btcr's pbkdf2 library is used in _derive_seed()
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        # (Re)load the pbkdf2 library if necessary
+        btcr.load_pbkdf2_library()
+
+    def passwords_per_seconds(self, seconds):
+        # (experimentally determined; doesn't have to be perfect, just decent)
+        #
+        # number of 3-word groups in excess of the base (of 12); they speed things up:
+        extra_word_groups = (len(mnemonic_ids_guess) + num_inserts - num_deletes - 12) // 3
+        #
+        # number of priv-to-pubkey derivations per checksum-validated seed; they slow things down:
+        derivation_count = 0 if self._chaincode else len(self._path_indexes) + self._addrs_to_generate
+        #
+        est = 3500.0 * 1.6**extra_word_groups * (3.0 / max(derivation_count, 6.0) if derivation_count else 1.0)
+        return max(int(round(est * seconds)), 1)
+
+    # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
+    # into a bytestring (of type str) in the format required by BIP39
+    @staticmethod
+    def _unicode_to_bytes(word):
+        assert isinstance(word, unicode)
+        return intern(unicodedata.normalize("NFKD", word).encode("utf_8"))
+
+    # Configures the values of four globals used later in config_btcrecover():
+    # mnemonic_ids_guess, close_mnemonic_ids, num_inserts, and num_deletes;
+    # also selects the appropriate wordlist language to use
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None):
+        if expected_len:
+            if expected_len < 12:
+                raise ValueError("minimum BIP39 sentence length is 12 words")
+            if expected_len > 24:
+                raise ValueError("maximum BIP39 sentence length is 24 words")
+            if expected_len % 3 != 0:
+                raise ValueError("BIP39 sentence length must be evenly divisible by 3")
+
+        # The pbkdf2 salt as per BIP39 (needed by _derive_seed())
+        self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
+
+        # Do most of the work in this function:
+        self._config_mnemonic(mnemonic_guess, lang, expected_len)
+
+        # Calculate each word's index in binary (needed by _verify_checksum())
+        self._word_to_binary = { word : "{:011b}".format(i) for i,word in enumerate(self._words) }
+    #
+    def _config_mnemonic(self, mnemonic_guess, lang, expected_len):
+
+        # If a mnemonic guess wasn't provided, prompt the user for one
+        if not mnemonic_guess:
+            init_gui()
+            mnemonic_guess = tkSimpleDialog.askstring("Seed",
+                "Please enter your best guess for your seed (mnemonic):")
+            if not mnemonic_guess:
+                sys.exit("canceled")
+
+        # Note: this is not in BIP39's preferred encoded form yet, instead it's
+        # in the same format as load_wordlist creates (NFC normalized Unicode)
+        mnemonic_guess = unicodedata.normalize("NFC", unicode(mnemonic_guess).lower()).split()
+        if len(mnemonic_guess) == 1:  # assume it's a logographic script (no spaces, e.g. Chinese)
+            mnemonic_guess = tuple(mnemonic_guess)
+
+        # Select the appropriate wordlist language to use
+        if not lang:
+            language_word_hits = {}  # maps a language id to the # of words found in that language
+            for word in mnemonic_guess:
+                for lang, one_languages_words in self._language_words.iteritems():
+                    if word in one_languages_words:
+                        language_word_hits.setdefault(lang, 0)
+                        language_word_hits[lang] += 1
+            if len(language_word_hits) == 0:
+                raise ValueError("unable to determine wordlist language: 0 word hits")
+            sorted_hits = language_word_hits.items()
+            sorted_hits.sort(key=lambda x: x[1])  # sort based on hit count
+            if len(sorted_hits) > 1 and sorted_hits[-1][1] == sorted_hits[-2][1]:
+                raise ValueError("unable to determine wordlist language: top best guesses ({}, {}) have equal hits ({})"
+                    .format(sorted_hits[-1][0], sorted_hits[-2][0], sorted_hits[-1][1]))
+            lang = sorted_hits[-1][0]  # (probably) found it
+        #
+        try:
+            words = self._language_words[lang.lower()]
+        except KeyError:  # consistently raise ValueError for any bad inputs
+            raise ValueError("can't find wordlist for language code '{}'".format(lang))
+        print("Using the '{}' wordlist.".format(lang))
+
+        # Build the mnemonic_ids_guess and pre-calculate similar mnemonic words
+        global mnemonic_ids_guess, close_mnemonic_ids
+        mnemonic_ids_guess = ()
+        # close_mnemonic_ids is a dict; each dict key is a mnemonic_id (a string), and
+        # each dict value is a tuple containing length 1 tuples, and finally each of the
+        # length 1 tuples contains a single mnemonic_id which is similar to the dict's key;
+        # e.g.: { "a-word" : ( ("a-ward", ), ("a-work",) ), "other-word" : ... }
+        close_mnemonic_ids = {}
+        for word in mnemonic_guess:
+            close_words = difflib.get_close_matches(word, words, sys.maxint, 0.65)
+            if close_words:
+                if close_words[0] != word:
+                    print(u"'{}' was in your guess, but it's not a valid seed word;\n"
+                          u"    trying '{}' instead.".format(word, close_words[0]))
+                mnemonic_ids_guess += self._unicode_to_bytes(close_words[0]),  # *now* convert to BIP39's format
+                close_mnemonic_ids[mnemonic_ids_guess[-1]] = \
+                    tuple( (self._unicode_to_bytes(w),) for w in close_words[1:] )
+            else:
+                print(u"'{}' was in your guess, but there is no similar seed word;\n"
+                       "    trying all possible seed words here instead.".format(word))
+                mnemonic_ids_guess += None,
+
+        guess_len = len(mnemonic_ids_guess)
+        if not expected_len:
+            if guess_len < 12:
+                expected_len = 12
+            elif guess_len > 24:
+                expected_len = 24
+            else:
+                off_by = guess_len % 3
+                if off_by == 1:
+                    expected_len = guess_len - 1
+                elif off_by == 2:
+                    expected_len = guess_len + 1
+                else:
+                    expected_len = guess_len
+
+        global num_inserts, num_deletes
+        num_inserts = max(expected_len - guess_len, 0)
+        num_deletes = max(guess_len - expected_len, 0)
+        if num_inserts:
+            print("Seed sentence was too short, inserting {} word{} into each guess."
+                  .format(num_inserts, "s" if num_inserts > 1 else ""))
+        if num_deletes:
+            print("Seed sentence was too long, deleting {} word{} from each guess."
+                  .format(num_deletes, "s" if num_deletes > 1 else ""))
+
+        # Now that we're done with the words in Unicode format,
+        # convert them to BIP39's encoding and save for future reference
+        self._words = tuple(map(self._unicode_to_bytes, words))
+
+
+    # Called by WalletBIP32.return_verified_password_or_false() to verify a BIP39 checksum
+    def _verify_checksum(self, mnemonic_words):
+        # Convert from the mnemonic_words (ids) back to the entropy bytes + checksum
+        bit_string        = "".join(self._word_to_binary[w] for w in mnemonic_words)
+        cksum_len_in_bits = len(mnemonic_words) // 3  # as per BIP39
+        entropy_bytes     = bytearray()
+        for i in xrange(0, len(bit_string) - cksum_len_in_bits, 8):
+            entropy_bytes.append(int(bit_string[i:i+8], 2))
+        cksum_int = int(bit_string[-cksum_len_in_bits:], 2)
+        #
+        # Calculate and verify the checksum
+        return ord(hashlib.sha256(entropy_bytes).digest()[:1]) >> 8-cksum_len_in_bits \
+               == cksum_int
+
+    # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
+    def _derive_seed(self, mnemonic_words):
+        # Note: the words are already in BIP39's normalized form
+        return btcr.pbkdf2_hmac("sha512", " ".join(mnemonic_words), self._derivation_salt, 2048)
+
+    # Produces an infinite stream of differing mnemonic_ids guesses (for testing)
+    # (uses mnemonic_ids_guess, num_inserts, and num_deletes globals as set by config_mnemonic())
+    def performance_iterator(self):
+        return itertools.product(self._words, repeat= len(mnemonic_ids_guess) + num_inserts - num_deletes)
+
+
+############### bitcoinj ###############
+
+@register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD, Bitcoin Wallet for Android, Hive)")
+@btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
+class WalletBitcoinj(WalletBIP39):
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        if wallet_file.read(1) == b"\x0a":  # protobuf field number 1 of type length-delimited
+            network_identifier_len = ord(wallet_file.read(1))
+            if 1 <= network_identifier_len < 128:
+                wallet_file.seek(2 + network_identifier_len)
+                if wallet_file.read(1) in b"\x12\x1a":   # field number 2 or 3 of type length-delimited
+                    return True
+        return False
+
+    # Load a bitcoinj wallet file (the part of it we need, just the chaincode)
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        import wallet_pb2
+        pb_wallet = wallet_pb2.Wallet()
+        with open(wallet_filename, "rb") as wallet_file:
+            pb_wallet.ParseFromString(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+        if pb_wallet.encryption_type == wallet_pb2.Wallet.UNENCRYPTED:
+            raise ValueError("this bitcoinj wallet is not encrypted")
+
+        # Search for the (one and only) master public extended key (whose path length is 0)
+        self = None
+        for key in pb_wallet.key:
+            if  key.HasField("deterministic_key") and len(key.deterministic_key.path) == 0:
+                assert not self, "only one master public extended key is in the wallet file"
+                assert len(key.deterministic_key.chain_code) == 32, "chaincode length is 32 bytes"
+                self = cls(loading=True)
+                self._chaincode = key.deterministic_key.chain_code
+
+        if not self:
+            raise ValueError("No master public extended key was found in this bitcoinj wallet file")
+        return self
+
+    # Creates a wallet instance from either an mpk or an address and address_limit.
+    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    @classmethod
+    def create_from_params(cls, mpk = None, address = None, address_limit = None):
+        # Just calls WalletBIP39's version with a hardcoded path
+        return super(WalletBitcoinj, cls).create_from_params(mpk, address, address_limit, path="m/0'/0/")
+
+
 ################################### Main ###################################
 
 
-gui_initialized = False
+tk_root = None
 def init_gui():
-    global gui_initialized, tkFileDialog, tkSimpleDialog, tkMessageBox
-    if not gui_initialized:
-        import Tkinter, tkFileDialog, tkSimpleDialog, tkMessageBox
-        Tkinter.Tk().withdraw()  # initialize library but don't display a window
-        gui_initialized = True
+    global tk_root, tk, tkFileDialog, tkSimpleDialog, tkMessageBox
+    if not tk_root:
+        import Tkinter as tk
+        import tkFileDialog, tkSimpleDialog, tkMessageBox
+        tk_root = tk.Tk(className='seedrecover.py')  # initialize library
+        tk_root.withdraw()                           # but don't display a window (yet)
 
 
 # seedrecover.py uses routines from btcrecover.py to generate guesses, however
 # instead of dealing with passwords (immutable sequences of characters), it deals
 # with seeds (represented as immutable sequences of mnemonic_ids). More specifically,
-# seeds are tuples of mnemonic_ids, and a mnemonic_id is just an int for Electrum1.
+# seeds are tuples of mnemonic_ids, and a mnemonic_id is just an int for Electrum1,
+# or a UTF-8 bytestring id for most other wallet types.
 
 # These are simple typo generators; see btcrecover.py for additional information.
 # Instead of returning iterables of sequences of characters (iterables of strings),
@@ -411,10 +917,22 @@ def replace_wrong_word(mnemonic_ids, i):
 #               full word list, and significantly increases the search time
 #   min_typos - min number of typos to apply to each guess
 num_inserts = num_deletes = 0
-def config_btcrecover(typos, big_typos=0, min_typos=0):
+def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, extra_args = None):
     assert typos >= big_typos, "typos includes big_typos, therefore it must be >= big_typos"
 
-    btcr_args = "--typos " + str(typos)
+    # Local copies of globals whose changes should only be visible locally
+    l_num_inserts = num_inserts
+    l_num_deletes = num_deletes
+
+    # Number of words that were definitely wrong in the guess
+    num_wrong = sum(map(lambda id: id is None, mnemonic_ids_guess))
+
+    btcr_args = "--threads 1    --typos " + str(typos)
+
+    if is_peformance:
+        btcr_args += " --performance"
+        # These typos are not supported by seedrecover with --performance testing:
+        l_num_inserts = l_num_deletes = num_wrong = 0
 
     # First, check if there are any required typos (if there are missing or extra
     # words in the guess) and adjust the max number of other typos to later apply
@@ -422,22 +940,23 @@ def config_btcrecover(typos, big_typos=0, min_typos=0):
     any_typos  = typos  # the max number of typos left after removing required typos
     #big_typos =        # the max number of "big" typos after removing required typos (from args)
 
-    if num_deletes:  # if the guess is too long (extra words need to be deleted)
-        any_typos -= num_deletes
+    if l_num_deletes:  # if the guess is too long (extra words need to be deleted)
+        any_typos -= l_num_deletes
         btcr_args += " --typos-deleteword"
-        if num_deletes < typos:
-            btcr_args += " --max-typos-deleteword " + str(num_deletes)
+        if l_num_deletes < typos:
+            btcr_args += " --max-typos-deleteword " + str(l_num_deletes)
 
-    if num_inserts:  # if the guess is too short (words need to be inserted)
-        any_typos -= num_inserts
-        big_typos -= num_inserts
-        # (don't need --typos-insert because we're using the inserted_items argument below)
-        btcr_args += " --max-adjacent-inserts " + str(num_inserts)
-        if num_inserts < typos:
-            btcr_args += " --max-typos-insert " + str(num_inserts)
+    ids_to_try_inserting = None
+    if l_num_inserts:  # if the guess is too short (words need to be inserted)
+        any_typos -= l_num_inserts
+        big_typos -= l_num_inserts
+        # (instead of --typos-insert we'll set inserted_items=ids_to_try_inserting below)
+        ids_to_try_inserting = ((id,) for id in loaded_wallet.word_ids)
+        btcr_args += " --max-adjacent-inserts " + str(l_num_inserts)
+        if l_num_inserts < typos:
+            btcr_args += " --max-typos-insert " + str(l_num_inserts)
 
-    num_wrong = sum(map(lambda id: id is None, mnemonic_ids_guess))
-    if num_wrong:    # if any of the words were invalid (and need to be replaced)
+    if num_wrong:      # if any of the words were invalid (and need to be replaced)
         any_typos -= num_wrong
         big_typos -= num_wrong
         btcr_args += " --typos-replacewrongword"
@@ -455,7 +974,7 @@ def config_btcrecover(typos, big_typos=0, min_typos=0):
     # Because btcrecover doesn't support --min-typos-* on a per-typo basis, it ends
     # up generating some invalid guesses. We can use --min-typos to filter out some
     # of them (the remainder is later filtered out by verify_mnemonic_syntax()).
-    min_typos = max(min_typos, num_inserts + num_deletes + num_wrong)
+    min_typos = max(min_typos, l_num_inserts + l_num_deletes + num_wrong)
     if min_typos:
         btcr_args += " --min-typos " + str(min_typos)
 
@@ -472,49 +991,99 @@ def config_btcrecover(typos, big_typos=0, min_typos=0):
             if big_typos < typos:
                 btcr_args += " --max-typos-replaceword " + str(big_typos)
 
-        # only add replacecloseword typos if they're not
-        # already covered by the replaceword typos added above
+        # only add replacecloseword typos if they're not already covered by the
+        # replaceword typos added above and there exists at least one close word
         num_replacecloseword = any_typos - big_typos
-        if num_replacecloseword > 0:
+        if num_replacecloseword > 0 and any(len(ids) > 0 for ids in close_mnemonic_ids.itervalues()):
             btcr_args += " --typos-replacecloseword"
             if num_replacecloseword < typos:
                 btcr_args += " --max-typos-replacecloseword " + str(num_replacecloseword)
 
+    if extra_args:
+        btcr_args += " " + extra_args
+
     btcr.parse_arguments(
         btcr_args.split(),
-        inserted_items= ((id,) for id in loaded_wallet.word_ids) if num_inserts else None,
+        inserted_items= ids_to_try_inserting,
         wallet=         loaded_wallet,
-        base_iterator=  (mnemonic_ids_guess,),
-        perf_iterator=  loaded_wallet.performance_iterator,
+        base_iterator=  (mnemonic_ids_guess,) if not is_peformance else None, # the one guess to modify
+        perf_iterator=  lambda: loaded_wallet.performance_iterator(),
         check_only=     loaded_wallet.verify_mnemonic_syntax
     )
 
     return True
 
 
-loaded_wallet = None
-if __name__ == b"__main__":
+def main(argv):
+    global loaded_wallet
+    loaded_wallet = phases = None
 
     if len(sys.argv) > 1:
         # TODO: command-line version
         raise NotImplementedError("command-line arguments not implemented")
 
     else:
-        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
+        global pause_at_exit
+        pause_at_exit = True
+        atexit.register(lambda: pause_at_exit and raw_input("\nPress Enter to exit ..."))
+
+    if not loaded_wallet:
         init_gui()
+
+        # Ask for a wallet file
         wallet_filename = tkFileDialog.askopenfilename(title="Please select your wallet file if you have one")
         if wallet_filename:
             loaded_wallet = btcr.load_wallet(wallet_filename)  # raises on failure; no second chance
+
         else:
-            # TODO: wallet type selection dialog (Electrum 1 or bitcoinj or ...?)
-            wallet_type   = WalletElectrum1
+            # Without a wallet file, we can't automatically determine the wallet type, so prompt the
+            # user to select a wallet that's been registered with @register_selectable_wallet_class
+            selectable_wallet_classes.sort(key=lambda x: x[1])  # sort by description
+            class WalletTypeDialog(tkSimpleDialog.Dialog):
+                def body(self, master):
+                    self.wallet_type     = None
+                    self._index_to_cls   = []
+                    self._selected_index = tk.IntVar(value= -1)
+                    for i, (cls, desc) in enumerate(selectable_wallet_classes):
+                        self._index_to_cls.append(cls)
+                        tk.Radiobutton(master, variable=self._selected_index, value=i, text=desc) \
+                            .pack(anchor=tk.W)
+                def validate(self):
+                    if self._selected_index.get() < 0:
+                        tkMessageBox.showwarning("Wallet Type", "Please select a wallet type")
+                        return False
+                    return True
+                def apply(self):
+                    self.wallet_type = self._index_to_cls[self._selected_index.get()]
+            #
+            wallet_type_dialog = WalletTypeDialog(tk_root, "Please select your wallet type")
+            wallet_type = wallet_type_dialog.wallet_type
+            if not wallet_type:
+                sys.exit("canceled")
+
             loaded_wallet = wallet_type.create_from_params()  # user will be prompted for params
+
         mnemonic_guess = None  # user will be prompted for a seed guess
 
-        # This is a good default for Electrum1 wallets (which are pretty slow to search)
-        phases = dict(typos=2), dict(typos=1, big_typos=1), dict(typos=2, big_typos=1, min_typos=2)
-
     loaded_wallet.config_mnemonic(mnemonic_guess)
+
+    # Set reasonable defaults for the search phases
+    if not phases:
+        # If each guess is very slow, separate out the first two phases
+        passwords_per_seconds = loaded_wallet.passwords_per_seconds(1)
+        if passwords_per_seconds < 25:
+            phases = [ dict(typos=1), dict(typos=2, min_typos=2) ]
+        else:
+            phases = [ dict(typos=2) ]
+        #
+        # These two phases are added to all searches
+        phases.extend(( dict(typos=1, big_typos=1), dict(typos=2, big_typos=1, min_typos=2) ))
+        #
+        # Add a final more thorough phase if it's not likely to take more than a few hours
+        if len(mnemonic_ids_guess) <= 13 and passwords_per_seconds >=  750 or \
+           len(mnemonic_ids_guess) <= 19 and passwords_per_seconds >= 2500:
+            phases.append(dict(typos=3, big_typos=1, min_typos=3, extra_args="--no-dupchecks"))
+
     for phase_num, phase_params in enumerate(phases, 1):
 
         # Print a friendly message describing this phase's search settings
@@ -536,9 +1105,41 @@ if __name__ == b"__main__":
             (mnemonic_found, not_found_msg) = btcr.main()
 
             if mnemonic_found:
-                print("Seed found:", " ".join(loaded_wallet.id_to_word(i) for i in mnemonic_found))
-                break
+                return " ".join(loaded_wallet.id_to_word(i) for i in mnemonic_found).decode("utf_8")
             elif not_found_msg:
-                print("Seed not found" + (", sorry..." if phase_num==len(phases) else ""))
+                print("Seed not found" + ( ", sorry..." if phase_num==len(phases) else "" ))
             else:
-                exit(1)  # An error or Ctrl-C
+                return None  # An error occurred or Ctrl-C was pressed inside btcr.main()
+
+    return False
+
+
+if __name__ == b"__main__":
+
+    mnemonic_sentence = main(sys.argv)
+
+    if mnemonic_sentence:
+        if not tk_root:  # if the GUI is not being used
+            print("Seed found:", mnemonic_sentence)
+
+        # print this if there's any chance of Unicode-related display issues
+        if any(ord(c) > 126 for c in mnemonic_sentence):
+            print("HTML encoded seed:", mnemonic_sentence.encode("ascii", "xmlcharrefreplace"))
+
+        if tk_root:      # if the GUI is being used
+            padding = 6
+            tk.Label(text='WARNING: seed information is sensitive, carefully protect it and do not share', fg='red') \
+                .pack(padx=padding, pady=padding)
+            tk.Label(text='Seed found:').pack(side=tk.LEFT, padx=padding, pady=padding)
+            entry = tk.Entry(width=80, readonlybackground='white')
+            entry.insert(0, mnemonic_sentence)
+            entry.config(state='readonly')
+            entry.select_range(0, tk.END)
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=padding, pady=padding)
+            tk_root.deiconify()
+            entry.focus_set()
+            tk_root.mainloop()  # blocks until the user closes the window
+            pause_at_exit = False
+
+    elif mnemonic_sentence is None:
+        sys.exit(1)  # An error occurred or Ctrl-C was pressed inside btcr.main()
