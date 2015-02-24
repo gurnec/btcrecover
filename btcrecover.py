@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # btcrecover.py -- Bitcoin wallet password recovery tool
-# Copyright (C) 2014 Christopher Gurnee
+# Copyright (C) 2015 Christopher Gurnee
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -1194,7 +1194,7 @@ class WalletMsigna(object):
 ############### Electrum ###############
 
 @register_wallet_class
-class WalletElectrum(object):
+class WalletElectrum1(object):
 
     class __metaclass__(type):
         @property
@@ -1229,11 +1229,11 @@ class WalletElectrum(object):
             except SyntaxError as e:  # translate any SyntaxError into a
                 raise ValueError(e)   # ValueError as expected by load_wallet()
         seed_version = wallet.get("seed_version")
-        if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")
-        if seed_version != 4:                raise NotImplementedError("Unsupported Electrum seed version " + tstr(seed_version))
-        if not wallet.get("use_encryption"): raise RuntimeError("Electrum wallet is not encrypted")
+        if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum1 seed_version not found)")
+        if seed_version != 4:                raise NotImplementedError("Unsupported Electrum1 seed version " + tstr(seed_version))
+        if not wallet.get("use_encryption"): raise RuntimeError("Electrum1 wallet is not encrypted")
         seed_data = base64.b64decode(wallet["seed"])
-        if len(seed_data) != 64:                raise RuntimeError("Electrum encrypted seed plus iv is not 64 bytes long")
+        if len(seed_data) != 64:                raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
         self = cls(loading=True)
         self._iv                  = seed_data[:16]    # only need the 16-byte IV plus
         self._part_encrypted_seed = seed_data[16:32]  # the first 16-byte encrypted block of the seed
@@ -1270,6 +1270,62 @@ class WalletElectrum(object):
                 if c > b"f" or c < b"0" or b"9" < c < b"a": break  # not hex
             else:  # if the loop above doesn't break, it's all hex
                 return password if tstr == str else password.decode("utf_8", "replace"), count
+
+        return False, count
+
+@register_wallet_class
+class WalletElectrum2(WalletElectrum1):
+
+    class __metaclass__(WalletElectrum1.__metaclass__):
+        @property
+        def data_extract_id(cls): return "e2"
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        data = wallet_file.read(20).split()
+        return len(data) >= 2 and data[0] == '{' and data[1] == '"accounts":'
+
+    # Load an Electrum wallet file (the part of it we need)
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        import json
+        with open(wallet_filename) as wallet_file:
+            wallet = json.load(wallet_file)
+        if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
+        mpks = wallet.get("master_private_keys", ())
+        if len(mpks) == 0:                   raise ValueError("No master private keys found in Electrum2 wallet")
+        xprv_data = base64.b64decode(mpks.values()[0])
+        if len(xprv_data) != 128:            raise ValueError("Unexpected Electrum2 encrypted master private key length")
+        self = cls(loading=True)
+        self._iv                  = xprv_data[:16]    # only need the 16-byte IV plus
+        self._part_encrypted_seed = xprv_data[16:32]  # the first 16-byte encrypted block of a master privkey
+        return self                                   # (the member variable name comes from the base class)
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    assert b"1" < b"9" < b"A" < b"Z" < b"a" < b"z"  # the b58 check below assumes ASCII ordering in the interest of speed
+    def return_verified_password_or_false(self, passwords):
+        # Copy some vars into local for a small speed boost
+        l_sha256             = hashlib.sha256
+        l_aes256_cbc_decrypt = aes256_cbc_decrypt
+        part_encrypted_xprv  = self._part_encrypted_seed
+        iv                   = self._iv
+
+        # Convert Unicode strings (lazily) to UTF-8 bytestrings
+        if tstr == unicode:
+            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+            key  = l_sha256( l_sha256( password ).digest() ).digest()
+            xprv = l_aes256_cbc_decrypt(key, iv, part_encrypted_xprv)
+
+            if xprv.startswith(b"xprv"):  # BIP32 extended private key version bytes
+                for c in xprv[4:]:
+                    # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
+                    if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
+                else:  # if the loop above doesn't break, it's base58
+                    return password if tstr == str else password.decode("utf_8", "replace"), count
 
         return False, count
 

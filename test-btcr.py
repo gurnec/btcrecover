@@ -853,6 +853,10 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("electrum-wallet")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_electrum2(self):
+        self.wallet_tester("electrum2-wallet")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
@@ -907,6 +911,9 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bitcoincore-wallet.dat", force_purepython=True)
 
     def test_electrum_pp(self):
+        self.wallet_tester("electrum-wallet", force_purepython=True)
+
+    def test_electrum2_pp(self):
         self.wallet_tester("electrum-wallet", force_purepython=True)
 
     def test_multibit_pp(self):
@@ -1039,6 +1046,15 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_electrum_unicode(self):
         self.key_tester("ZWw6rLwP/stP422FgteriIgvq4LD90adedrAqz61gKuYDRrx3+Q+", unicode_pw=True)
 
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_electrum2(self):
+        self.key_tester("ZTI69B961mYKYFV7Bg1zRYZ8ZGw4cE+2D8NF3lp6d2XPe8qTdJUz")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_electrum2_unicode(self):
+        self.key_tester("ZTI6k2tz83Lzs83hyQPRj2g90f7nVYHYM20qLv4NIVIzUNNqVWv8", unicode_pw=True)
+
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
                          btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
@@ -1128,6 +1144,13 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_electrum_unicode_pp(self):
         self.key_tester("ZWw6rLwP/stP422FgteriIgvq4LD90adedrAqz61gKuYDRrx3+Q+", force_purepython=True, unicode_pw=True)
+
+    def test_electrum2_pp(self):
+        self.key_tester("ZTI69B961mYKYFV7Bg1zRYZ8ZGw4cE+2D8NF3lp6d2XPe8qTdJUz", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_electrum2_unicode_pp(self):
+        self.key_tester("ZTI6k2tz83Lzs83hyQPRj2g90f7nVYHYM20qLv4NIVIzUNNqVWv8", force_purepython=True, unicode_pw=True)
 
     def test_blockchain_v0_pp(self):
         self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==", force_purepython=True, force_kdf_purepython=True)
@@ -1381,6 +1404,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_msigna_unicode",
                 "test_electrum",
                 "test_electrum_unicode",
+                "test_electrum2",
+                "test_electrum2_unicode",
                 "test_blockchain_v0",
                 "test_blockchain_v0_unicode",
                 "test_blockchain_v2",
@@ -1401,6 +1426,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_msigna_unicode_pp",
                 "test_electrum_pp",
                 "test_electrum_unicode_pp",
+                "test_electrum2_pp",
+                "test_electrum2_unicode_pp",
                 "test_blockchain_v0_pp",
                 "test_blockchain_v0_unicode_pp",
                 "test_blockchain_secondpass_pp",
