@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -177,7 +177,6 @@ print = btcr.safe_print  # use btcr's print which never dies from printing Unico
 
 
 ################################### Wallets ###################################
-# TODO: implement other wallets; Electrum 2? MutliBit HD? (both are still in beta...)
 
 # A class decorator which adds a wallet class to a registered
 # list that can later be selected by a user in GUI mode
@@ -734,13 +733,13 @@ class WalletBIP39(WalletBIP32):
             if len(sorted_hits) > 1 and sorted_hits[-1][1] == sorted_hits[-2][1]:
                 raise ValueError("unable to determine wordlist language: top best guesses ({}, {}) have equal hits ({})"
                     .format(sorted_hits[-1][0], sorted_hits[-2][0], sorted_hits[-1][1]))
-            lang = sorted_hits[-1][0]  # (probably) found it
+            self._lang = sorted_hits[-1][0].lower()  # (probably) found it
         #
         try:
-            words = self._language_words[lang.lower()]
+            words = self._language_words[self._lang]
         except KeyError:  # consistently raise ValueError for any bad inputs
-            raise ValueError("can't find wordlist for language code '{}'".format(lang))
-        print("Using the '{}' wordlist.".format(lang))
+            raise ValueError("can't find wordlist for language code '{}'".format(self._lang))
+        print("Using the '{}' wordlist.".format(self._lang))
 
         # Build the mnemonic_ids_guess and pre-calculate similar mnemonic words
         global mnemonic_ids_guess, close_mnemonic_ids
@@ -878,6 +877,17 @@ class WalletElectrum2(WalletBIP39):
     def _load_wordlists(cls):
         super(WalletElectrum2, cls)._load_wordlists()             # the default bip39 word lists
         super(WalletElectrum2, cls)._load_wordlists("electrum2")  # any additional Electrum2 word lists
+        assert all(len(w) >= 1411 for w in cls._language_words.values()), \
+               "Electrum2 wordlists are at least 1411 words long" # because we assume a max mnemonic length of 13
+
+    def passwords_per_seconds(self, seconds):
+        # (experimentally determined; doesn't have to be perfect, just decent)
+        #
+        # number of priv-to-pubkey derivations per checksum-validated seed; they slow things down:
+        derivation_count = 0 if self._chaincode else self._addrs_to_generate
+        #
+        est = 25000.0 * (3.0 / max(derivation_count, 6.0) if derivation_count else 1.0)
+        return max(int(round(est * seconds)), 1)
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -895,6 +905,8 @@ class WalletElectrum2(WalletBIP39):
         if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum2 seed_version not found)")
         if seed_version != 11:               raise NotImplementedError("Unsupported Electrum2 seed version " + seed_version)
         if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
+        if wallet.get("wallet_type") != "standard":
+                                             raise NotImplementedError("Unsupported Electrum2 wallet type: " + wallet.get("wallet_type"))
         mpks = wallet.get("master_public_keys", ())
         if len(mpks) == 0:                   raise ValueError("No master public keys found in Electrum2 wallet")
         if len(mpks) >  1:                   raise ValueError("Multiple master public keys found in Electrum2 wallet")
@@ -916,29 +928,34 @@ class WalletElectrum2(WalletBIP39):
         word = u"".join(c for c in word if not unicodedata.combining(c))  # Electrum 2.x removes combining marks
         return intern(word.encode("utf_8"))
 
-    def config_mnemonic(self, mnemonic_guess = None, lang = None):
-        # Calls WalletBIP39's generic version (note the leading _) with a hardcoded mnemonic length
-        self._config_mnemonic(mnemonic_guess, lang, expected_len=13)
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, expected_len = 13):
+        # Calls WalletBIP39's generic version (note the leading _) with a hardcoded mnemonic
+        # length (which for Electrum2 wallets alone is treated only as a maximum length)
+        if expected_len > 13:
+            raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
+        self._config_mnemonic(mnemonic_guess, lang, expected_len)
+        #
+        # Electrum 2.x doesn't separate mnemonic words with spaces in sentences for any CJK
+        # scripts when calculating the checksum or deriving a binary seed (even though this
+        # seem inappropriate for some CJK scripts such as Hiragana as used by the ja wordlist)
+        self._space = "" if self._lang in ("ja", "zh-hans", "zh-hant") else " "
 
     # Performs basic checks so that clearly invalid mnemonic_ids can be completely skipped
     @staticmethod
     def verify_mnemonic_syntax(mnemonic_ids):
-        # Length must be == 13 and all ids must be present
-        return len(mnemonic_ids) == 13 and None not in mnemonic_ids
+        # As long as each wordlist has at least 1411 words (checked by _load_wordlists()),
+        # a valid mnemonic is at most 13 words long (and all ids must be present)
+        return len(mnemonic_ids) <= 13 and None not in mnemonic_ids
 
     # Called by WalletBIP32.return_verified_password_or_false() to verify an Electrum2 checksum
-    @staticmethod
-    def _verify_checksum(mnemonic_words):
-        # TODO: if a logographic word list is added to Electrum2, might need to revisit this (no spaces)
-        return hmac.new("Seed version", " ".join(mnemonic_words), hashlib.sha512) \
+    def _verify_checksum(self, mnemonic_words):
+        return hmac.new("Seed version", self._space.join(mnemonic_words), hashlib.sha512) \
                .digest()[0] == "\x01"
 
     # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
-    @staticmethod
-    def _derive_seed(mnemonic_words):
-        # TODO: if a logographic word list is added to Electrum2, might need to revisit this (no spaces)
+    def _derive_seed(self, mnemonic_words):
         # Note: the words are already in Electrum2's normalized form
-        return btcr.pbkdf2_hmac("sha512", " ".join(mnemonic_words), "electrum", 2048)
+        return btcr.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), "electrum", 2048)
 
 
 ################################### Main ###################################
@@ -984,14 +1001,14 @@ def replace_wrong_word(mnemonic_ids, i):
     return ((new_id,) for new_id in loaded_wallet.word_ids)
 
 
-# Builds a command line and then calls btcr.parse_arguments() with it.
+# Builds a command line and then runs btcrecover with it.
 #   typos     - max number of mistakes to apply to each guess
 #   big_typos - max number of "big" mistakes to apply to each guess;
 #               a big mistake involves replacing or inserting a word using the
 #               full word list, and significantly increases the search time
-#   min_typos - min number of typos to apply to each guess
+#   min_typos - min number of mistakes to apply to each guess
 num_inserts = num_deletes = 0
-def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, extra_args = None):
+def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, extra_args = None):
     assert typos >= big_typos, "typos includes big_typos, therefore it must be >= big_typos"
 
     # Local copies of globals whose changes should only be visible locally
@@ -1001,6 +1018,7 @@ def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False
     # Number of words that were definitely wrong in the guess
     num_wrong = sum(map(lambda id: id is None, mnemonic_ids_guess))
 
+    # Start building the command-line arguments
     btcr_args = "--typos " + str(typos)
 
     if is_peformance:
@@ -1012,23 +1030,13 @@ def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False
     # words in the guess) and adjust the max number of other typos to later apply
 
     any_typos  = typos  # the max number of typos left after removing required typos
-    #big_typos =        # the max number of "big" typos after removing required typos (from args)
+    #big_typos =        # the max number of "big" typos after removing required typos (an arg from above)
 
     if l_num_deletes:  # if the guess is too long (extra words need to be deleted)
         any_typos -= l_num_deletes
         btcr_args += " --typos-deleteword"
         if l_num_deletes < typos:
             btcr_args += " --max-typos-deleteword " + str(l_num_deletes)
-
-    ids_to_try_inserting = None
-    if l_num_inserts:  # if the guess is too short (words need to be inserted)
-        any_typos -= l_num_inserts
-        big_typos -= l_num_inserts
-        # (instead of --typos-insert we'll set inserted_items=ids_to_try_inserting below)
-        ids_to_try_inserting = ((id,) for id in loaded_wallet.word_ids)
-        btcr_args += " --max-adjacent-inserts " + str(l_num_inserts)
-        if l_num_inserts < typos:
-            btcr_args += " --max-typos-insert " + str(l_num_inserts)
 
     if num_wrong:      # if any of the words were invalid (and need to be replaced)
         any_typos -= num_wrong
@@ -1037,55 +1045,97 @@ def config_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False
         if num_wrong < typos:
             btcr_args += " --max-typos-replacewrongword " + str(num_wrong)
 
-    if any_typos < 0:  # if too many typos are required to generate valid mnemonics
-        print("Not enough mistakes permitted to produce a valid seed; skipping this phase.")
-        return False
+    # For (only) Electrum2, num_inserts are not required, so we try several sub-phases with a
+    # different number of inserts each time; for all others the total num_inserts are required
+    if isinstance(loaded_wallet, WalletElectrum2):
+        num_inserts_to_try = xrange(l_num_inserts + 1)  # try a range
+    else:
+        num_inserts_to_try = l_num_inserts,             # only try the required max
+    for subphase_num, cur_num_inserts in enumerate(num_inserts_to_try, 1):
 
-    if big_typos < 0:  # if too many big typos are required to generate valid mnemonics
-        print("Not enough entirely different seed words permitted; skipping this phase.")
-        return False
+        # Create local copies of these which are reset at the beginning of each loop
+        l_any_typos = any_typos
+        l_big_typos = big_typos
+        l_btcr_args = btcr_args
 
-    # Because btcrecover doesn't support --min-typos-* on a per-typo basis, it ends
-    # up generating some invalid guesses. We can use --min-typos to filter out some
-    # of them (the remainder is later filtered out by verify_mnemonic_syntax()).
-    min_typos = max(min_typos, l_num_inserts + l_num_deletes + num_wrong)
-    if min_typos:
-        btcr_args += " --min-typos " + str(min_typos)
+        ids_to_try_inserting = None
+        if cur_num_inserts:  # if the guess is too short (words need to be inserted)
+            l_any_typos -= cur_num_inserts
+            l_big_typos -= cur_num_inserts
+            # (instead of --typos-insert we'll set inserted_items=ids_to_try_inserting below)
+            ids_to_try_inserting = ((id,) for id in loaded_wallet.word_ids)
+            l_btcr_args += " --max-adjacent-inserts " + str(cur_num_inserts)
+            if cur_num_inserts < typos:
+                l_btcr_args += " --max-typos-insert " + str(cur_num_inserts)
 
-    # Next, if the required typos above haven't consumed all available typos
-    # (as specified by the function's args), add some "optional" typos
+        # For >1 subphases, print this out now or just after the skip-this-phase check below
+        if len(num_inserts_to_try) > 1:
+            subphase_msg = "  - subphase {}/{}: with {} inserted seed word{}".format(
+                subphase_num, len(num_inserts_to_try),
+                cur_num_inserts, "" if cur_num_inserts == 1 else "s")
+        if subphase_num > 1:
+            print(subphase_msg)
+            maybe_skipping = "the remainder of this phase."
+        else:
+            maybe_skipping = "this phase."
 
-    if any_typos:
-        btcr_args += " --typos-swap"
-        if any_typos < typos:
-            btcr_args += " --max-typos-swap " + str(any_typos)
+        if l_any_typos < 0:  # if too many typos are required to generate valid mnemonics
+            print("Not enough mistakes permitted to produce a valid seed; skipping", maybe_skipping)
+            return False
+        if l_big_typos < 0:  # if too many big typos are required to generate valid mnemonics
+            print("Not enough entirely different seed words permitted; skipping", maybe_skipping)
+            return False
 
-        if big_typos:  # if there are any big typos left, add the replaceword typo
-            btcr_args += " --typos-replaceword"
-            if big_typos < typos:
-                btcr_args += " --max-typos-replaceword " + str(big_typos)
+        if subphase_num == 1 and len(num_inserts_to_try) > 1:
+            print(subphase_msg)
 
-        # only add replacecloseword typos if they're not already covered by the
-        # replaceword typos added above and there exists at least one close word
-        num_replacecloseword = any_typos - big_typos
-        if num_replacecloseword > 0 and any(len(ids) > 0 for ids in close_mnemonic_ids.itervalues()):
-            btcr_args += " --typos-replacecloseword"
-            if num_replacecloseword < typos:
-                btcr_args += " --max-typos-replacecloseword " + str(num_replacecloseword)
+        # Because btcrecover doesn't support --min-typos-* on a per-typo basis, it ends
+        # up generating some invalid guesses. We can use --min-typos to filter out some
+        # of them (the remainder is later filtered out by verify_mnemonic_syntax()).
+        min_typos = max(min_typos, cur_num_inserts + l_num_deletes + num_wrong)
+        if min_typos:
+            l_btcr_args += " --min-typos " + str(min_typos)
 
-    if extra_args:
-        btcr_args += " " + extra_args
+        # Next, if the required typos above haven't consumed all available typos
+        # (as specified by the function's args), add some "optional" typos
 
-    btcr.parse_arguments(
-        btcr_args.split(),
-        inserted_items= ids_to_try_inserting,
-        wallet=         loaded_wallet,
-        base_iterator=  (mnemonic_ids_guess,) if not is_peformance else None, # the one guess to modify
-        perf_iterator=  lambda: loaded_wallet.performance_iterator(),
-        check_only=     loaded_wallet.verify_mnemonic_syntax
-    )
+        if l_any_typos:
+            l_btcr_args += " --typos-swap"
+            if l_any_typos < typos:
+                l_btcr_args += " --max-typos-swap " + str(l_any_typos)
 
-    return True
+            if l_big_typos:  # if there are any big typos left, add the replaceword typo
+                l_btcr_args += " --typos-replaceword"
+                if l_big_typos < typos:
+                    l_btcr_args += " --max-typos-replaceword " + str(l_big_typos)
+
+            # only add replacecloseword typos if they're not already covered by the
+            # replaceword typos added above and there exists at least one close word
+            num_replacecloseword = l_any_typos - l_big_typos
+            if num_replacecloseword > 0 and any(len(ids) > 0 for ids in close_mnemonic_ids.itervalues()):
+                l_btcr_args += " --typos-replacecloseword"
+                if num_replacecloseword < typos:
+                    l_btcr_args += " --max-typos-replacecloseword " + str(num_replacecloseword)
+
+        if extra_args:
+            l_btcr_args += " " + extra_args
+
+        btcr.parse_arguments(
+            l_btcr_args.split(),
+            inserted_items= ids_to_try_inserting,
+            wallet=         loaded_wallet,
+            base_iterator=  (mnemonic_ids_guess,) if not is_peformance else None, # the one guess to modify
+            perf_iterator=  lambda: loaded_wallet.performance_iterator(),
+            check_only=     loaded_wallet.verify_mnemonic_syntax
+        )
+        (mnemonic_found, not_found_msg) = btcr.main()
+
+        if mnemonic_found:
+            return mnemonic_found
+        elif not_found_msg is None:
+            return None  # An error occurred or Ctrl-C was pressed inside btcr.main()
+
+    return False  # No error occurred; the mnemonic wasn't found
 
 
 def main(argv):
@@ -1175,17 +1225,16 @@ def main(argv):
             print(", excluding entirely different seed words.")
 
         # Perform this phase's search
-        if config_btcrecover(**phase_params):
-            (mnemonic_found, not_found_msg) = btcr.main()
+        mnemonic_found = run_btcrecover(**phase_params)
 
-            if mnemonic_found:
-                return " ".join(loaded_wallet.id_to_word(i) for i in mnemonic_found).decode("utf_8")
-            elif not_found_msg:
-                print("Seed not found" + ( ", sorry..." if phase_num==len(phases) else "" ))
-            else:
-                return None  # An error occurred or Ctrl-C was pressed inside btcr.main()
+        if mnemonic_found:
+            return " ".join(loaded_wallet.id_to_word(i) for i in mnemonic_found).decode("utf_8")
+        elif mnemonic_found is None:
+            return None  # An error occurred or Ctrl-C was pressed inside btcr.main()
+        else:
+            print("Seed not found" + ( ", sorry..." if phase_num==len(phases) else "" ))
 
-    return False
+    return False  # No error occurred; the mnemonic wasn't found
 
 
 if __name__ == b"__main__":
