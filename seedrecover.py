@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -288,15 +288,21 @@ class WalletElectrum1(object):
         # Process the address argument
         if address:
             if mpk:
-                print("address is ignored when an mpk is provided", file=sys.stderr)
+                print("warning: address is ignored when an mpk is provided", file=sys.stderr)
             else:
-                assert isinstance(address_limit, int), "an int address-limit is required when an address is provided"
-                if address_limit <= 0:
-                    raise ValueError("a positive address-limit is required when an address is provided")
                 self._known_hash160, version_byte = base58check_to_hash160(address)
-                self._addrs_to_generate = address_limit
                 if ord(version_byte) != 0:
                     raise ValueError("the address must be a P2PKH address")
+
+        # Process the address_limit argument
+        if address_limit:
+            if mpk:
+                print("warning: address limit is ignored when an mpk is provided", file=sys.stderr)
+            else:
+                address_limit = int(address_limit)
+                if address_limit <= 0:
+                    raise ValueError("the address limit must be > 0")
+                # (it's assigned to self._addrs_to_generate later)
 
         # If neither mpk nor address arguments were provided, prompt the user for an mpk first
         if not mpk and not address:
@@ -338,11 +344,14 @@ class WalletElectrum1(object):
                 except ValueError as e:
                     tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
 
-            self._addrs_to_generate = tkSimpleDialog.askinteger("Address limit",
-                "Please enter the address generation limit. Smaller is faster, but it must be\n"
-                "larger than the number of addresses created before the one you just entered:", minvalue=1)
-            if not self._addrs_to_generate:
-                sys.exit("canceled")
+            if not address_limit:
+                address_limit = tkSimpleDialog.askinteger("Address limit",
+                    "Please enter the address generation limit. Smaller will\n"
+                    "be faster, but it must be equal to at least the number\n"
+                    "of addresses created before the one you just entered:", minvalue=1)
+                if not address_limit:
+                    sys.exit("canceled")
+            self._addrs_to_generate = address_limit
 
         return self
 
@@ -457,32 +466,33 @@ class WalletElectrum1(object):
 
 class WalletBIP32(object):
 
-    def __init__(self, loading = False):
+    def __init__(self, path = None, loading = False):
         assert loading, "use load_from_filename or create_from_params to create a " + self.__class__.__name__
         self._chaincode = None
 
-    # Creates a wallet instance from either an mpk or an address and address_limit.
-    # If neither an mpk nor address is supplied, prompts the user for one or the other.
-    # (the BIP32 key derivation path is by default BIP44's)
-    @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = "m/44'/0'/0'/0/"):
-        self = cls(loading=True)
-
         # Split the BIP32 key derivation path into its constituent indexes
         # (doesn't support the last path element for the address as hardened)
-        if not self._chaincode:
-            path_indexes = path.split('/')
-            if path_indexes[0] == "m" or path_indexes[0] == "":
-                del path_indexes[0]   # the optional leading "m/"
-            assert path_indexes[-1] != "'", "the last path element is not hardened"
-            if path_indexes[-1] == "":
-                del path_indexes[-1]  # the optional trailing "/"
-            self._path_indexes = ()
-            for path_index in path_indexes:
-                if path_index.endswith("'"):
-                    self._path_indexes += int(path_index[:-1]) + 2**31,
-                else:
-                    self._path_indexes += int(path_index),
+
+        if not path: path = "m/44'/0'/0'/0/"  # BIP44 account 0
+        path_indexes = path.split('/')
+        if path_indexes[0] == "m" or path_indexes[0] == "":
+            del path_indexes[0]   # the optional leading "m/"
+        assert path_indexes[-1] != "'", "the last path element is not hardened"
+        if path_indexes[-1] == "":
+            del path_indexes[-1]  # the optional trailing "/"
+        self._path_indexes = ()
+        for path_index in path_indexes:
+            if path_index.endswith("'"):
+                self._path_indexes += int(path_index[:-1]) + 2**31,
+            else:
+                self._path_indexes += int(path_index),
+
+    # Creates a wallet instance from either an mpk or an address and address_limit.
+    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    # (the BIP32 key derivation path is by default BIP44's account 0)
+    @classmethod
+    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None):
+        self = cls(path, loading=True)
 
         # Process the mpk (master public key) argument
         if mpk:
@@ -494,28 +504,31 @@ class WalletBIP32(object):
         # Process the address argument
         if address:
             if mpk:
-                print("address is ignored when an mpk is provided", file=sys.stderr)
+                print("warning: address is ignored when an mpk is provided", file=sys.stderr)
             else:
-                assert isinstance(address_limit, int), "an int address-limit is required when an address is provided"
-                if address_limit <= 0:
-                    raise ValueError("a positive address-limit is required when an address is provided")
-                assert path, "a path is required when an address is provided"
                 self._known_hash160, version_byte = base58check_to_hash160(address)
-                self._addrs_to_generate = address_limit
                 if ord(version_byte) != 0:
                     raise ValueError("the address must be a P2PKH address")
 
+        # Process the address_limit argument
+        if address_limit:
+            if mpk:
+                print("warning: address limit is ignored when an mpk is provided", file=sys.stderr)
+            else:
+                address_limit = int(address_limit)
+                if address_limit <= 0:
+                    raise ValueError("the address limit must be > 0")
+                # (it's assigned to self._addrs_to_generate later)
+
         # If neither mpk nor address arguments were provided, prompt the user for an mpk first
         if not mpk and not address:
-            address_allowed = " if you have it, or click Cancel to search by an address instead" if path else ""
             init_gui()
             while True:
                 mpk = tkSimpleDialog.askstring("Master extended public key",
-                                               "Please enter your master extended public key (xpub){}:".format(address_allowed))
-                if not mpk:              # if they pressed Cancel and
-                    if address_allowed:  # if using an address instead is allowed, then
-                        break            # stop prompting for an mpk (so we can prompt for an address)
-                    sys.exit("canceled") # unless addresses aren't allowed, then give up
+                    "Please enter your master extended public key (xpub) if you "
+                    "have it, or click Cancel to search by an address instead")
+                if not mpk:
+                    break  # if they pressed Cancel, stop prompting for an mpk
                 mpk = mpk.strip()
                 try:
                     if not mpk.startswith("xpub"):
@@ -525,23 +538,37 @@ class WalletBIP32(object):
                 except ValueError as e:
                     tkMessageBox.showerror("Master extended public key", "The entered key is invalid ({})".format(e))
 
-        # If an mpk has been provided (in the function call or from a user), extract the required chaincode
+        # If an mpk has been provided (in the function call or from a user), extract
+        # the required chaincode and truncate the path to match the depth of the mpk
         if mpk:
-            if mpk.depth != 0 or mpk.fingerprint != "\0\0\0\0" or mpk.child_number != 0:
+            if mpk.depth == 0:
+                print("xpub depth: 0")
+            else:
+                if mpk.child_number < 2**31:
+                    child_num = mpk.child_number
+                else:
+                    child_num = str(mpk.child_number - 2**31) + "'"
                 print("xpub depth:       {}\n"
                       "xpub fingerprint: {}\n"
                       "xpub child #:     {}"
-                      .format(mpk.depth, base64.b16encode(mpk.fingerprint), mpk.child_number),
-                      file=sys.stderr)
-                raise ValueError("the extended public key must be a master key")
-            self._chaincode = mpk.chaincode
+                      .format(mpk.depth, base64.b16encode(mpk.fingerprint), child_num))
+            if mpk.depth > len(self._path_indexes):
+                raise ValueError(
+                    "the extended public key's depth exceeds the length of this wallet's path ({})"
+                    .format(len(self._path_indexes)))
+            self._chaincode    = mpk.chaincode
+            self._path_indexes = self._path_indexes[:mpk.depth]
+            if self._path_indexes and self._path_indexes[-1] != mpk.child_number:
+                raise ValueError(
+                    "the extended public key's child # doesn't match the last index of this of this wallet's path")
 
         # If an mpk wasn't provided (at all), and an address also wasn't provided
         # (in the original function call), prompt the user for an address.
         if not mpk and not address:
             while True:
                 address = tkSimpleDialog.askstring("Bitcoin address",
-                    "Please enter an address from your wallet, preferably one created early in your wallet's lifetime:")
+                    "Please enter an address from the first account in your wallet,\n"
+                    "preferably one created early in the account's lifetime:")
                 if not address:
                     sys.exit("canceled")
                 address = address.strip()
@@ -554,11 +581,14 @@ class WalletBIP32(object):
                 except ValueError as e:
                     tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
 
-            self._addrs_to_generate = tkSimpleDialog.askinteger("Address limit",
-                "Please enter the address generation limit. Smaller is faster, but it must be\n"
-                "larger than the number of addresses created before the one you just entered:", minvalue=1)
-            if not self._addrs_to_generate:
-                sys.exit("canceled")
+            if not address_limit:
+                address_limit = tkSimpleDialog.askinteger("Address limit",
+                    "Please enter the address generation limit. Smaller will\n"
+                    "be faster, but it must be equal to at least the number\n"
+                    "of addresses created before the one you just entered:", minvalue=1)
+                if not address_limit:
+                    sys.exit("canceled")
+                self._addrs_to_generate = address_limit
 
         return self
 
@@ -583,35 +613,35 @@ class WalletBIP32(object):
             # Convert the mnemonic sentence to seed bytes (according to BIP39 or Electrum2)
             seed_bytes = hmac.new("Bitcoin seed", self._derive_seed(mnemonic_ids), hashlib.sha512).digest()
 
-            # If an extended public key was provided, check the chain code derived from the seed against it
+            # Derive the chain of private keys for the specified path as per BIP32
+            privkey_bytes   = seed_bytes[:32]
+            chaincode_bytes = seed_bytes[32:]
+            for i in self._path_indexes:
+
+                if i < hardened_min:  # if it's a normal child key
+                    data_to_hmac = compress_pubkey(  # derive the compressed public key
+                        crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+                else:                 # else it's a hardened child key
+                    data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
+                data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
+
+                seed_bytes    = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
+
+                # The child private key is the parent one + the first half of the seed_bytes (mod n)
+                privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
+                                                bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
+                chaincode_bytes = seed_bytes[32:]
+
+            # If an extended public key was provided, check the derived chain code against it
             if self._chaincode:
                 if seed_bytes[32:] == self._chaincode:
                     return mnemonic_ids, count  # found it
 
-            # Else derive addrs_to_generate addresses from the seed, searching for a match with known_hash160
             else:
-                # Derive the chain of private keys for the specified path as per BIP32
-                privkey_bytes   = seed_bytes[:32]
-                chaincode_bytes = seed_bytes[32:]
-                for i in self._path_indexes:
-
-                    if i < hardened_min:  # if it's a normal child key
-                        data_to_hmac = compress_pubkey(  # derive the compressed public key
-                            crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
-                    else:                 # else it's a hardened child key
-                        data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
-                    data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
-
-                    seed_bytes    = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
-
-                    # The child private key is the parent one + the first half of the seed_bytes (mod n)
-                    privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
-                                                    bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
-                    chaincode_bytes = seed_bytes[32:]
-
                 # (note: the rest doesn't support the last path element being hardened)
 
-                # Derive the final public keys (the first step below is a loop invariant)
+                # Derive the final public keys, searching for a match with known_hash160
+                # (the first step below is a loop invariant)
                 data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
                     crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
                 #
@@ -633,7 +663,7 @@ class WalletBIP32(object):
 
 ############### BIP39 ###############
 
-@register_selectable_wallet_class("Generic BIP39/BIP44 account 0 (Mycelium, TREZOR)")
+@register_selectable_wallet_class("Generic BIP39/BIP44 (Mycelium, TREZOR)")
 class WalletBIP39(WalletBIP32):
 
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
@@ -651,8 +681,8 @@ class WalletBIP39(WalletBIP32):
     @staticmethod
     def id_to_word(id): return id  # returns a UTF-8 encoded bytestring
 
-    def __init__(self, loading = False):
-        super(WalletBIP39, self).__init__(loading)
+    def __init__(self, path = None, loading = False):
+        super(WalletBIP39, self).__init__(path, loading)
         if not self._language_words:
             self._load_wordlists()
         btcr.load_pbkdf2_library()  # btcr's pbkdf2 library is used in _derive_seed()
@@ -824,6 +854,11 @@ class WalletBIP39(WalletBIP32):
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletBitcoinj(WalletBIP39):
 
+    def __init__(self, path = None, loading = False):
+        # Just calls WalletBIP39.__init__() with a hardcoded path
+        if path: raise ValueError("can't specify a BIP32 path with Bitcoinj wallets")
+        super(WalletBitcoinj, self).__init__("m/0'/0/", loading)
+
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
@@ -853,17 +888,12 @@ class WalletBitcoinj(WalletBIP39):
                 assert len(key.deterministic_key.chain_code) == 32, "chaincode length is 32 bytes"
                 self = cls(loading=True)
                 self._chaincode = key.deterministic_key.chain_code
+                # Because it's the *master* xpub, it has an empty path
+                self._path_indexes = ()
 
         if not self:
             raise ValueError("No master public extended key was found in this bitcoinj wallet file")
         return self
-
-    # Creates a wallet instance from either an mpk or an address and address_limit.
-    # If neither an mpk nor address is supplied, prompts the user for one or the other.
-    @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None):
-        # Just calls WalletBIP39's version with a hardcoded path
-        return super(WalletBitcoinj, cls).create_from_params(mpk, address, address_limit, path="m/0'/0/")
 
 
 ############### Electrum2 ###############
@@ -879,6 +909,11 @@ class WalletElectrum2(WalletBIP39):
         super(WalletElectrum2, cls)._load_wordlists("electrum2")  # any additional Electrum2 word lists
         assert all(len(w) >= 1411 for w in cls._language_words.values()), \
                "Electrum2 wordlists are at least 1411 words long" # because we assume a max mnemonic length of 13
+
+    def __init__(self, path = None, loading = False):
+        # Just calls WalletBIP39.__init__() with a hardcoded path
+        if path: raise ValueError("can't specify a BIP32 path with Electrum 2.x wallets")
+        super(WalletElectrum2, self).__init__("m/0/", loading)
 
     def passwords_per_seconds(self, seconds):
         # (experimentally determined; doesn't have to be perfect, just decent)
@@ -911,13 +946,6 @@ class WalletElectrum2(WalletBIP39):
         if len(mpks) == 0:                   raise ValueError("No master public keys found in Electrum2 wallet")
         if len(mpks) >  1:                   raise ValueError("Multiple master public keys found in Electrum2 wallet")
         return cls.create_from_params(mpks.values()[0])
-
-    # Creates a wallet instance from either an mpk or an address and address_limit.
-    # If neither an mpk nor address is supplied, prompts the user for one or the other.
-    @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None):
-        # Just calls WalletBIP39's version with a hardcoded path
-        return super(WalletElectrum2, cls).create_from_params(mpk, address, address_limit, path="m/0/")
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
     # into a bytestring (of type str) in the method as Electrum 2.x
