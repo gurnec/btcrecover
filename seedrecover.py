@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -473,7 +473,12 @@ class WalletBIP32(object):
         # Split the BIP32 key derivation path into its constituent indexes
         # (doesn't support the last path element for the address as hardened)
 
-        if not path: path = "m/44'/0'/0'/0/"  # BIP44 account 0
+        if not path:  # Defaults to BIP44
+            path = "m/44'/0'/0'/"
+            # Append the internal/external (change) index to the path in create_from_params()
+            self._append_last_index = True
+        else:
+            self._append_last_index = False
         path_indexes = path.split('/')
         if path_indexes[0] == "m" or path_indexes[0] == "":
             del path_indexes[0]   # the optional leading "m/"
@@ -538,11 +543,12 @@ class WalletBIP32(object):
                 except ValueError as e:
                     tkMessageBox.showerror("Master extended public key", "The entered key is invalid ({})".format(e))
 
-        # If an mpk has been provided (in the function call or from a user), extract
-        # the required chaincode and truncate the path to match the depth of the mpk
+        # If an mpk has been provided (in the function call or from a user), extract the
+        # required chaincode and adjust the path to match the mpk's depth and child number
         if mpk:
             if mpk.depth == 0:
                 print("xpub depth: 0")
+                assert mpk.child_number == 0, "child_number == 0 when depth == 0"
             else:
                 if mpk.child_number < 2**31:
                     child_num = mpk.child_number
@@ -552,15 +558,23 @@ class WalletBIP32(object):
                       "xpub fingerprint: {}\n"
                       "xpub child #:     {}"
                       .format(mpk.depth, base64.b16encode(mpk.fingerprint), child_num))
-            if mpk.depth > len(self._path_indexes):
+            self._chaincode = mpk.chaincode
+            if mpk.depth <= len(self._path_indexes):                  # if this, ensure the path
+                self._path_indexes = self._path_indexes[:mpk.depth]   # length matches the depth
+                if self._path_indexes and self._path_indexes[-1] != mpk.child_number:
+                    raise ValueError("the extended public key's child # doesn't match "
+                                     "the corresponding index of this wallet's path")
+            elif mpk.depth == 1 + len(self._path_indexes) and self._append_last_index:
+                self._path_indexes += mpk.child_number,
+            else:
                 raise ValueError(
                     "the extended public key's depth exceeds the length of this wallet's path ({})"
                     .format(len(self._path_indexes)))
-            self._chaincode    = mpk.chaincode
-            self._path_indexes = self._path_indexes[:mpk.depth]
-            if self._path_indexes and self._path_indexes[-1] != mpk.child_number:
-                raise ValueError(
-                    "the extended public key's child # doesn't match the last index of this of this wallet's path")
+
+        # If we don't have an mpk but need to append the last
+        # index, assume it's the external (non-change) chain
+        elif self._append_last_index:
+            self._path_indexes += 0,
 
         # If an mpk wasn't provided (at all), and an address also wasn't provided
         # (in the original function call), prompt the user for an address.
