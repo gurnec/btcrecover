@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.12.3-Unicode"
+#__version__          =  "0.13.0-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.12.3"
+__version__          =  "0.13.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -252,6 +252,19 @@ def get_opencl_devices():
     return cl_devices_avail
 
 
+# Estimate the # of bits of entropy per byte in a string using a simple histogram estimator
+def est_entropy_bits(data):
+    hist_bins = [0] * 256
+    for byte in data:
+        hist_bins[ord(byte)] += 1
+    entropy_bits = 0.0
+    for frequency in hist_bins:
+        if frequency:
+            prob = float(frequency) / len(data)
+            entropy_bits += prob * math.log(prob, 2)
+    return entropy_bits * -1
+
+
 ############### Armory ###############
 
 is_armory_loaded = False
@@ -317,7 +330,7 @@ class WalletArmory(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "ar"
+        def data_extract_id(cls): return b"ar"
 
     @staticmethod
     def passwords_per_seconds(seconds):
@@ -608,7 +621,7 @@ class WalletBitcoinCore(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "bc"
+        def data_extract_id(cls): return b"bc"
 
     @staticmethod
     def passwords_per_seconds(seconds):
@@ -890,7 +903,7 @@ class WalletMultiBit(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "mb"
+        def data_extract_id(cls): return b"mb"
 
     # MultiBit private key backup file (not the wallet file)
     @staticmethod
@@ -987,7 +1000,7 @@ class WalletBitcoinj(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "bj"
+        def data_extract_id(cls): return b"bj"
 
     @staticmethod
     def passwords_per_seconds(seconds):
@@ -1084,6 +1097,77 @@ class WalletBitcoinj(object):
         return False, count
 
 
+############### MultiBit HD ###############
+
+@register_wallet_class
+class WalletMultiBitHD(WalletBitcoinj):
+
+    class __metaclass__(WalletBitcoinj.__metaclass__):
+        @property
+        def data_extract_id(cls): return b"m2"
+
+    @staticmethod
+    def is_wallet_file(wallet_file): return None  # there's no easy way to check this
+
+    # Load a MultiBit HD wallet file (the part of it we need)
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        # MultiBit HD wallet files look like completely random bytes, so we
+        # require that their name remain unchanged in order to "detect" them
+        if os.path.basename(wallet_filename) != "mbhd.wallet.aes":
+            raise ValueError("MultiBit HD wallet files must be named mbhd.wallet.aes")
+
+        with open(wallet_filename, "rb") as wallet_file:
+            encrypted_data = wallet_file.read(16384)  # typical size is >= 23k
+            if len(encrypted_data) < 16:
+                raise ValueError("MultiBit HD wallet files must be at least 16 bytes long")
+
+        # The likelihood of of finding a valid encrypted MultiBit HD wallet whose first 16,384
+        # bytes have less than 7.8 bits of entropy per byte is... too small for me to figure out
+        entropy_bits = est_entropy_bits(encrypted_data)
+        if entropy_bits < 7.8:
+            raise ValueError("Doesn't look random enough to be an encrypted MultiBit HD wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
+
+        self = cls(loading=True)
+        self._encrypted_block = encrypted_data[:16]  # the first 16-byte encrypted block
+        return self
+
+    # Import a MultiBit HD encrypted block that was extracted by extract-multibit-hd-data.py
+    @classmethod
+    def load_from_data_extract(cls, file_data):
+        self = cls(loading=True)
+        # This is the same first 16-byte encrypted block retrieved above
+        assert len(file_data) == 16
+        self._encrypted_block = file_data
+        return self
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    def return_verified_password_or_false(self, passwords):
+        # Copy a few globals into local for a small speed boost
+        l_scrypt             = pylibscrypt.scrypt
+        l_aes256_cbc_decrypt = aes256_cbc_decrypt
+        encrypted_block      = self._encrypted_block
+
+        # Convert strings (lazily) to UTF-16BE bytestrings
+        passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+            derived_key = l_scrypt(password, b'\x35\x51\x03\x80\x75\xa3\xb0\xc5', olen=32)  # w/a hardcoded salt
+            block       = l_aes256_cbc_decrypt(
+                derived_key,
+                b'\xa3\x44\x39\x1f\x53\x83\x11\xb3\x29\x54\x86\x16\xc4\x89\x72\x3e',        # the hardcoded iv
+                encrypted_block)
+            #
+            # Does it look like a bitcoinj protobuf file?
+            # (there's a 1 in 2 trillion chance this hits but the password is wrong)
+            if block[2:6] == b"org." and block[0] == b"\x0a" and ord(block[1]) < 128:
+                password = password.decode("utf_16_be", "replace")
+                return password.encode("ascii", "replace") if tstr == str else password, count
+
+        return False, count
+
+
 ############### mSIGNA ###############
 
 @register_wallet_class
@@ -1091,7 +1175,7 @@ class WalletMsigna(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "ms"
+        def data_extract_id(cls): return b"ms"
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1198,7 +1282,7 @@ class WalletElectrum1(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls): return "el"
+        def data_extract_id(cls): return b"el"
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1278,13 +1362,13 @@ class WalletElectrum2(WalletElectrum1):
 
     class __metaclass__(WalletElectrum1.__metaclass__):
         @property
-        def data_extract_id(cls): return "e2"
+        def data_extract_id(cls): return b"e2"
 
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
         data = wallet_file.read(20).split()
-        return len(data) >= 2 and data[0] == '{' and data[1] == '"accounts":'
+        return len(data) >= 2 and data[0] == b'{' and data[1] == b'"accounts":'
 
     # Load an Electrum wallet file (the part of it we need)
     @classmethod
@@ -1337,7 +1421,7 @@ class WalletBlockchain(object):
 
     class __metaclass__(type):
         @property
-        def data_extract_id(cls):    return "bk"
+        def data_extract_id(cls):    return b"bk"
 
     @staticmethod
     def is_wallet_file(wallet_file): return None  # there's no easy way to check this
@@ -1407,17 +1491,9 @@ class WalletBlockchain(object):
         # looks random, otherwise this could be some other type of base64-encoded file such
         # as a MultiBit key file (it should be safe to skip this test for v2.0 wallets)
         if not iter_count:  # if this is a v0.0 wallet
-            hist_bins = [0] * 256
-            for byte in data:
-                hist_bins[ord(byte)] += 1
-            entropy_bits = 0.0
-            for frequency in hist_bins:
-                if frequency:
-                    prob = float(frequency) / len(data)
-                    entropy_bits += prob * math.log(prob, 2)
-            entropy_bits *= -1
             # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
             # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
+            entropy_bits = est_entropy_bits(data)
             if entropy_bits < 7.4:
                 raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
 
@@ -1476,7 +1552,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
 
     class __metaclass__(WalletBlockchain.__metaclass__):
         @property
-        def data_extract_id(cls):    return "bs"
+        def data_extract_id(cls):    return b"bs"
 
     @staticmethod
     def is_wallet_file(wallet_file): return False  # never auto-detected as this wallet type

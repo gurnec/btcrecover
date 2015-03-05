@@ -798,16 +798,23 @@ def can_load_armory():
             else: raise
     return is_armory_loadable
 
-is_bitcoinj_loadable = None
-def can_load_bitcoinj_requirements():
-    global is_bitcoinj_loadable
-    if is_bitcoinj_loadable is None:
+is_protobuf_loadable = None
+def can_load_protobuf():
+    global is_protobuf_loadable
+    if is_protobuf_loadable is None:
         try:
-            import wallet_pb2, pylibscrypt
-            is_bitcoinj_loadable = pylibscrypt._done
+            import wallet_pb2
+            is_protobuf_loadable = True
         except ImportError:
-            is_bitcoinj_loadable = False
-    return is_bitcoinj_loadable
+            is_protobuf_loadable = False
+    return is_protobuf_loadable
+
+pylibscrypt = None
+def can_load_scrypt():
+    global pylibscrypt
+    if pylibscrypt is None:
+        import pylibscrypt
+    return pylibscrypt._done  # True iff a binary implementation was found
 
 
 class Test07WalletDecryption(unittest.TestCase):
@@ -860,7 +867,14 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd(self):
+        self.wallet_tester("mbhd.wallet.aes")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj(self):
         self.wallet_tester("bitcoinj-wallet.wallet")
 
@@ -914,12 +928,17 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("electrum-wallet", force_purepython=True)
 
     def test_electrum2_pp(self):
-        self.wallet_tester("electrum-wallet", force_purepython=True)
+        self.wallet_tester("electrum2-wallet", force_purepython=True)
 
     def test_multibit_pp(self):
         self.wallet_tester("multibit-wallet.key", force_purepython=True)
 
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_pp(self):
+        self.wallet_tester("mbhd.wallet.aes", force_purepython=True)
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj_pp(self):
         self.wallet_tester("bitcoinj-wallet.wallet", force_purepython=True)
 
@@ -1017,13 +1036,26 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_androidknc_unicode(self):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", unicode_pw=True)
 
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd(self):
+        self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_unicode(self):
+        self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", unicode_pw=True)
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj_unicode(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
@@ -1122,12 +1154,23 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_androidknc_unicode_pp(self):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", force_purepython=True, unicode_pw=True)
 
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_pp(self):
+        self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode,   "Unicode builds only")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_unicode_pp(self):
+        self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", force_purepython=True, unicode_pw=True)
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj_pp(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(can_load_bitcoinj_requirements(), "requires protobuf and pylibscrypt")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj_unicode_pp(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
 
@@ -1398,6 +1441,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_androidwallet_unicode",
                 "test_androidknc",
                 "test_androidknc_unicode",
+                "test_multibithd",
+                "test_multibithd_unicode",
                 "test_bitcoinj",
                 "test_bitcoinj_unicode",
                 "test_msigna",
@@ -1420,6 +1465,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_androidwallet_unicode_pp",
                 "test_androidknc_pp",
                 "test_androidknc_unicode_pp",
+                "test_multibithd_pp",
+                "test_multibithd_unicode_pp",
                 "test_bitcoinj_pp",
                 "test_bitcoinj_unicode_pp",
                 "test_msigna_pp",
