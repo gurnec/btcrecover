@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -207,7 +207,7 @@ btcr.clear_registered_wallets()  # clears btcr's default wallet file auto-detect
 
 ############### Electrum1 ###############
 
-@register_selectable_wallet_class("Electrum 1.x")
+@register_selectable_wallet_class("Electrum 1.x (including wallets upgraded to 2.x)")
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletElectrum1(object):
 
@@ -259,6 +259,10 @@ class WalletElectrum1(object):
         from ast import literal_eval
         with open(wallet_filename) as wallet_file:
             wallet = literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+        return cls._load_from_dict(wallet)
+
+    @classmethod
+    def _load_from_dict(cls, wallet):
         seed_version = wallet.get("seed_version")
         if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum1 seed_version not found)")
         if seed_version != 4:                raise NotImplementedError("Unsupported Electrum1 seed version " + seed_version)
@@ -864,7 +868,7 @@ class WalletBIP39(WalletBIP32):
 
 ############### bitcoinj ###############
 
-@register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD, Bitcoin Wallet for Android, Hive)")
+@register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD (Beta 8+), Bitcoin Wallet for Android, Hive, breadwallet)")
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletBitcoinj(WalletBIP39):
 
@@ -912,7 +916,7 @@ class WalletBitcoinj(WalletBIP39):
 
 ############### Electrum2 ###############
 
-@register_selectable_wallet_class("Electrum 2.x")
+@register_selectable_wallet_class("Electrum 2.x (initially created with 2.x)")
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletElectrum2(WalletBIP39):
 
@@ -950,6 +954,10 @@ class WalletElectrum2(WalletBIP39):
         import json
         with open(wallet_filename) as wallet_file:
             wallet = json.load(wallet_file)
+        wallet_type = wallet.get("wallet_type")
+        if not wallet_type:                  raise ValueError("Electrum2 wallet_type not found")
+        if wallet_type == "old":  # if it's a converted Electrum1 wallet, return a WalletElectrum1 object
+            return WalletElectrum1._load_from_dict(wallet)
         seed_version = wallet.get("seed_version")
         if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum2 seed_version not found)")
         if seed_version != 11:               raise NotImplementedError("Unsupported Electrum2 seed version " + seed_version)
