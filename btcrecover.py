@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.0-Unicode"
+#__version__          =  "0.13.1-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.0"
+__version__          =  "0.13.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1312,12 +1312,16 @@ class WalletElectrum1(object):
                 wallet = literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
             except SyntaxError as e:  # translate any SyntaxError into a
                 raise ValueError(e)   # ValueError as expected by load_wallet()
+        return cls._load_from_dict(wallet)
+
+    @classmethod
+    def _load_from_dict(cls, wallet):
         seed_version = wallet.get("seed_version")
         if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum1 seed_version not found)")
         if seed_version != 4:                raise NotImplementedError("Unsupported Electrum1 seed version " + tstr(seed_version))
         if not wallet.get("use_encryption"): raise RuntimeError("Electrum1 wallet is not encrypted")
         seed_data = base64.b64decode(wallet["seed"])
-        if len(seed_data) != 64:                raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
+        if len(seed_data) != 64:             raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
         self = cls(loading=True)
         self._iv                  = seed_data[:16]    # only need the 16-byte IV plus
         self._part_encrypted_seed = seed_data[16:32]  # the first 16-byte encrypted block of the seed
@@ -1377,6 +1381,10 @@ class WalletElectrum2(WalletElectrum1):
         with open(wallet_filename) as wallet_file:
             wallet = json.load(wallet_file)
         if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
+        wallet_type = wallet.get("wallet_type")
+        if not wallet_type:                  raise ValueError("Electrum2 wallet_type not found")
+        if wallet_type == "old":  # if it's a converted Electrum1 wallet, return a WalletElectrum1 object
+            return WalletElectrum1._load_from_dict(wallet)
         mpks = wallet.get("master_private_keys", ())
         if len(mpks) == 0:                   raise ValueError("No master private keys found in Electrum2 wallet")
         xprv_data = base64.b64decode(mpks.values()[0])

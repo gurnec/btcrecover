@@ -39,14 +39,32 @@ with open(wallet_filename) as wallet_file:
 
 if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
 
-mpks = wallet.get("master_private_keys", ())
-if len(mpks) == 0:                   raise ValueError("No master private keys found in Electrum2 wallet")
-xprv_data = base64.b64decode(mpks.values()[0])
-if len(xprv_data) != 128:            raise ValueError("Unexpected Electrum2 encrypted master private key length")
+wallet_type = wallet.get("wallet_type")
+if not wallet_type:                  raise ValueError("Electrum2 wallet_type not found")
 
-print("Electrum2 partial encrypted master public key, iv, and crc in base64:", file=sys.stderr)
+if wallet_type == "old":  # if it's a converted Electrum 1.x wallet
+    wallet_id = "el"
+    seed_version = wallet.get("seed_version")
+    if seed_version is None:         raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")
+    if seed_version != 4:            raise NotImplementedError("Unsupported Electrum seed version " + seed_version)
 
-bytes = b"e2:" + xprv_data[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the mpk
+    data = base64.b64decode(wallet["seed"])
+    if len(data) != 64:              raise ValueError("Electrum encrypted seed plus iv is not 64 bytes long")
+    data = data[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the seed
+
+    print("First half of encrypted Electrum seed, iv, and crc in base64:", file=sys.stderr)
+
+else:  # it's a wallet initially created by Electrum 2.x
+    wallet_id = "e2"
+    mpks = wallet.get("master_private_keys", ())
+    if len(mpks) == 0:               raise ValueError("No master private keys found in Electrum2 wallet")
+    data = base64.b64decode(mpks.values()[0])
+    if len(data) != 128:             raise ValueError("Unexpected Electrum2 encrypted master private key length")
+    data = data[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the mpk
+
+    print("Electrum2 partial encrypted master public key, iv, and crc in base64:", file=sys.stderr)
+
+bytes = wallet_id + ":" + data
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))

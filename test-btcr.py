@@ -863,6 +863,9 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_electrum2(self):
         self.wallet_tester("electrum2-wallet")
 
+    def test_electrum2_upgradedfrom_electrum1(self):
+        self.wallet_tester("electrum1-upgradedto-electrum2-wallet")
+
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
