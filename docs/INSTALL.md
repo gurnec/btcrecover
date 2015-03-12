@@ -9,24 +9,24 @@ Locate your wallet type in the list below, and follow the instructions in the se
 Note that for Armory wallets, you must have Armory 0.92.x or later installed on the computer where you run *btcrecover*.
 
  * Armory 0.91.x or earlier - unsupported, please upgrade Armory first
- * Armory 0.92.x on Windows - [Python 2.7](#python-2.7) **32-bit**
- * Armory 0.93.x on Windows - [Python 2.7](#python-2.7) **64-bit** (X86-64)
+ * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit**
+ * Armory 0.93.x on Windows - [Python 2.7](#python-27) **64-bit** (X86-64)
  * Armory 0.92+ on Linux or OS X - no additional requirements
- * Bitcoin Core (Bitcoin-Qt) - [Python 2.7](#python-2.7),  optional: [PyCrypto](#pycrypto)
- * MultiBit Classic - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * MultiBit HD - [Python 2.7](#python-2.7), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
- * Electrum (1.x or 2.x) - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Hive for OS X - [Python 2.7](#python-2.7), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
- * mSIGNA (CoinVault) - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Blockchain.info - [Python 2.7](#python-2.7) (2.7.8+ recommended), recommended: [PyCrypto](#pycrypto)
- * Bitcoin Wallet for Android - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * KnC Wallet for Android - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Litecoin-Qt - [Python 2.7](#python-2.7),  optional: [PyCrypto](#pycrypto)
- * Electrum-LTC - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Litecoin Wallet for Android - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Dogecoin Core - [Python 2.7](#python-2.7),  optional: [PyCrypto](#pycrypto)
- * MultiDoge - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
- * Dogecoin Wallet for Android - [Python 2.7](#python-2.7), recommended: [PyCrypto](#pycrypto)
+ * Bitcoin Core (Bitcoin-Qt) - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
+ * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
+ * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Blockchain.info - [Python 2.7](#python-27) (2.7.8+ recommended), recommended: [PyCrypto](#pycrypto)
+ * Bitcoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * KnC Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Litecoin-Qt - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * Electrum-LTC - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Litecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Dogecoin Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * MultiDoge - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Dogecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
 
 
 ### Windows ###
@@ -147,7 +147,7 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 
 ### Windows GPU acceleration for Bitcoin Core, Armory, or Litecoin-Qt ###
 
-To enable the experimental GPU acceleration feature in Windows, download and install the **32-bit** version of [Python 2.7](#python-2.7) (and optionally [pywin32](#windows)) as detailed above (and *only* this version, no other version of Python can be installed except for the 32-bit version of Python 2.7).
+To enable the experimental GPU acceleration feature in Windows, download and install the **32-bit** version of [Python 2.7](#python-27) (and optionally [pywin32](#windows)) as detailed above (and *only* this version, no other version of Python can be installed except for the 32-bit version of Python 2.7).
 
 For Armory, you must install a 0.92.x version of Armory; 0.93.x versions are not supported (however wallets created or used by a any version of Armory are compatible with *btcrecover*).
 

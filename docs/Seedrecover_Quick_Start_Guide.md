@@ -11,7 +11,7 @@ Additional requirements are described below.
 
 ### Windows ###
 
- 1. Follow [these instructions](INSTALL.md#python-2.7) to download and install Python 2.7.
+ 1. Follow [these instructions](INSTALL.md#python-27) to download and install Python 2.7.
 
  2. Visit this page to download Armory for Windows: <https://bitcoinarmory.com/download/>. If you installed the 64-bit version of Python, download and install the latest version of Armory. If you installed the 32-bit version of Python, download and install a **0.92.x** version of Armory.
 

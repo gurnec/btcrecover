@@ -23,16 +23,16 @@ If you'd prefer to download just a single extract script, please select the one 
  * Electrum 1.x - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum-halfseed.py>
  * Electrum 2.x - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum2-partmpk.py>
  * MultiBit Classic - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-privkey.py>
- * MultiBit HD - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-hd-data.py.py>
+ * MultiBit HD - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-hd-data.py>
 
-If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, please follow the full instructions in the [Installation Guide](INSTALL.md). For any other wallets, just follow the [instructions to install Pythone 2.7 here](INSTALL.md#python-2.7).
+If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, please follow the full instructions in the [Installation Guide](INSTALL.md). For any other wallets, just follow the [instructions to install Pythone 2.7 here](INSTALL.md#python-27).
 
 
 ### Table of Contents ###
 
  * [Armory](#usage-for-armory)
  * [Bitcoin Core (including pywallet dump files)](#usage-for-bitcoin-core)
- * [Blockchain.info](#usage-for-blockchain.info)
+ * [Blockchain.info](#usage-for-blockchaininfo)
  * [Electrum (1.x or 2.x)](#usage-for-electrum)
  * [MultiBit Classic](#usage-for-multibit-classic)
  * [MultiBit HD](#usage-for-multibit-hd)
@@ -45,7 +45,7 @@ If you're on Windows, you will also need to install the latest version of Python
 
 Open Armory (in offline mode if you like), and take note of the wallet ID whose password you've lost. Open this wallet, and click Receive Bitcoins to display a new Bitcoin address. Add a label to the address, such as "Recovery address - DO NOT USE", and copy the Bitcoin address to someplace temporary (a Notepad document, a Post-It, or wherever). Quit Armory.
 
-If you've ever used this wallet on more than one computer, the address you just created might already exist. It's up to you to find an unused and unpublished address for this procedure, and to never use this address in the future. You can check if the address has been used in the past at <https://blockchain.info/>, but you're the only one who might know if you've given this address out to someone else before today.
+If you've ever used this wallet on more than one computer, the address you just created might already exist. It's up to you to find an unused and unpublished address for this procedure, and to never use this address in the future. You can check if the address has been used in the past at <https://btc.blockr.io/>, but you're the only one who might know if you've given this address out to someone else before today.
 
 After downloading the script, **make a copy of your wallet file into a different folder** (to make it easy, into the same folder as the extract script). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open your Armory folder which contains your wallet files: `%appdata%\Armory`. From here you can copy and paste the wallet file that matches the wallet ID you noted earlier into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming you've made a copy of your wallet file into the same folder):
 
@@ -80,7 +80,7 @@ The *extract-armory-privkey.py* script is intentionally short and should be easy
 
 If someone has one of your (decrypted) private keys and also has or gains access to *any version* of your wallet file (normal or watching only, current or a backup, even if it's encrypted with a different password), then your *entire* wallet has been compromised. For maximum safety, you should make a new wallet and stop using your old wallet to prevent this from occurring.
 
-Armory automatically pre-generates 100 addresses and private keys before they are needed, which is why you can ask it to display a "new" address without a password. If you've asked for and then used 100 new addresses without providing a password, it's possible that Armory will be unable to provide a new address (without a password) as required by this procedure. If this is the case, you'll have no choice but to choose an already used address. To assist in choosing such an address, you can run `extract-armory-privkey.py list` from the command line to display a list of addresses available in the wallet which include an encrypted private key (including pre-generated addresses that may not be visible via the Armory GUI) along with the first and last known dates of use for each address. These dates of known use do not check the current block chain; you should always check a questionable address on <https://blockchain.info/> to check it's current balance before you use it with this procedure.
+Armory automatically pre-generates 100 addresses and private keys before they are needed, which is why you can ask it to display a "new" address without a password. If you've asked for and then used 100 new addresses without providing a password, it's possible that Armory will be unable to provide a new address (without a password) as required by this procedure. If this is the case, you'll have no choice but to choose an already used address. To assist in choosing such an address, you can run `extract-armory-privkey.py list` from the command line to display a list of addresses available in the wallet which include an encrypted private key (including pre-generated addresses that may not be visible via the Armory GUI) along with the first and last known dates of use for each address. These dates of known use do not check the current block chain; you should always check a questionable address on <https://btc.blockr.io/> to check it's current balance before you use it with this procedure.
 
 
 ### Usage for Bitcoin Core ###

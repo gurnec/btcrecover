@@ -395,7 +395,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
  2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
      * Armory - `%appdata%\Armory` (it's a `.wallet` file)
      * Bitcoin Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
-     * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-wallet-files) section below
+     * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-classic-wallet-files) section below
      * MultiBit HD - `%appdata%\MultiBitHD` (it's in one of the folders here, it's named `mbhd.wallet.aes`)
      * Electrum - `%appdata%\Electrum\wallets`
      * mSIGNA - `%homedrive%%homepath%` (it's a `.vault` file)

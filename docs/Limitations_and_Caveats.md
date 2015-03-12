@@ -18,7 +18,7 @@ Additionally, *btcrecover* considers the following symbols special under certain
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
  * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command-line options
- * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
+ * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](../TUTORIAL.md#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
 
 None of this applies to passwordlist files, which always treat spaces and symbols (except for carriage-returns and line-feeds) verbatim, treating them as parts of a password.
 
