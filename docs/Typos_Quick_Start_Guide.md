@@ -1,4 +1,4 @@
-## Typos Quick Start Guide ##
+## *btcrecover* Typos Quick Start Guide ##
 
 If you only have a single (or just a few) passwords that you'd like to apply some typos to, you can use the following table to pick a set of [typos command-line options](../TUTORIAL.md#typos) with which to run *btcrecover*.
 

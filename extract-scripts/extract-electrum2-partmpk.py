@@ -62,7 +62,7 @@ else:  # it's a wallet initially created by Electrum 2.x
     if len(data) != 128:             raise ValueError("Unexpected Electrum2 encrypted master private key length")
     data = data[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the mpk
 
-    print("Electrum2 partial encrypted master public key, iv, and crc in base64:", file=sys.stderr)
+    print("Electrum2 partial encrypted master private key, iv, and crc in base64:", file=sys.stderr)
 
 bytes = wallet_id + ":" + data
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)

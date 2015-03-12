@@ -994,6 +994,7 @@ class WalletMultiBit(object):
 
 
 ############### bitcoinj ###############
+# TODO: PIN recovery of Wallet for Android v4.06+ encrypted (w/a known password) wallet backup files
 
 @register_wallet_class
 class WalletBitcoinj(object):
@@ -1002,9 +1003,8 @@ class WalletBitcoinj(object):
         @property
         def data_extract_id(cls): return b"bj"
 
-    @staticmethod
-    def passwords_per_seconds(seconds):
-        return max(int(round(16 * seconds)), 1)
+    def passwords_per_seconds(self, seconds):
+        return max(int(round(self._passwords_per_second * seconds)), 1)
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1022,7 +1022,10 @@ class WalletBitcoinj(object):
         global pylibscrypt
         import pylibscrypt
         if not pylibscrypt._done:
-            print(prog+": warning: can't find an scrypt library, using pure python version instead", file=sys.stderr)
+            print(prog+": warning: can't find an scrypt library, performance will be severely degraded", file=sys.stderr)
+            self._passwords_per_second = 0.03
+        else:
+            self._passwords_per_second = 14
         load_aes256_library()
 
     def __setstate__(self, state):
@@ -3445,7 +3448,7 @@ def tokenlist_base_password_generator():
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
         if l_token_combination_dups and \
-           l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, None, tstr))): continue
+           l_token_combination_dups.is_duplicate(l_tuple(l_sorted(tokens_combination, key=tstr))): continue
 
         # The inner loop iterates through all valid permutations (orderings) of one
         # combination of tokens and combines the tokens to create a password string.

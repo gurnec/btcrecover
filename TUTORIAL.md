@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (a.k.a. MultiBit Classic, MultiBit HD is not supported), Electrum, Blockchain (v1 and v2 wallet formats, both main and second passwords) and Litecoin-Qt. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA(CoinVault), Hive for OS X, Blockchain.info (v1 and v2 wallet formats, both main and second passwords), and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -13,11 +13,11 @@ If you find *btcrecover* helpful, please consider a small donation to help suppo
 
 This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
 
- 1. Read the [Installation](#installation) section for instructions and download links.
- 2. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
+ 1. Read the [Installation Guide](docs/INSTALL.md) for instructions and download links.
+ 2. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If not, and you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
  3. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a `tokens.txt` file you'll need later.
  4. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
-     * If you didn't need step 3, read [The Passwordlist](#the-passwordlist) section instead.
+     * If you skipped step 3 above, read the simple [Passwordlist](#the-passwordlist) section instead.
  5. Read the [Running *btcrecover*](#running-btcrecover) section to see how to put these pieces together and how to run *btcrecover* in a Command Prompt window.
      * (optional) Read the [Testing your config](#testing-your-config) section to view the passwords that will be tested.
      * (optional) If you're testing a lot of combinations that will take a long time, use the [Autosave](#autosave) feature to safeguard against losing your progress.
@@ -28,7 +28,7 @@ This tutorial is pretty long... you don't have to read the whole thing. Here are
 
 *btcrecover* can accept as input a text file which has a list of what are called password “tokens”. A token is simply a portion of a password which you do remember, even if you don't remember where that portion appears in the actual password. It will combine these tokens in different ways to create different whole password guesses to try.
 
-This plain text file, typically named `tokens.txt`, can be created in any basic text editor, such as Notepad on Windows or TextEdit on OS X, and should probably be saved into the same folder as the `btcrecover.py` script (just to keep things simple).
+This file, typically named `tokens.txt`, can be created in any basic text editor, such as Notepad on Windows or TextEdit on OS X, and should probably be saved into the same folder as the `btcrecover.py` script (just to keep things simple). Note that if your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII) (non-English) characters, you should read the section on [Unicode Support](#unicode-support) before continuing. 
 
 ### Basics ###
 
@@ -117,7 +117,7 @@ You specify a middle anchor by adding a comma and two numbers (between the `^` s
  As mentioned above, neither of those middle-anchored tokens will ever be tried as the last token in a password, so something (one or more of the non-anchored tokens) will appear after the middle-anchored ones in every guess in which they appear. Since tokens with middle anchors never appear at the beginning either, the smallest value you can use for that first number is 2. Finally, when you specify the range, you can leave out one (or even both) of the numbers, like this:
 
     ^3,^Third_or_after_(but_never_last)
-    ^,3^Third_or_earlier((but_never_first_or_last)
+    ^,3^Third_or_earlier(but_never_first_or_last)
     ^,^Anywhere_in_the_middle
     Cairo
     Beetlejuice
@@ -195,7 +195,7 @@ As with normal wildcards, backreference wildcards may contain a copy length, for
 
  * `Test%d%b`    - `Test00` through `Test99`, but never `Test12`
  * `Test%d%2b`   - `Test000` through `Test999`, but never `Test123`
- * `Test%d%0,3b` - `Test` (the length is 0), `Test0` to `Test9`, etc., `Test0000` to `Test9999`
+ * `Test%d%0,3b` - `Test0` to `Test9` (the backreference length is 0), `Test00` to `Test99`, etc., `Test0000` to `Test9999`
 
 In the examples so far, the copying starts with the character immediately to the left of the `%b`, but this can be changed by adding a `;#` just before the `b`, for example:
 
@@ -287,7 +287,7 @@ So if the last letter is a `q`, the next letter in the pattern is either a `2` o
 
 ## The Passwordlist ##
 
-If you already have a simple list of whole passwords you'd like to test, and you don't need any of the features described above, you can use the `--passwordlist` command-line option (instead of the `--tokenlist` option as described later in the [Running *btcrecover*](#running-btcrecover) section).
+If you already have a simple list of whole passwords you'd like to test, and you don't need any of the features described above, you can use the `--passwordlist` command-line option (instead of the `--tokenlist` option as described later in the [Running *btcrecover*](#running-btcrecover) section). If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII) (non-English) characters, you should read the section on [Unicode Support](#unicode-support) before continuing.
 
 If you specify `--passwordlist` without a file, *btcrecover* will prompt you to type in a list of passwords, one per line, in the Command Prompt window. If you already have a text file with the passwords in it, you can use `--passwordlist FILE` instead (replacing `FILE` with the file name).
 
@@ -300,7 +300,7 @@ Each line is used verbatim as a single password when using the `--passwordlist` 
 
 *btcrecover* can generate different variations of passwords to find typos or mistakes you may have inadvertently made while typing a password in or writing one down. This feature is enabled by including one or more command-line options when you run *btcrecover*.
 
-If you'd just like some specific examples of command-line options you can add, please see the [Typos Quick Start Guide](typos/QUICKSTART.md).
+If you'd just like some specific examples of command-line options you can add, please see the [Typos Quick Start Guide](docs/Typos_Quick_Start_Guide.md).
 
 With the `--typos #` command-line option (with `#` replaced with a count of typos), you tell *btcrecover* up to how many typos you’d like it to add to each password (that has been either generated from a token file or taken from a passwordlist as described above). You must also specify the types of typos you’d like it to generate, and it goes through all possible combinations for you (including the no-typos-present possibility). Here is a summary of the basic types of typos along with the command-line options which enable each:
 
@@ -340,7 +340,7 @@ Here are some additional types of typos that require a bit more explanation:
 
     This would try replacing instances of `a` or `A` with `@`, instances of `s` or `S` with either a `$` or a `5`, etc., up to the maximum number of typos specified with the `--typos #` option. For example, if the token file contained the token `Passwords`, and if you specified `--typos 3`, `P@55words` and `Pa$sword5` would both be tried because they each have three or fewer typos/replacements, but `P@$$w0rd5` with its 5 typos would not be tried.
 
-    The *btcrecover* package includes a few typos-map example files in the `typos` directory. You can read more about them in the [Typos Quick Start Guide](typos/QUICKSTART.md#typos-maps)
+    The *btcrecover* package includes a few typos-map example files in the `typos` directory. You can read more about them in the [Typos Quick Start Guide](docs/Typos_Quick_Start_Guide.md#typos-maps).
 
 ### Max Typos by Type ###
 
@@ -367,62 +367,24 @@ If you need to interrupt *btcrecover* in the middle of testing, you can do so wi
 If you didn't have the autosave feature enabled, you can still manually start testing where you left off. You need to start *btcrecover* with the *exact same* token file or passwordlist, typos-map file (if you were using one), and command-line options plus one extra option, `--skip 357449`, and it will start up right where it had left off.
 
 
-## Installation ##
+## Unicode Support ##
 
-Just download the latest version from <https://github.com/gurnec/btcrecover/archive/master.zip> and unzip it to a location of your choice. There’s no installation procedure for *btcrecover* itself, however there are additional requirements below depending on your operating system and the wallet type you’re trying to recover.
+If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII) (non-English) characters, you will need to enable Unicode support. To enable it, simply double-click the `make-unicode.py` file (you only need to do this once). This creates a new file named `btcrecoveru.py`.
 
-### Armory (on any OS)###
+Anywhere in this Tutorial where you see mention of the script `btcrecover.py`, use `btcrecoveru.py` instead which is a version with Unicode support.
 
-You must have Armory installed if you’re trying to recover an Armory password. *btcrecover* has only been tested with Armory versions 0.91 through 0.92.3; other versions may not work at all or may only work after some changes have been made. If *btcrecover* is unable to locate the Armory installation directory automatically, you may need to move the *btcrecover* files into the Armory `Program Files` or `lib` directory, or learn how to use the `PYTHONPATH` environment variable.
+Please note that all input to and output from `btcrecoveru.py` must be UTF-8 encoded (either with or without a Byte Order Mark, or "BOM"), so be sure to change the Encoding to UTF-8 when you save any text files.
 
-### Windows – Armory ###
+On Windows (but usually not on Linux or OS X), you may have trouble if any of the command line options you need to use contain any non-ASCII characters. Usually, if it displays in the command prompt window correctly when you type it in, it will work correctly with `btcrecoveru.py`. If it doesn't display correctly, please read the section describing how to put [command-line options inside the tokens file](#command-line-options-inside-the-tokens-file).
 
-In addition to requiring Armory, you will also need to download and install:
+Also on Windows (but usually not on Linux or OS X), if your password is found it may not be displayed correctly in the command prompt window. Here is an example of what an incorrect output might look like:
 
- * The latest version of Python 2.7, 32-bit (it must be the 32-bit version). Currently this is the “Python 2.7.8 Windows Installer” available here: <https://www.python.org/download/>
+    Password found: 'btcr-????-??????'
+    HTML encoded:   'btcr-&#1090;&#1077;&#1089;&#1090;-&#1087;&#1072;&#1088;&#1086;&#1083;&#1100;'
 
-### Windows – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
+As you can see, the Windows command prompt was incapable of rendering some of the characters (and they were replaced with `?` characters). To view the password that was found, copy and paste the `HTML encoded` line into a text file, and save it with a name that ends with `.html` instead of the usual `.txt`. Double-click the new `.html` file and it will open in your web browser and display the correct password:
 
-With this combination, you will also need to download and install:
-
- * The latest version of Python 2.7, either the 32-bit version or the 64-bit version. Currently this is the “Python 2.7.8 Windows Installer” for the 32-bit version, or “Python 2.7.8 Windows X86-64 Installer” for the 64-bit version (which is preferable if you have a 64-bit version of Windows and don't plan on using GPU acceleration), both available here: <https://www.python.org/download/>
-
-    Please note that for Blockchain wallets, Python version 2.7.8 or greater is highly recommened, and will run approximately 5 times faster than earlier versions.
-
- * Optional, but highly recommended for MultiBit or Electrum (for a 30x speed improvement): The latest binary version of PyCrypto for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” or “PyCrypto 2.6 for Python 2.7 64bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
-
- * Optional, allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU and slightly improves autosave safety: The latest version of pywin32 for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. Currently this is “pywin32-219.win32-py2.7.exe” for the 32-bit version or “pywin32-219.win-amd64-py2.7.exe” for the 64-bit version available in the “Build 219” folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
-
-#### Windows GPU acceleration for Bitcoin Core, Armory, or Litecoin-Qt ####
-
-To enable the experimental GPU acceleration features in Windows, you will need to download and install the 32-bit version of Python 2.7 plus the optional components you'd like as detailed above (and *only* this version, no other version of Python can be installed except the 32-bit version of Python 2.7 plus any optional libraries), and you will also need to download and install:
-
- * The latest binary version of PyOpenCL for Python 2 & Python(x,y) available here: <https://code.google.com/p/pythonxy/wiki/AdditionalPlugins>. (The download link on that page is a button to the right of “pyopencl” which has an arrow pointing downwards.)
-
- * The latest binary version of NumPy for Python 2.7. Currently this is “numpy-1.9.1-win32-superpack-python2.7.exe”, available in the "1.9.1" folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
-
- * The latest version of Python setuptools. Installation instructions for setuptools can be found here: <https://pypi.python.org/pypi/setuptools#installation-instructions>
-
- * Optional, but recommended Bitcoin Core or Litecoin-Qt (for a 2x speed improvement): The latest binary version of PyCrypto for Python 2.7. Currently this is “PyCrypto 2.6 for Python 2.7 32bit” available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
-
-If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
-
-### Linux or OS X – Bitcoin Core, MultiBit Classic, Electrum, Blockchain, or Litecoin-Qt ###
-
- * Python 2.7.x – Most distributions include this pre-installed. Please note that for Blockchain wallets, Python version 2.7.8 or greater is highly recommened, and will run approximately 5 times faster than earlier versions.
-
- * Optional, but highly recommended for MultiBit or Electrum: PyCrypto for Python 2.7.x – Many distributions include this pre-installed, check your distribution’s package management system to see if this is available. It is often called “python2.7 crypto” or just “python-crypto”. If not, try installing it by using PyPI, for example on Debian-like distributions:
-
-        sudo apt-get install python-pip
-        sudo pip install pycrypto
-
-    On OS X, installing PyCrypto is unfortunately a bit more difficult:
-
-    1. Download and install the "Command Line Tools for Xcode" for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
-    2.  Open a Terminal window, and install Python pip and then PyCrypto:
-
-            curl https://bootstrap.pypa.io/get-pip.py | sudo python
-            sudo pip install pycrypto
+    HTML encoded: 'btcr-тест-пароль'
 
 
 ## Running *btcrecover* ##
@@ -431,11 +393,13 @@ If you encounter the error `ImportError: DLL load failed` when running *btcrecov
 
  1. Unzip the `btcrecover-master.zip` file, it contains a single directory named "btcrecover-master". Inside the btcrecover-master directory is the Python script (program) file `btcrecover.py`.
  2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
-     * Armory - `%appdata%\Armory`
-     * Bitcoin Core - `%appdata%\Bitcoin`
+     * Armory - `%appdata%\Armory` (it's a `.wallet` file)
+     * Bitcoin Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
+     * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-wallet-files) section below
+     * MultiBit HD - `%appdata%\MultiBitHD` (it's in one of the folders here, it's named `mbhd.wallet.aes`)
      * Electrum - `%appdata%\Electrum\wallets`
-     * Litecoin-Qt - `%appdata%\Litecoin`
-     * MultiBit - Please see the [Finding MultiBit Wallet Files](#finding-multibit-wallet-files) section below
+     * mSIGNA - `%homedrive%%homepath%` (it's a `.vault` file)
+     * Litecoin-Qt - `%appdata%\Litecoin` (it's named `wallet.dat`)
  3. If you have a `btcrecover-tokens-auto.txt` file, you're almost done. Copy it into the directory which contains `btcrecover.py`, and then simply double-click the `btcrecover.py` file, and *btcrecover* should begin testing passwords. (You may need to rename your wallet file if it doesn't match the file name listed insided the `btcrecover-tokens-auto.txt` file.) If you don't have a `btcrecover-tokens-auto.txt` file, continue reading below.
  4. Copy your `tokens.txt` file, or your passwordlist file if you're using one, into the directory which contains `btcrecover.py`.
  5. You will need to run `btcrecover.py` with at least two command-line options, `--wallet FILE` to identify the wallet file name and either `--tokenlist FILE` or `--passwordlist FILE` (the FILE is optional for `--passwordlist`), depending on whether you're using a [Token File](#the-token-file) or [Passwordlist](#the-passwordlist). If you're using [Typos](#typos) or [Autosave](#autosave), please refer the sections above for additional options you'll want to add.
@@ -444,7 +408,7 @@ If you encounter the error `ImportError: DLL load failed` when running *btcrecov
         cd \Users\Chris\Downloads\btcrecover-master
         C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt --other-options...
 
-After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA as shown below. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
+After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA as shown below. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](docs/Limitations_and_Caveats.md#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
 
     Counting passwords ...
     Done
@@ -471,9 +435,9 @@ If you'd just like to test your token file and/or chosen typos, you can use the 
 
 The `| more` at the end (the `|` symbol is a shifted `\` backslash) will introduce a pause after each screenful of passwords.
 
-### Finding MultiBit Wallet Files ###
+### Finding MultiBit Classic Wallet Files ###
 
-*btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
+*btcrecover* doesn’t operate directly on MultiBit Classic wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit Classic wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
 
     %appdata%\MultiBit\multibit-data\key-backup
 
@@ -485,79 +449,7 @@ For more details on locating your MultiBit private key backup files, see: <https
 
 *btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Core or Litecoin-Qt wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
 
-In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](#windows-gpu-acceleration-for-bitcoin-core-or-litecoin-qt) section. GPU acceleration should also work on Linux and OS X, however instructions for installing the required Python libraries are not currently included in this tutorial.
-
-Due to its experimental status, it's highly recommended that you run the GPU unit tests before running it with a wallet. The two commands below will run the relevant tests for Bitcoin Core and Armory, respectively (or you can leave out the test names to run all of the unit tests if you'd prefer). The "_sli" tests will be skipped and can be ignored if you don't have multiple identical GPUs installed in your system.
-
-    C:\python27\python test-btcr.py -v Test08KeyDecryption.test_bitcoincore_cl Test08KeyDecryption.test_bitcoincore_cl_sli
-    C:\python27\python test-btcr.py -v Test08KeyDecryption.test_armory_cl Test08KeyDecryption.test_armory_cl_mem_factor Test08KeyDecryption.test_armory_cl_sli
-
-Assuming the tests do not fail, GPU support can be enabled by adding the `--enable-gpu` option to the command line. There are other additional options, specifically `--global-ws` and `--local-ws`, which should also be provided along with particular values to improve the search performance. Unfortunately, the exact values for these options can only be determined by trial and error, as detailed below.
-
-#### GPU performance tuning for Bitcoin Core and Litecoin-Qt ####
-
-A good starting point for these wallets is:
-
-    C:\python27\python btcrecover.py --wallet wallet.dat --performance --enable-gpu --global-ws 4096 --local-ws 512
-
-The `--performance` option tells *btcrecover* to simply measure the performance until Ctrl-C is pressed, and not to try testing any particular passwords. You will still need a wallet file (or an `--extract-data` option) for performance testing. After you you have a baseline from this initial test, you can try different values for `--global-ws` and `--local-ws` to see if they improve or worsen performance.
-
-Finding the right values for `--global-ws` and `--local-ws` can make a 10x improvement, so it's usually worth the effort.
-
-Generally when testing, you should increase or decrease these two values by powers of 2, for example you should increase or decrease them by 128 or 256 at a time. It's important to note that `--global-ws` must always be evenly divisible by `--local-ws`, otherwise *btcrecover* will exit with an error message.
-
-Although this procedure can be tedious, with larger tokenlists or passwordlists it can make a significant difference.
-
-#### GPU performance tuning for Armory ####
-
-Performance tuning for Armory is similar to tuning for Bitcoin Core, but unfortunately it's much more complex. Armory uses a memory-hard key derivation function called ROMix-SHA-512 which is specifically designed to resist GPU-based acceleration. You should start by reading the section above, which also applies to Armory. In addition to `--global-ws` and `--local-ws`, there is a third option, `--mem-factor`, which affects the GPU memory usage, and as a consequence overall performance.
-
-GPU memory usage is directly proportional to `--global-ws`. The larger the `--global-ws`, the more GPU memory is used. With Armory wallets, a larger `--global-ws` usually improves performance, so you should start with a `--global-ws` that is as high as your GPU will allow. In order to help you locate this value, you can run *btcrecover* with the `--calc-memory` options, as seen below:
-
-    C:\python27\python btcrecover.py --wallet armory_2dRkxw76K_.wallet --enable-gpu --calc-memory
-    Details for this wallet
-      ROMix V-table length:  32,768
-      outer iteration count: 4
-      with -mem_factor 1 (the default),
-        memory per global worker: 2,048 KB
-
-    Details for GeForce GTX 560 Ti
-      global memory size:     1,024 MB
-      with -mem_factor 1 (the default),
-        est. max --global-ws: 480
-        with --global-ws 4096 (the default),
-          est. memory usage:  8,192 MB
-
-So for this particular wallet and GPU, a `--global-ws` of around 480 is the maximum supported, and this would be a good starting point for performance searching:
-
-    C:\python27\python btcrecover.py --wallet armory_2dRkxw76K_.wallet --enable-gpu --global-ws 480 --local-ws 32 --performance
-
-If this generates a memory allocation error message (and it probably will), try decreasing `--global-ws` by 32 or 64 at a time until it succeeds. Once you've determined a good `--global-ws` (near its maximum) and a good `--local-ws` (through trial and error, unfortunately), you can move onto the next step.
-
-The `--mem-factor #` option *decreases* memory usage by the factor specified, allowing you to use a larger `--global-ws`. Next, you should try the same procedure above, but use a higher `--mem-factor` (the default is 1) to see if performance can be further improved. In this example, I've determined that the best settings so far are `--global-ws 448 --local-ws 64`, and now I'm starting with these values and adding `--mem-factor 2`:
-
-    C:\python27\python btcrecover.py --wallet armory_2dRkxw76K_.wallet --enable-gpu --global-ws 448 --local-ws 64 --mem-factor 2 --calc-memory
-
-    Details for this wallet
-      ROMix V-table length:  32,768
-      outer iteration count: 4
-      with -mem_factor 2,
-        memory per global worker: 1,024 KB
-
-    Details for GeForce GTX 560 Ti
-      global memory size:     1,024 MB
-      with -mem_factor 2,
-        est. max --global-ws: 992
-        with --global-ws 448,
-          est. memory usage:  448 MB
-
-So for the next round of testing, we should start somewhere around `--global-ws 992 --local-ws 64 --mem-factor 2`, except that 992 isn't evenly divisible by 64, so we reduce it until it is evenly divisible which results in starting values of `--global-ws 960 --local-ws 64 --mem-factor 2`.
-
-For the next few rounds of testing, you can generally keep `--local-ws` at the same value, and just focus on determining the highest value of `--global-ws` which provides the best performance for each successively larger value of `--mem-factor`. Eventually you will reach a point where increasing `--mem-factor` and `--global-ws` will no longer provide any performance benefit, and may actually start hurting performance. This is generally the best you can get with this particular wallet and GPU combination. In this example, the best I could get was at these settings which resulted in a 3.5x improvement over my quad-core CPU, or a 6x improvement when using two GPUs:
-
-    C:\python27\python btcrecover.py --wallet armory_2dRkxw76K_.wallet --enable-gpu --global-ws 2816 --local-ws 128 --mem-factor 6 --performance
-
-This procedure is definitely tedious, so it's up to you to decide whether the improvement you might realize is worth it.
+For more information, please see the [GPU Acceleration Guide](docs/GPU_Acceleration.md).
 
 ### command-line options inside the tokens file ###
 
@@ -573,7 +465,7 @@ If you'd prefer, you can also place command-line options directly inside the `to
 Normally, when you run *btcrecover* it expects you to run it with at least a few options, such as the location of the tokens file and of the wallet file. If you run it without specifying `--tokenlist` or `--passwordlist`, it will check to see if there is a file named `btcrecover-tokens-auto.txt` in the current directory, and if found it will use that for the tokenlist. Because you can specify options inside the tokenlist file if you'd prefer (see above), this allows you to run *btcrecover* without using the command line at all. You may want to consider using the `--pause` option to prevent a Command Prompt window from immediately closing once it's done running if you decide to run it this way.
 
 
-# Limitations / Caveats #
+# Limitations & Caveats #
 
 ### Beta Software ###
 
@@ -581,91 +473,21 @@ Although this software is unlikely to harm any wallet files, **you are strongly 
 
 Because this software is beta software, and also because it interacts with other beta software, it’s entirely possible that it may fail to find a password which it’s been correctly configure by you to find.
 
-### Delimiters, Spaces, and Special Symbols in Passwords###
+### Additional Limitations & Caveats ###
 
-By default, *btcrecover* uses one or more whitespaces to separate tokens in the tokenlist file, and to separated to-be-replaced characters from their replacements in the typos-map file. It also ignores any extra whitespace in these files. This makes it difficult to test passwords which include spaces and certain other symbols.
+Please see the separate [Limitations and Caveats](docs/Limitations_and_Caveats.md) documentation for additional details on these topics:
 
-One way around this, which only works for the tokenlist file, is to use the `%s` wildcard which will be replaced by a single space. Another option, which works both for the tokenlist file and a typos-map file, is using the `--delimiter` which option allows you to change this behavior. If used, whitespace is no longer ignored, nor is extra whitespace stripped. Instead, the new `--delimiter` string must be used *exactly as specified* to separate tokens or typos-map columns. Any whitespace becomes a part of a token, so you must take care not to add any inadvertent whitespace to these files.
+ * Delimiters, Spaces, and Special Symbols in Passwords
+ * Memory & CPU Usage
+ * Security Issues
+ * Typos Details
 
-Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file (and for the `#` symbol, also in the typos-map file). A special symbol is part of the syntax, and not part of a password.
-
- * `%` - always considered special; `%%` in a token will be replaced by `%` during searches
- * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
- * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command-line options
- * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
-
-None of this applies to passwordlist files, which always treat spaces and symbols (except for carriage-returns and line-feeds) verbatim, treating them as parts of a password.
-
-### Unicode Support ###
-
-Although Unicode support is available in *btcrecover*, its use is considered experimental and is currently undocumented in this tutorial. More information may be available in the GitHub issues list.
-
-### Resource Usage ###
-
-#### Memory ####
-
-When *btcrecover* starts, it's first task is to count all the passwords it's about to try, looking for and recording duplicates for future reference (so that no password is tried twice) and also so it can display an ETA. This duplicate checking can take **a lot** of memory, depending on how many passwords need to be counted, but in some circumstances it can also save a lot of time. If *btcrecover* appears to hang after displaying the `Counting passwords ...` message, or if it outright crashes, try running it again with the `--no-dupchecks` option. After this initial counting phase, it doesn't use up much RAM as it searches through passwords.
-
-Although this initial counting phase can be skipped by using the `--no-eta` option, it's not recommended. If you do use `--no-eta`, it's highly recommended that you also use `--no-dupchecks` at the same time.
-
-You may want to always use a single `--no-dupchecks` option when working with MultiBit or Electrum wallets because the duplicate checking can actually decrease CPU efficiency (and always decreases memory efficiency) with these wallets in many cases.
-
-If you specify `--no-dupchecks` more than once, it will disable even more of the duplicate checking logic:
-
- * 1 time - disables the most comprehensive and also the most memory intensive duplicate checking
- * 2 times - disables duplicate checking that rarely consumes much memory relative to the time it saves, although it may if the tokenlist file has a large number of tokens on relatively few lines with at least one but relatively few identical tokens
- * 3 times - disables duplicate checking which consumes very little memory relative to the duplicates it can potentially find; it's almost never useful to use this level
- * 4 times - disables duplicate checking which consumes no additional memory; it's never useful to use this level (and it's only available for debugging purposes)
-
-#### CPU ####
-
-By default, *btcrecover* tries to use as much CPU time as is available and spare. You can use the `--threads` option to decrease the number of worker threads (which defaults to the number of logical processors in your system) if you'd like to decrease CPU usage (but also the guess rate).
-
-With MultiBit or Electrum wallets, *btcrecover* may not be able to efficiently use more than four or five CPU cores, sometimes even less depending on the contents of the tokenlist and the chosen typos. Specifying the `--no-dupchecks` option may help improve CPU usage and therefore the password guess rate in many cases with these two wallet types, and using slightly fewer or slightly greater `--threads` might also help. The only way to find out is to experiment.
-
-*btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
-
-### Unsupported Wallet Types ###
-
-As already mentioned, MultiBit HD is not supported. Electrum BIP32 wallets are also currently unsupported.
-
-### Security Issues ###
-
-Most Bitcoin wallet software goes to great lengths to protect your wallet password while it's stored unencrypted. *btcrecover* does not. This includes, but is not limited to:
-
- * you must create the tokenlist file which will probably have lots of sensitive password information in it, and save it to an unencrypted file;
- * no attempt is made to overwrite sensitive password information in RAM during or after running;
- * unless you use the `--no-dupchecks` option, a large amount of sensitive password information is stored in RAM temporarily, is not securely overwritten, and is very likely swapped out to the paging file where it could remain for a long time even after *btcrecover* has exited.
-
-None of these issues are intentionally malicious, they should be considered security bugs. There are no workarounds for them, short of only running *btcrecover* inside a VM on a hard disk drive (not a solid-state drive) and securely deleting the VM once finished, all of which is far beyond the scope of this tutorial...
-
-### Typos Gory Details ###
-
-The intent of the typos features is to only apply at most one typo at a time to any single character, even when applying multiple typos to a single password guess. For example, when specifying `--typos 2 --typo-case --typo-repeat`, each password guess can have up to two typos applied (so two case changes, **or** two repeated characters, **or** one case change plus one repeated character, at most). No single character in a guess will have more than one typo applied to it in a single guess, e.g. a single character will never be both repeated and case-changed at the same time.
-
-There are however some exceptions to this one-typo-per-character rule-- one intentional, and one due to limitations in the software.
-
-The `--typos-capslock` typo simulates leaving the caps lock turned on during a guess. It can affect all the letters in a password at once even though it's a single typo. As in exception to the one-typo-per-character rule, a single letter *can* be affected by a caps lock typo plus another typo at the same time.
-
-The `--typos-swap` typo also ignores the one-typo-per-character rule. Two adjacent characters can be swapped (which counts as one typo) and then a second typo can be applied to one (or both) of the swapped characters. This is more a software limitation than a design choice, but it's unlikely to change. You are however guaranteed that a single character will never be swapped more than once per guess.
-
-Finally it should be noted that wildcard substitutions (expansions and contractions) occur before typos are applied, and that typos can be applied to the results of wildcard expansions. The exact order of password creation is:
-
- 1. Create a "base" password from one or more tokens, following all the token rules (mutual exclusion, anchors, etc.).
- 2. Apply all wildcard expansions and contractions.
- 3. Apply up to a single caps lock typo.
- 4. Apply zero or more swap typos.
- 5. Apply zero or more character-changing typos (these typos *do* follow the one-typo-per-character rule).
- 6. Apply zero or more typo insertions (from the `typos-insert` option).
-
-At no time will the total number of typos in a single guess be more than requested with the `--typos #` option (nor will it be less than the `--min-typos` option if it's used).
 
 # Copyright and License #
 
 btcrecover.py -- Bitcoin wallet password recovery tool
 
-Copyright (C) 2014 Christopher Gurnee
+Copyright (C) 2015 Christopher Gurnee
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License version 2 as published by the Free Software Foundation.
 
