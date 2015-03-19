@@ -2869,25 +2869,27 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
 #   same_permitted -- (opt.) if True, the input value may be mapped to the same output value
 def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_permitted = False):
     map_data = dict()
-    for line_num, line in enumerate(map_file, 1):
-        if line.startswith("#"): continue  # ignore comments
-        #
-        # Remove the trailing newline, then split the line exactly
-        # once on the specified delimiter (default: whitespace)
-        split_line = line.rstrip("\r\n").split(args.delimiter, 1)
-        if len(split_line) == 0: continue  # ignore empty lines
-        if len(split_line) == 1:
-            error_exit(feature_name, "file '"+tstr(map_file.name)+"' has an empty replacement list on line", line_num)
-        if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
+    try:
+        for line_num, line in enumerate(map_file, 1):
+            if line.startswith("#"): continue  # ignore comments
+            #
+            # Remove the trailing newline, then split the line exactly
+            # once on the specified delimiter (default: whitespace)
+            split_line = line.rstrip("\r\n").split(args.delimiter, 1)
+            if len(split_line) == 0: continue  # ignore empty lines
+            if len(split_line) == 1:
+                error_exit(feature_name, "file '"+tstr(map_file.name)+"' has an empty replacement list on line", line_num)
+            if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
 
-        check_chars_range("".join(split_line), feature_name + " file" + (" '" + tstr(map_file.name) + "'" if hasattr(map_file, "name") else ""))
-        for c in split_line[0]:  # (c is the character to be replaced)
-            replacements = duplicates_removed(map_data.get(c, "") + split_line[1])
-            if not same_permitted and c in replacements:
-                map_data[c] = filter(lambda r: r != c, replacements)
-            else:
-                map_data[c] = replacements
-    map_file.close()
+            check_chars_range("".join(split_line), feature_name + " file" + (" '" + tstr(map_file.name) + "'" if hasattr(map_file, "name") else ""))
+            for c in split_line[0]:  # (c is the character to be replaced)
+                replacements = duplicates_removed(map_data.get(c, "") + split_line[1])
+                if not same_permitted and c in replacements:
+                    map_data[c] = filter(lambda r: r != c, replacements)
+                else:
+                    map_data[c] = replacements
+    finally:
+        map_file.close()
 
     # If autosaving, take a hash of the map_data so it can either be checked (later)
     # during a session restore to make sure we're actually restoring the exact same
