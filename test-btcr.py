@@ -673,6 +673,20 @@ class Test05CommandLine(GeneratorTester):
         # Duplicate code works differently the second time around; test it also
         self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
 
+    # Need to check four different code paths for --exclude-passwordlist
+    def test_exclude(self):
+        self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], b"--exclude-passwordlist __funccall",
+                               exclude_passwordlist=StringIO("exc1\nexc2"))
+    def test_exclude_nodupchecks(self):
+        self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], b"--exclude-passwordlist __funccall -dd",
+                               exclude_passwordlist=StringIO("exc1\nexc2"))
+    def test_exclude_noeta(self):
+        self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], b"--exclude-passwordlist __funccall --no-eta",
+                               exclude_passwordlist=StringIO("exc1\nexc2"))
+    def test_exclude_noeta_nodupchecks(self):
+        self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], b"--exclude-passwordlist __funccall --no-eta -dd",
+                               exclude_passwordlist=StringIO("exc1\nexc2"))
+
 
 SAVESLOT_SIZE = 4096
 AUTOSAVE_ARGS = b"--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1".split()
@@ -1367,8 +1381,10 @@ class Test08KeyDecryption(unittest.TestCase):
         self.assertIn("encrypted key data is corrupted (failed CRC check)", cm.exception.code)
 
 
-E2E_ARGS = b"--tokenlist __funccall --data-extract --autosave __funccall --typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
-E2E_TOKENLIST    = "+ ^%0,1[b-c]tcr--  \n  + ^,$%0,1<Test-  \n  ^3$pas  \n  + wrod$"
+E2E_ARGS = b"--tokenlist __funccall --exclude-passwordlist __funccall --data-extract --autosave __funccall " \
+           b"--typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
+E2E_TOKENLIST    = "+ ^%0,1[b-c]tcr-- \n"  "+ ^,$%0,1<Test- \n"  "^3$pas \n"  "+ wrod$"
+E2E_EXCLUDELIST  = "tCr--Test-wrod\n" "btcr-Tsett-paaswrod\n" "ctcr--Test-pAssrwod"  # passwords #4, #100004, & #120004
 E2E_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test09EndToEnd(unittest.TestCase):
 
@@ -1380,15 +1396,16 @@ class Test09EndToEnd(unittest.TestCase):
     def test_end_to_end(self):
         autosave_file = self.__class__.autosave_file
         btcrecover.parse_arguments(E2E_ARGS,
-            tokenlist    = StringIO(E2E_TOKENLIST),
-            data_extract = E2E_DATA_EXTRACT,
-            autosave     = autosave_file)
+            tokenlist            = StringIO(E2E_TOKENLIST),
+            exclude_passwordlist = StringIO(E2E_EXCLUDELIST),
+            data_extract         = E2E_DATA_EXTRACT,
+            autosave             = autosave_file)
         self.assertEqual("btcr-test-password", btcrecover.main()[0])
 
         # Verify the exact password number where it was found to ensure password ordering hasn't changed
         autosave_file.seek(SAVESLOT_SIZE)
         savestate = cPickle.load(autosave_file)
-        self.assertEqual(savestate.get(b"skip"), 103764)
+        self.assertEqual(savestate.get(b"skip"), 103762)
 
     # Repeat the test above using the same autosave file, starting off just before the password was found
     def test_restore(self):
@@ -1398,26 +1415,27 @@ class Test09EndToEnd(unittest.TestCase):
         autosave_file = self.__class__.autosave_file
         autosave_file.seek(0)
         savestate = cPickle.load(autosave_file)
-        self.assertEqual(savestate.get(b"skip"), 103764)
+        self.assertEqual(savestate.get(b"skip"), 103762)
 
     # Repeat the first test with a new autosave file, using --skip to start just after the password is located
     def test_skip(self):
         autosave_file = BytesIONonClosing()
-        btcrecover.parse_arguments(E2E_ARGS + [b"--skip=103765"],
-            tokenlist    = StringIO(E2E_TOKENLIST),
-            data_extract = E2E_DATA_EXTRACT,
-            autosave     = autosave_file)
+        btcrecover.parse_arguments(E2E_ARGS + [b"--skip=103763"],
+            tokenlist            = StringIO(E2E_TOKENLIST),
+            exclude_passwordlist = StringIO(E2E_EXCLUDELIST),
+            data_extract         = E2E_DATA_EXTRACT,
+            autosave             = autosave_file)
         self.assertIn("Password search exhausted", btcrecover.main()[1])
 
         # Verify the password number where the search started
         autosave_file.seek(0)
         savestate = cPickle.load(autosave_file)
-        self.assertEqual(savestate.get(b"skip"), 103765)
+        self.assertEqual(savestate.get(b"skip"), 103763)
 
         # Verify the total count of passwords
         autosave_file.seek(SAVESLOT_SIZE)
         savestate = cPickle.load(autosave_file)
-        self.assertEqual(savestate.get(b"skip"), 139655)
+        self.assertEqual(savestate.get(b"skip"), 139652)
 
 
 # QuickTests: all of Test01Basics, Test02Anchors, Test03WildCards, and Test04Typos,

@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.1-Unicode"
+#__version__          =  "0.13.2-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.1"
+__version__          =  "0.13.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1954,7 +1954,7 @@ def load_savestate(autosave_file):
 # Do not take references of the member functions, e.g. don't do this:
 #   tell_ref = peekable_file.tell
 #   print peekable_file.peek()
-#   location = tell_ref()                    # will be off by one;
+#   location = tell_ref(peekable_file)       # will be off by one;
 #   assert location == peekable_file.tell()  # will assert
 class MakePeekable(object):
     def __init__(self, file):
@@ -2144,6 +2144,7 @@ parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain 
 parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
 parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
 parser_common.add_argument("--privkey",     action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
+parser_common.add_argument("--exclude-passwordlist", metavar="FILE", nargs="?", const="-", help="never try passwords read (exactly one per line) from this file or from stdin")
 parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
 parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
@@ -2520,7 +2521,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             del sha1
             if restored:
                 if typos_map_hash != savestate[b"typos_map_hash"]:
-                    error_exit("can't restore previous session: the typos_map file has changed")
+                    error_exit("can't restore previous session: the typos-map file has changed")
             else:
                 savestate[b"typos_map_hash"] = typos_map_hash
     #
@@ -2838,18 +2839,6 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         parse_tokenlist(tokenlist_file, tokenlist_first_line_num)
         base_password_generator = tokenlist_base_password_generator
 
-    # If something has been redirected to stdin and we've been reading from it, close
-    # stdin now so we don't keep the redirected files alive while running, but only
-    # if we're done with it (done reading the passwordlist_file and no --pause option)
-    if (    not sys.stdin.closed and not sys.stdin.isatty() and
-            (args.data_extract or tokenlist_file == sys.stdin or passwordlist_file == sys.stdin or args.blockchain_secondpass) and
-            (passwordlist_file != sys.stdin or passwordlist_allcached) and not pause_registered):
-        sys.stdin.close()   # this doesn't really close the fd
-        try:   os.close(0)  # but this should, where supported
-        except StandardError: pass
-
-    if tokenlist_file and not (pause_registered and tokenlist_file == sys.stdin):
-        tokenlist_file.close()
 
     # Open a new autosave file (if --restore was specified, the restore file
     # is still open and has already been assigned to autosave_file instead)
@@ -2860,6 +2849,72 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             error_exit("--autosave file '"+tstr(args.autosave)+"' already exists, won't overwrite")
         autosave_nextslot = 0
         print("Using autosave file '"+args.autosave+"'")
+
+
+    # Process any --exclude-passwordlist file: create the password_dups object earlier than normal and
+    # instruct it to always consider passwords found in this file as duplicates (so they'll be skipped).
+    # This is done near the end because it may take a while (all the syntax checks are done by now).
+    if args.exclude_passwordlist:
+        exclude_file = open_or_use(args.exclude_passwordlist, "r", kwds.get("exclude_passwordlist"), permit_stdin=True)
+        if exclude_file == tokenlist_file:
+            error_exit("can't use stdin for both --tokenlist and --exclude-passwordlist")
+        if exclude_file == passwordlist_file:
+            error_exit("can't use stdin for both --passwordlist and --exclude-passwordlist")
+        #
+        global password_dups
+        password_dups = DuplicateChecker()
+        sha1          = hashlib.sha1() if savestate else None
+        try:
+            for excluded_pw in exclude_file:
+                excluded_pw = excluded_pw.rstrip("\r\n")
+                check_chars_range(excluded_pw, "--exclude-passwordlist file")
+                password_dups.exclude(excluded_pw)  # now is_duplicate(excluded_pw) will always return True
+                if sha1:
+                    sha1.update(excluded_pw.encode("utf_8"))
+        except MemoryError:
+            error_exit("not enough memory to store entire --exclude-passwordlist file")
+        finally:
+            if exclude_file != sys.stdin:
+                exclude_file.close()
+        #
+        # If autosaving, take the hash of the excluded passwords and either
+        # check it during a session restore to make sure we're actually
+        # restoring the exact same session, or save it for future such checks
+        if savestate:
+            exclude_passwordlist_hash = sha1.digest()
+            del sha1
+            if restored:
+                if exclude_passwordlist_hash != savestate[b"exclude_passwordlist_hash"]:
+                    error_exit("can't restore previous session: the exclude-passwordlist file has changed")
+            else:
+                savestate[b"exclude_passwordlist_hash"] = exclude_passwordlist_hash
+        #
+        # Normally password_dups isn't even created when --no-dupchecks is specified, but it's required
+        # for exclude-passwordlist; instruct the password_dups to disable future duplicate checking
+        if args.no_dupchecks:
+            password_dups.disable_duplicate_tracking()
+
+
+    # If something has been redirected to stdin and we've been reading from it, close
+    # stdin now so we don't keep the redirected files alive while running, but only
+    # if we're done with it (done reading the passwordlist_file and no --pause option)
+    if (    not sys.stdin.closed and not sys.stdin.isatty() and (
+                args.data_extract                or
+                tokenlist_file    == sys.stdin   or
+                passwordlist_file == sys.stdin   or
+                passwordlist_file == sys.stdin   or
+                args.exclude_passwordlist == '-' or
+                args.blockchain_secondpass
+            ) and (
+                passwordlist_file != sys.stdin   or
+                passwordlist_allcached
+            ) and not pause_registered ):
+        sys.stdin.close()   # this doesn't really close the fd
+        try:   os.close(0)  # but this should, where supported
+        except StandardError: pass
+
+    if tokenlist_file and not (pause_registered and tokenlist_file == sys.stdin):
+        tokenlist_file.close()
 
 
 # Builds and returns a dict (e.g. typos_map) mapping replaceable characters to their replacements.
@@ -3161,34 +3216,52 @@ def load_backreference_maps_from_token(token):
 # Checks for duplicate hashable items in multiple identical runs
 # (builds a cache in the first run to be memory efficient in future runs)
 class DuplicateChecker(object):
-    def __init__(self):
-        self._seen_once  = set()
-        self._duplicates = dict()
-        self._run_number = 0
 
+    EXCLUDE = sys.maxint
+
+    def __init__(self):
+        self._seen_once  = dict()  # tracks potential duplicates in run 0 only
+        self._duplicates = dict()  # tracks having seen known duplicates in runs 1+
+        self._run_number = 0       # incremented at the end of each run
+        self._tracking   = True    # is duplicate tracking enabled?
+                                   # (even if False, excluded items are still checked)
+
+    # Returns True if x has already been seen in this run. If x has been
+    # excluded, always returns True (even if it hasn't been seen yet).
     def is_duplicate(self, x):
+
         # The duplicates cache is built during the first run
         if self._run_number == 0:
-            if x in self._duplicates:      # If it's the third+ time we've seen it
+            if x in self._duplicates:  # If it's the third+ time we've seen it (or 2nd+ & excluded):
                 return True
-            elif x in self._seen_once:     # If it's now the second time we've seen it:
-                self._seen_once.remove(x)      # it's been seen *more* than once
-                self._duplicates[x] = 1        # mark it as having duplicates
+            if x in self._seen_once:   # If it's the second time we've seen it, or it's excluded:
+                self._duplicates[x] = self._seen_once.pop(x)  # move it to list of known duplicates
                 return True
-            else:                         # If it's the first time we've seen it
-                self._seen_once.add(x)
-                return False
+            # Otherwise it's the first time we've seen it
+            if self._tracking:
+                self._seen_once[x] = 1
+            return False
 
         # The duplicates cache is available for lookup on second+ runs
-        duplicate = self._duplicates.get(x)
+        duplicate = self._duplicates.get(x)            # ==sys.maxint if it's excluded
         if duplicate:
             if duplicate <= self._run_number:          # First time we've seen it this run:
                 self._duplicates[x] = self._run_number + 1  # mark it as having been seen this run
                 return False
-            else:                                     # Second+ time we've seen it this run
+            else:                                     # Second+ time we've seen it this run, or it's excluded:
                 return True
-        else:   return False                          # Else it isn't a recorded duplicate
+        return False                                  # Else it isn't a recorded duplicate
 
+    # Adds x to the already-seen dict such that is_duplicate(x) will always return True
+    def exclude(self, x):
+        self._seen_once[x] = self.EXCLUDE
+
+    # Future duplicates will be ignored (and will not consume additional memory), however
+    # is_duplicate() will still return True for duplicates and exclusions seen/added so far
+    def disable_duplicate_tracking(self):
+        self._tracking = False
+
+    # Must be called before the same list of items is revisited
     def run_finished(self):
         if self._run_number == 0:
             del self._seen_once  # No longer need this for second+ runs
