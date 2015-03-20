@@ -1188,7 +1188,7 @@ class WalletMsigna(object):
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
         aes_library_name = load_aes256_library().__name__
-        self._passwords_per_second = 40000 if aes_library_name == b"Crypto" else 5000
+        self._passwords_per_second = 50000 if aes_library_name == b"Crypto" else 5000
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
@@ -4497,7 +4497,7 @@ def main():
 
     # If the time to verify a password is short enough, the time to generate the passwords in this thread
     # becomes comparable to verifying passwords, therefore this should count towards being a "worker" thread
-    if est_secs_per_password < 1.0 / 50000.0:
+    if est_secs_per_password < 1.0 / 75000.0:
         main_thread_is_worker = True
         spawned_threads   = args.threads - 1      # spawn 1 fewer than requested (might be 0)
         verifying_threads = spawned_threads or 1
