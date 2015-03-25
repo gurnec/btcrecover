@@ -31,11 +31,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
-       unicodedata, collections, struct, glob, atexit
+       unicodedata, collections, struct, glob, atexit, re
 
 # Try to add the Armory libraries to the path for various platforms
 if sys.platform == "win32":
@@ -276,7 +276,7 @@ class WalletElectrum1(object):
     # Creates a wallet instance from either an mpk or an address and address_limit.
     # If neither an mpk nor address is supplied, prompts the user for one or the other.
     @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None):
+    def create_from_params(cls, mpk = None, address = None, address_limit = None, is_performance = False):
         self = cls(loading=True)
 
         # Process the mpk (master public key) argument
@@ -313,7 +313,9 @@ class WalletElectrum1(object):
             init_gui()
             while True:
                 mpk = tkSimpleDialog.askstring("Electrum 1.x master public key",
-                    "Please enter your master public key if you have it, or click Cancel to search by an address instead:")
+                    "Please enter your master public key if you have it, or click Cancel to search by an address instead:",
+                    initialvalue="c79b02697b32d9af63f7d2bd882f4c8198d04f0e4dfc5c232ca0c18a87ccc64ae8829404fdc48eec7111b99bda72a7196f9eb8eb42e92514a758f5122b6b5fea"
+                        if is_performance else None)
                 if not mpk:
                     break  # if they pressed Cancel, stop prompting for an mpk
                 mpk = mpk.strip()
@@ -332,23 +334,27 @@ class WalletElectrum1(object):
 
         # If an mpk wasn't provided (at all), and an address also wasn't provided
         # (in the original function call), prompt the user for an address.
-        if not mpk and not address:
-            while True:
-                address = tkSimpleDialog.askstring("Bitcoin address",
-                    "Please enter an address from your wallet, preferably one created early in your wallet's lifetime:")
-                if not address:
-                    sys.exit("canceled")
-                address = address.strip()
-                try:
-                    # (raises ValueError() on failure):
-                    self._known_hash160, version_byte = base58check_to_hash160(address)
-                    if ord(version_byte) != 0:
-                        raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
-                    break
-                except ValueError as e:
-                    tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
+        else:
+            if not address:
+                # init_gui() was already called above
+                while True:
+                    address = tkSimpleDialog.askstring("Bitcoin address",
+                        "Please enter an address from your wallet, preferably one created early in your wallet's lifetime:",
+                        initialvalue="17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8" if is_performance else None)
+                    if not address:
+                        sys.exit("canceled")
+                    address = address.strip()
+                    try:
+                        # (raises ValueError() on failure):
+                        self._known_hash160, version_byte = base58check_to_hash160(address)
+                        if ord(version_byte) != 0:
+                            raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                        break
+                    except ValueError as e:
+                        tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
 
             if not address_limit:
+                init_gui()  # might not have been called yet
                 address_limit = tkSimpleDialog.askinteger("Address limit",
                     "Please enter the address generation limit. Smaller will\n"
                     "be faster, but it must be equal to at least the number\n"
@@ -500,7 +506,7 @@ class WalletBIP32(object):
     # If neither an mpk nor address is supplied, prompts the user for one or the other.
     # (the BIP32 key derivation path is by default BIP44's account 0)
     @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None):
+    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None, is_performance=False):
         self = cls(path, loading=True)
 
         # Process the mpk (master public key) argument
@@ -535,7 +541,8 @@ class WalletBIP32(object):
             while True:
                 mpk = tkSimpleDialog.askstring("Master extended public key",
                     "Please enter your master extended public key (xpub) if you "
-                    "have it, or click Cancel to search by an address instead")
+                    "have it, or click Cancel to search by an address instead",
+                    initialvalue=self._performance_xpub() if is_performance else None)
                 if not mpk:
                     break  # if they pressed Cancel, stop prompting for an mpk
                 mpk = mpk.strip()
@@ -575,38 +582,43 @@ class WalletBIP32(object):
                     "the extended public key's depth exceeds the length of this wallet's path ({})"
                     .format(len(self._path_indexes)))
 
-        # If we don't have an mpk but need to append the last
-        # index, assume it's the external (non-change) chain
-        elif self._append_last_index:
-            self._path_indexes += 0,
+        else:  # else if not mpk
 
-        # If an mpk wasn't provided (at all), and an address also wasn't provided
-        # (in the original function call), prompt the user for an address.
-        if not mpk and not address:
-            while True:
-                address = tkSimpleDialog.askstring("Bitcoin address",
-                    "Please enter an address from the first account in your wallet,\n"
-                    "preferably one created early in the account's lifetime:")
-                if not address:
-                    sys.exit("canceled")
-                address = address.strip()
-                try:
-                    # (raises ValueError() on failure):
-                    self._known_hash160, version_byte = base58check_to_hash160(address)
-                    if ord(version_byte) != 0:
-                        raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
-                    break
-                except ValueError as e:
-                    tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
+            # If we don't have an mpk but need to append the last
+            # index, assume it's the external (non-change) chain
+            if self._append_last_index:
+                self._path_indexes += 0,
+
+            # If an mpk wasn't provided (at all), and an address also wasn't provided
+            # (in the original function call), prompt the user for an address.
+            if not address:
+                # init_gui() was already called above
+                while True:
+                    address = tkSimpleDialog.askstring("Bitcoin address",
+                        "Please enter an address from the first account in your wallet,\n"
+                        "preferably one created early in the account's lifetime:",
+                        initialvalue="17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8" if is_performance else None)
+                    if not address:
+                        sys.exit("canceled")
+                    address = address.strip()
+                    try:
+                        # (raises ValueError() on failure):
+                        self._known_hash160, version_byte = base58check_to_hash160(address)
+                        if ord(version_byte) != 0:
+                            raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                        break
+                    except ValueError as e:
+                        tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
 
             if not address_limit:
+                init_gui()  # might not have been called yet
                 address_limit = tkSimpleDialog.askinteger("Address limit",
                     "Please enter the address generation limit. Smaller will\n"
                     "be faster, but it must be equal to at least the number\n"
                     "of addresses created before the one you just entered:", minvalue=1)
                 if not address_limit:
                     sys.exit("canceled")
-                self._addrs_to_generate = address_limit
+            self._addrs_to_generate = address_limit
 
         return self
 
@@ -677,6 +689,12 @@ class WalletBIP32(object):
                         return mnemonic_ids, count  # found it
 
         return False, count
+
+    # Returns a dummy xpub for performance testing purposes
+    @staticmethod
+    def _performance_xpub():
+        # an xpub at path m/44'/0'/0', as Mycelium for Android would export
+        return "xpub6BgCDhMefYxRS1gbVbxyokYzQji65v1eGJXGEiGdoobvFBShcNeJt97zoJBkNtbASLyTPYXJHRvkb3ahxaVVGEtC1AD4LyuBXULZcfCjBZx"
 
 
 ############### BIP39 ###############
@@ -781,13 +799,14 @@ class WalletBIP39(WalletBIP32):
             if len(sorted_hits) > 1 and sorted_hits[-1][1] == sorted_hits[-2][1]:
                 raise ValueError("unable to determine wordlist language: top best guesses ({}, {}) have equal hits ({})"
                     .format(sorted_hits[-1][0], sorted_hits[-2][0], sorted_hits[-1][1]))
-            self._lang = sorted_hits[-1][0].lower()  # (probably) found it
+            lang = sorted_hits[-1][0]  # (probably) found it
         #
         try:
-            words = self._language_words[self._lang]
+            words = self._language_words[lang]
         except KeyError:  # consistently raise ValueError for any bad inputs
-            raise ValueError("can't find wordlist for language code '{}'".format(self._lang))
-        print("Using the '{}' wordlist.".format(self._lang))
+            raise ValueError("can't find wordlist for language code '{}'".format(lang))
+        self._lang = lang
+        print("Using the '{}' wordlist.".format(lang))
 
         # Build the mnemonic_ids_guess and pre-calculate similar mnemonic words
         global mnemonic_ids_guess, close_mnemonic_ids
@@ -913,6 +932,12 @@ class WalletBitcoinj(WalletBIP39):
             raise ValueError("No master public extended key was found in this bitcoinj wallet file")
         return self
 
+    # Returns a dummy xpub for performance testing purposes
+    @staticmethod
+    def _performance_xpub():
+        # an xpub at path m/0', as Bitcoin Wallet for Android would export
+        return "xpub69g69PyVJogRM2xXRC7NjRsHjj8UdS1zPAsLvfx8hXEP26HDVxrjLG3D3KRYnY89EjRzKS4zFZgCFCZTsHAhgjxt715EbnjkNzqYu7a9MkX"
+
 
 ############### Electrum2 ###############
 
@@ -1007,6 +1032,12 @@ class WalletElectrum2(WalletBIP39):
         # Note: the words are already in Electrum2's normalized form
         return btcr.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), "electrum", 2048)
 
+    # Returns a dummy xpub for performance testing purposes
+    @staticmethod
+    def _performance_xpub():
+        # an xpub at path m, as Electrum would export
+        return "xpub661MyMwAqRbcGsUXkGBkytQkYZ6M16bFWwTocQDdPSm6eJ1wUsxG5qty1kTCUq7EztwMscUstHVo1XCJMxWyLn4PP1asLjt4gPt3HkA81qe"
+
 
 ################################### Main ###################################
 
@@ -1058,8 +1089,15 @@ def replace_wrong_word(mnemonic_ids, i):
 #               full word list, and significantly increases the search time
 #   min_typos - min number of mistakes to apply to each guess
 num_inserts = num_deletes = 0
-def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, extra_args = None):
-    assert typos >= big_typos, "typos includes big_typos, therefore it must be >= big_typos"
+def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, extra_args = []):
+    if typos < 0:  # typos == 0 is silly, but causes no harm
+        raise ValueError("typos must be >= 0")
+    if big_typos < 0:
+        raise ValueError("big-typos must be >= 0")
+    if big_typos > typos:
+        raise ValueError("typos includes big_typos, therefore it must be >= big_typos")
+    # min_typos < 0 is silly, but causes no harm
+    # typos < min_typos is an error; it's checked in btcr.parse_arguments()
 
     # Local copies of globals whose changes should only be visible locally
     l_num_inserts = num_inserts
@@ -1071,7 +1109,7 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, e
     # Start building the command-line arguments
     btcr_args = "--typos " + str(typos)
 
-    if is_peformance:
+    if is_performance:
         btcr_args += " --performance"
         # These typos are not supported by seedrecover with --performance testing:
         l_num_inserts = l_num_deletes = num_wrong = 0
@@ -1135,6 +1173,7 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, e
         if l_big_typos < 0:  # if too many big typos are required to generate valid mnemonics
             print("Not enough entirely different seed words permitted; skipping", maybe_skipping)
             return False
+        assert typos >= cur_num_inserts + l_num_deletes + num_wrong
 
         if subphase_num == 1 and len(num_inserts_to_try) > 1:
             print(subphase_msg)
@@ -1167,14 +1206,11 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, e
                 if num_replacecloseword < typos:
                     l_btcr_args += " --max-typos-replacecloseword " + str(num_replacecloseword)
 
-        if extra_args:
-            l_btcr_args += " " + extra_args
-
         btcr.parse_arguments(
-            l_btcr_args.split(),
+            l_btcr_args.split() + extra_args,
             inserted_items= ids_to_try_inserting,
             wallet=         loaded_wallet,
-            base_iterator=  (mnemonic_ids_guess,) if not is_peformance else None, # the one guess to modify
+            base_iterator=  (mnemonic_ids_guess,) if not is_performance else None, # the one guess to modify
             perf_iterator=  lambda: loaded_wallet.performance_iterator(),
             check_only=     loaded_wallet.verify_mnemonic_syntax
         )
@@ -1190,26 +1226,149 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_peformance = False, e
 
 def main(argv):
     global loaded_wallet
-    loaded_wallet = phases = None
+    loaded_wallet = wallet_type = None
+    create_from_params     = {}
+    config_mnemonic_params = {}
+    phase                  = {}
 
     if len(sys.argv) > 1:
-        # TODO: command-line version
-        raise NotImplementedError("command-line arguments not implemented")
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--wallet",      metavar="FILE",        help="the wallet file")
+        parser.add_argument("--wallet-type", metavar="TYPE",        help="if not using a wallet file, the wallet type")
+        parser.add_argument("--mpk",         metavar="XPUB-OR-HEX", help="if not using a wallet file, the master public key")
+        parser.add_argument("--addr",        metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
+        parser.add_argument("--addr-limit",  type=int, metavar="COUNT", help="if using an address, the gap limit")
+        parser.add_argument("--typos",       type=int, metavar="COUNT", help="the max number of mistakes to try (default: auto)")
+        parser.add_argument("--big-typos",   type=int, metavar="COUNT", help="the max number of big (entirely different word) mistakes to try (default: auto or 0)")
+        parser.add_argument("--min-typos",   type=int, metavar="COUNT", help="enforce a min # of mistakes per guess")
+        parser.add_argument("--passphrase",  action="store_true",       help="the mnemonic is passphrase-encrypted (BIP39 only)")
+        parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
+        parser.add_argument("--mnemonic-prompt", action="store_true",   help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
+        parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
+        parser.add_argument("--bip32-path",  metavar="PATH",      help="path (e.g. m/0'/0/) excluding the final index (default: BIP44)")
+        parser.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
+        parser.add_argument("--btcr-args",   action="store_true", help=argparse.SUPPRESS)
 
-    else:
+        # Parse the args; unknown args are passed to btcr.parse_arguments() iff --btcr-args is specified
+        args, extra_args = parser.parse_known_args(argv[1:])
+        if args.btcr_args:
+            phase["extra_args"] = extra_args
+        else:
+            args = parser.parse_args(argv[1:])  # re-parse them, with no unknown args permitted
+
+        if args.wallet:
+            loaded_wallet = btcr.load_wallet(args.wallet)
+
+        # Look up the --wallet-type arg in the list of selectable_wallet_classes
+        if args.wallet_type:
+            if args.wallet:
+                print("warning: --wallet-type is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                args.wallet_type  = args.wallet_type.lower()
+                wallet_type_names = []
+                for cls, desc in selectable_wallet_classes:
+                    wallet_type_names.append(cls.__name__.replace("Wallet", "", 1).lower())
+                    if wallet_type_names[-1] == args.wallet_type:
+                        wallet_type = cls
+                        break
+                else:
+                    sys.exit("--wallet-type must be one of: " + ", ".join(wallet_type_names))
+
+        if args.mpk:
+            if args.wallet:
+                print("warning: --mpk is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                create_from_params["mpk"] = args.mpk
+
+        if args.addr:
+            if args.wallet:
+                print("warning: --addr is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                create_from_params["address"] = args.addr
+
+        if args.addr_limit is not None:
+            if args.wallet:
+                print("warning: --addr-limit is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                create_from_params["address_limit"] = args.addr_limit
+
+        if args.typos is not None:
+            phase["typos"] = args.typos
+
+        if args.big_typos is not None:
+            phase["big_typos"] = args.big_typos
+            if not args.typos:
+                phase["typos"] = args.big_typos
+
+        if args.min_typos is not None:
+            if not phase.get("typos"):
+                sys.exit("--typos must be specified when using --min_typos")
+            phase["min_typos"] = args.min_typos
+
+        if args.passphrase:
+            import getpass
+            encoding = sys.stdin.encoding or 'ASCII'
+            if 'utf' not in encoding.lower():
+                print('terminal does not support UTF; passwords with non-ASCII chars might not work', file=sys.stderr)
+            passphrase = getpass.getpass("Please enter the encryption passphrase: ")
+            if not passphrase:
+                sys.exit("canceled")
+            if passphrase != getpass.getpass("Please re-enter the encryption passphrase: "):
+                sys.exit("the passphrases did not match")
+            if isinstance(passphrase, str):
+                passphrase = passphrase.decode(encoding)  # convert from terminal's encoding to unicode
+            config_mnemonic_params["passphrase"] = passphrase
+
+        if args.language:
+            config_mnemonic_params["lang"] = args.language.lower()
+
+        if args.mnemonic_prompt:
+            encoding = sys.stdin.encoding or 'ASCII'
+            if 'utf' not in encoding.lower():
+                print('terminal does not support UTF; mnemonics with non-ASCII chars might not work', file=sys.stderr)
+            mnemonic_guess = raw_input("Please enter your best guess for your mnemonic (seed)\n> ")
+            if not mnemonic_guess:
+                sys.exit("canceled")
+            if isinstance(mnemonic_guess, str):
+                mnemonic_guess = mnemonic_guess.decode(encoding)  # convert from terminal's encoding to unicode
+            config_mnemonic_params["mnemonic_guess"] = mnemonic_guess
+
+        if args.mnemonic_length is not None:
+            config_mnemonic_params["expected_len"] = args.mnemonic_length
+
+        if args.bip32_path:
+            if args.wallet:
+                print("warning: --bip32-path is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                create_from_params["path"] = args.bip32_path
+
+        if args.performance:
+            create_from_params["is_performance"] = phase["is_performance"] = True
+            if args.typos is None:
+                phase["typos"] = 0
+            if not args.mnemonic_prompt:
+                # Create a dummy mnemonic; only its language and length are used for anything
+                config_mnemonic_params["mnemonic_guess"] = " ".join("act" for i in xrange(args.mnemonic_length or 12))
+
+    else:  # else if no command-line args are present
         global pause_at_exit
         pause_at_exit = True
         atexit.register(lambda: pause_at_exit and raw_input("\nPress Enter to exit ..."))
 
-    if not loaded_wallet:
-        init_gui()
+
+    if not loaded_wallet and not wallet_type:  # neither --wallet nor --wallet-type were specified
 
         # Ask for a wallet file
+        init_gui()
         wallet_filename = tkFileDialog.askopenfilename(title="Please select your wallet file if you have one")
         if wallet_filename:
             loaded_wallet = btcr.load_wallet(wallet_filename)  # raises on failure; no second chance
 
-        else:
+    if not loaded_wallet:    # if no wallet file was chosen
+
+        if not wallet_type:  # if --wallet-type wasn't specified
+
             # Without a wallet file, we can't automatically determine the wallet type, so prompt the
             # user to select a wallet that's been registered with @register_selectable_wallet_class
             selectable_wallet_classes.sort(key=lambda x: x[1])  # sort by description
@@ -1235,14 +1394,30 @@ def main(argv):
             if not wallet_type:
                 sys.exit("canceled")
 
-            loaded_wallet = wallet_type.create_from_params()  # user will be prompted for params
+        try:
+            loaded_wallet = wallet_type.create_from_params(**create_from_params)
+        except TypeError as e:
+            matched = re.match("create_from_params\(\) got an unexpected keyword argument '(.*)'", str(e))
+            if matched:
+                sys.exit("{} does not support the {} option".format(wallet_type.__name__, matched.group(1)))
+            raise
+        except ValueError as e:
+            sys.exit(e)
 
-        mnemonic_guess = None  # user will be prompted for a seed guess
+    try:
+        loaded_wallet.config_mnemonic(**config_mnemonic_params)
+    except TypeError as e:
+        matched = re.match("config_mnemonic\(\) got an unexpected keyword argument '(.*)'", str(e))
+        if matched:
+            sys.exit("{} does not support the {} option".format(loaded_wallet.__class__.__name__, matched.group(1)))
+        raise
+    except ValueError as e:
+        sys.exit(e)
 
-    loaded_wallet.config_mnemonic(mnemonic_guess)
-
+    if phase:
+        phases = (phase,)
     # Set reasonable defaults for the search phases
-    if not phases:
+    else:
         # If each guess is very slow, separate out the first two phases
         passwords_per_seconds = loaded_wallet.passwords_per_seconds(1)
         if passwords_per_seconds < 25:
