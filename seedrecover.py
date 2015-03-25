@@ -31,7 +31,7 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -425,7 +425,7 @@ class WalletElectrum1(object):
     # Configures the values of four globals used later in config_btcrecover():
     # mnemonic_ids_guess, close_mnemonic_ids, num_inserts, and num_deletes
     @classmethod
-    def config_mnemonic(cls, mnemonic_guess = None):
+    def config_mnemonic(cls, mnemonic_guess = None, closematch_cutoff = 0.65):
         # If a mnemonic guess wasn't provided, prompt the user for one
         if not mnemonic_guess:
             init_gui()
@@ -444,7 +444,7 @@ class WalletElectrum1(object):
         # length 1 tuples contains a single mnemonic_id which is similar to the dict's key
         close_mnemonic_ids = {}
         for word in mnemonic_guess.lower().split():
-            close_words = difflib.get_close_matches(word, cls._words, sys.maxint, 0.65)
+            close_words = difflib.get_close_matches(word, cls._words, sys.maxint, closematch_cutoff)
             if close_words:
                 if close_words[0] != word:
                     print("'{}' was in your guess, but it's not a valid Electrum seed word;\n"
@@ -750,7 +750,7 @@ class WalletBIP39(WalletBIP32):
     # Configures the values of four globals used later in config_btcrecover():
     # mnemonic_ids_guess, close_mnemonic_ids, num_inserts, and num_deletes;
     # also selects the appropriate wordlist language to use
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None):
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
         if expected_len:
             if expected_len < 12:
                 raise ValueError("minimum BIP39 sentence length is 12 words")
@@ -763,12 +763,12 @@ class WalletBIP39(WalletBIP32):
         self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
 
         # Do most of the work in this function:
-        self._config_mnemonic(mnemonic_guess, lang, expected_len)
+        self._config_mnemonic(mnemonic_guess, lang, expected_len, closematch_cutoff)
 
         # Calculate each word's index in binary (needed by _verify_checksum())
         self._word_to_binary = { word : "{:011b}".format(i) for i,word in enumerate(self._words) }
     #
-    def _config_mnemonic(self, mnemonic_guess, lang, expected_len):
+    def _config_mnemonic(self, mnemonic_guess, lang, expected_len, closematch_cutoff):
 
         # If a mnemonic guess wasn't provided, prompt the user for one
         if not mnemonic_guess:
@@ -817,7 +817,7 @@ class WalletBIP39(WalletBIP32):
         # e.g.: { "a-word" : ( ("a-ward", ), ("a-work",) ), "other-word" : ... }
         close_mnemonic_ids = {}
         for word in mnemonic_guess:
-            close_words = difflib.get_close_matches(word, words, sys.maxint, 0.65)
+            close_words = difflib.get_close_matches(word, words, sys.maxint, closematch_cutoff)
             if close_words:
                 if close_words[0] != word:
                     print(u"'{}' was in your guess, but it's not a valid seed word;\n"
@@ -1003,12 +1003,12 @@ class WalletElectrum2(WalletBIP39):
         word = u"".join(c for c in word if not unicodedata.combining(c))  # Electrum 2.x removes combining marks
         return intern(word.encode("utf_8"))
 
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, expected_len = 13):
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, expected_len = 13, closematch_cutoff = 0.65):
         # Calls WalletBIP39's generic version (note the leading _) with a hardcoded mnemonic
         # length (which for Electrum2 wallets alone is treated only as a maximum length)
         if expected_len > 13:
             raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
-        self._config_mnemonic(mnemonic_guess, lang, expected_len)
+        self._config_mnemonic(mnemonic_guess, lang, expected_len, closematch_cutoff)
         #
         # Electrum 2.x doesn't separate mnemonic words with spaces in sentences for any CJK
         # scripts when calculating the checksum or deriving a binary seed (even though this
@@ -1227,11 +1227,12 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
 def main(argv):
     global loaded_wallet
     loaded_wallet = wallet_type = None
-    create_from_params     = {}
-    config_mnemonic_params = {}
-    phase                  = {}
+    create_from_params     = {}  # additional args to pass to wallet_type.create_from_params()
+    config_mnemonic_params = {}  # additional args to pass to wallet.config_mnemonic()
+    phase                  = {}  # if only one phase is requested, the args to pass to run_btcrecover()
+    extra_args             = []  # additional args to pass to btcr.parse_arguments() (in run_btcrecover())
 
-    if len(sys.argv) > 1:
+    if argv:
         import argparse
         parser = argparse.ArgumentParser()
         parser.add_argument("--wallet",      metavar="FILE",        help="the wallet file")
@@ -1242,20 +1243,28 @@ def main(argv):
         parser.add_argument("--typos",       type=int, metavar="COUNT", help="the max number of mistakes to try (default: auto)")
         parser.add_argument("--big-typos",   type=int, metavar="COUNT", help="the max number of big (entirely different word) mistakes to try (default: auto or 0)")
         parser.add_argument("--min-typos",   type=int, metavar="COUNT", help="enforce a min # of mistakes per guess")
+        parser.add_argument("--close-match",type=float,metavar="CUTOFF",help="try words which are less/more similar for each mistake (0.0 to 1.0, default: 0.65)")
         parser.add_argument("--passphrase",  action="store_true",       help="the mnemonic is passphrase-encrypted (BIP39 only)")
         parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
         parser.add_argument("--mnemonic-prompt", action="store_true",   help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
         parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
-        parser.add_argument("--bip32-path",  metavar="PATH",      help="path (e.g. m/0'/0/) excluding the final index (default: BIP44)")
-        parser.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
-        parser.add_argument("--btcr-args",   action="store_true", help=argparse.SUPPRESS)
+        parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP44)")
+        parser.add_argument("--skip",        type=int, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
+        parser.add_argument("--threads",     type=int, metavar="COUNT", help="number of worker threads (default: number of CPUs, {})".format(btcr.cpus))
+        parser.add_argument("--worker",      metavar="ID#/TOTAL#",  help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
+        parser.add_argument("--max-eta",     type=int,              help="max estimated runtime before refusing to even start (default: 168 hours, i.e. 1 week)")
+        parser.add_argument("--no-eta",      action="store_true",   help="disable calculating the estimated time to completion")
+        parser.add_argument("--no-dupchecks",action="store_true",   help="disable duplicate guess checking to save memory")
+        parser.add_argument("--no-progress", action="store_true",   help="disable the progress bar")
+        parser.add_argument("--performance", action="store_true",   help="run a continuous performance test (Ctrl-C to exit)")
+        parser.add_argument("--btcr-args",   action="store_true",   help=argparse.SUPPRESS)
+        parser.add_argument("--version","-v",action="version",      version="%(prog)s {} (btcrecover.py {})".format(__version__, btcr.__version__))
 
-        # Parse the args; unknown args are passed to btcr.parse_arguments() iff --btcr-args is specified
-        args, extra_args = parser.parse_known_args(argv[1:])
-        if args.btcr_args:
-            phase["extra_args"] = extra_args
-        else:
-            args = parser.parse_args(argv[1:])  # re-parse them, with no unknown args permitted
+        # Parse the args; unknown args will be passed to btcr.parse_arguments() iff --btcr-args is specified
+        args, extra_args = parser.parse_known_args(argv)
+        if extra_args and not args.btcr_args:
+            parser.parse_args(argv)  # re-parse them just to generate an error for the unknown args
+            assert False
 
         if args.wallet:
             loaded_wallet = btcr.load_wallet(args.wallet)
@@ -1273,6 +1282,7 @@ def main(argv):
                         wallet_type = cls
                         break
                 else:
+                    wallet_type_names.sort()
                     sys.exit("--wallet-type must be one of: " + ", ".join(wallet_type_names))
 
         if args.mpk:
@@ -1305,6 +1315,9 @@ def main(argv):
             if not phase.get("typos"):
                 sys.exit("--typos must be specified when using --min_typos")
             phase["min_typos"] = args.min_typos
+
+        if args.close_match is not None:
+            config_mnemonic_params["closematch_cutoff"] = args.close_match
 
         if args.passphrase:
             import getpass
@@ -1343,10 +1356,19 @@ def main(argv):
             else:
                 create_from_params["path"] = args.bip32_path
 
+        # These arguments and their values are passed on to btcr.parse_arguments()
+        for argkey in "skip", "threads", "worker", "max_eta":
+            if args.__dict__[argkey] is not None:
+                extra_args.extend(("--"+argkey.replace("_", "-"), str(args.__dict__[argkey])))
+
+        # These arguments (which have no values) are passed on to btcr.parse_arguments()
+        for argkey in "no_eta", "no_dupchecks", "no_progress":
+            if args.__dict__[argkey]:
+                extra_args.append("--"+argkey.replace("_", "-"))
+
         if args.performance:
             create_from_params["is_performance"] = phase["is_performance"] = True
-            if args.typos is None:
-                phase["typos"] = 0
+            phase.setdefault("typos", 0)
             if not args.mnemonic_prompt:
                 # Create a dummy mnemonic; only its language and length are used for anything
                 config_mnemonic_params["mnemonic_guess"] = " ".join("act" for i in xrange(args.mnemonic_length or 12))
@@ -1450,6 +1472,7 @@ def main(argv):
             print(", excluding entirely different seed words.")
 
         # Perform this phase's search
+        phase_params.setdefault("extra_args", []).extend(extra_args)
         mnemonic_found = run_btcrecover(**phase_params)
 
         if mnemonic_found:
@@ -1464,7 +1487,7 @@ def main(argv):
 
 if __name__ == b"__main__":
 
-    mnemonic_sentence = main(sys.argv)
+    mnemonic_sentence = main(sys.argv[1:])
 
     if mnemonic_sentence:
         if not tk_root:  # if the GUI is not being used

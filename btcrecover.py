@@ -2740,10 +2740,9 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     #
     # if not --enable-gpu: sanity checks
     else:
-        for argname, argkey in ("--gpu-names", "gpu_names"), ("--global-ws", "global_ws"), ("--local-ws", "local_ws"), \
-                               ("--int-rate", "int_rate"), ("--mem-factor", "mem_factor"):
+        for argkey in "gpu_names", "global_ws", "local_ws", "int_rate", "mem_factor":
             if args.__dict__[argkey] != parser.get_default(argkey):
-                print(prog+": warning:", argname, "is ignored without --enable-gpu", file=sys.stderr)
+                print(prog+": warning: --"+argkey.replace("_", "-"), "is ignored without --enable-gpu", file=sys.stderr)
 
 
     # If specified, use a custom base password generator instead of a tokenlist or passwordlist file
