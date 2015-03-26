@@ -18,6 +18,6 @@ The available `LANG-CODE`s are taken from the filenames in the same directory as
  * Chinese (traditional) (BIP-39 only) - `zh-hant`
  * English - `en`
  * French (Electrum 2.x only) - `fr`
- * Portuguese (Electrum 2.x only) - `pt` 
  * Japanese - `ja`
+ * Portuguese (Electrum 2.x only) - `pt` 
  * Spanish - `es`
