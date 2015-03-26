@@ -22,6 +22,7 @@ If you'd prefer to download just a single extract script, please select the one 
  * Blockchain second password -  <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-second-hash.py>
  * Electrum 1.x - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum-halfseed.py>
  * Electrum 2.x - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum2-partmpk.py>
+ * mSIGNA - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-msigna-partmpk.py>
  * MultiBit Classic - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-privkey.py>
  * MultiBit HD - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-hd-data.py>
 
@@ -34,6 +35,7 @@ If you're on Windows, you will also need to install the latest version of Python
  * [Bitcoin Core (including pywallet dump files)](#usage-for-bitcoin-core)
  * [Blockchain.info](#usage-for-blockchaininfo)
  * [Electrum (1.x or 2.x)](#usage-for-electrum)
+ * [mSIGNA](#usage-for-msigna)
  * [MultiBit Classic](#usage-for-multibit-classic)
  * [MultiBit HD](#usage-for-multibit-hd)
 
@@ -208,6 +210,36 @@ The *extract-electrum2-partmpk.py* script is intentionally short and should be e
 Once decrypted, these 16 characters always begin with the string "xprv", and the remainder are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is what's inspected, it has found the correct password.
 
 Without access to the rest of your wallet file, it is impossible the decrypted header information could ever lead to a loss of funds.
+
+
+### Usage for mSIGNA ###
+
+After downloading the script, **make a copy of your wallet file into a different folder** (to make it easy, into the same folder as the extract script). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open the folder which usually contains your wallet file: `%homedrive%%homepath%`. From here you can copy and paste your wallet file (it's a `.vault` file), into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming your wallet file is named `msigna-wallet.vault` and it's in the same folder):
+
+    cd \Users\Chris\Downloads\btcrecover-master\extract-scripts
+    C:\python27\python extract-msigna-partmpk.py msigna-wallet.vault
+
+You should get a message which looks like this:
+
+    mSIGNA partial encrypted master private key, salt, and crc in base64:
+    bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=
+
+When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-msigna-partmpk.py*. To continue the example:
+
+    cd \Users\Chris\Downloads\btcrecover-master
+    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    Please enter the data from the extract script
+    > bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=
+    ...
+    Password found: xxxx
+
+#### mSIGNA Technical Details ####
+
+The *extract-msigna-partmpk.py* script is intentionally short and should be easy to read for any Python programmer. An mSIGNA encrypted master private key is 48 bytes long. It contains 32 bytes of encrypted private key data, followed by 16 bytes of encrypted padding (the chaincode is stored separately).
+
+Because only the last half of the private key is extracted, the wallet cannot be feasibly reconstructed even if this half of the private key could be decrypted (assuming the password search succeeds). The remaining 16 bytes of padding, once decrypted, is predictable, and this allows *btcrecover* to use it to check passwords. It tries decrypting the bytes with each password, and once this results in valid padding, it has found the correct password.
+
+Without access to the rest of your wallet file, it is impossible the decrypted padding could ever lead to a loss of funds.
 
 
 ### Usage for MultiBit Classic ###
