@@ -26,7 +26,7 @@
      * [Electrum](https://electrum.org/) (1.x and 2.x, plus wallet file loading support)
      * BIP-32/39 compliant wallets ([bitcoinj](https://bitcoinj.github.io/)), including:
          * [MultiBit HD](https://beta.multibit.org/)
-         * [Bitcoin Wallet for Android](https://play.google.com/store/apps/details?id=de.schildbach.wallet) (with seeds previously extracted by [decrypt\\_bitcoinj\\_seeds](https://github.com/gurnec/decrypt_bitcoinj_seed))
+         * [Bitcoin Wallet for Android](https://play.google.com/store/apps/details?id=de.schildbach.wallet) (with seeds previously extracted by [decrypt\_bitcoinj\_seeds](https://github.com/gurnec/decrypt_bitcoinj_seed))
          * [Hive for Android](https://play.google.com/store/apps/details?id=com.hivewallet.hive.cordova), [for iOS](https://itunes.apple.com/us/app/hive-wallet/id906990301), and [Hive Web](https://web.hivewallet.com/)
          * [breadwallet for iOS](https://itunes.apple.com/us/app/breadwallet-bitcoin-wallet/id885251393)
      * BIP-32/39/44 compliant wallets, including:
