@@ -936,7 +936,7 @@ class WalletBitcoinj(WalletBIP39):
     @staticmethod
     def _performance_xpub():
         # an xpub at path m/0', as Bitcoin Wallet for Android would export
-        return "xpub69g69PyVJogRM2xXRC7NjRsHjj8UdS1zPAsLvfx8hXEP26HDVxrjLG3D3KRYnY89EjRzKS4zFZgCFCZTsHAhgjxt715EbnjkNzqYu7a9MkX"
+        return "xpub67tjk7ug7iNivs1f1pmDswDDbk6kRCe4U1AXSiYLbtp6a2GaodSUovt3kNrDJ2q18TBX65aJZ7VqRBpnVJsaVQaBY2SANYw6kgZf4QLCpPu"
 
 
 ############### Electrum2 ###############

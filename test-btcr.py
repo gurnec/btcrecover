@@ -53,7 +53,7 @@ warnings.filterwarnings("ignore", r"Non-empty compiler output encountered\. Set 
 # and except this from Armory:
 warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
 
-import unittest, os, os.path, cPickle, tempfile, shutil, filecmp, sys
+import unittest, os, cPickle, tempfile, shutil, filecmp, sys
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 typos_dir  = os.path.join(os.path.dirname(__file__), "typos")
