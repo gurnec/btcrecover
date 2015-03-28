@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA(CoinVault), Hive for OS X, Blockchain.info (v1 and v2 wallet formats, both main and second passwords), and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA (CoinVault), Hive for OS X, Blockchain.info (v1 and v2 wallet formats, both main and second passwords), and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -408,7 +408,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
         cd \Users\Chris\Downloads\btcrecover-master
         C:\python27\python btcrecover.py --wallet wallet.dat --tokenlist tokens.txt --other-options...
 
-After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA as shown below. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](docs/Limitations_and_Caveats.md#memory) section below. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
+After a short delay, *btcrecover* should begin testing passwords and will display a progress bar and an ETA as shown below. If it appears to be stuck just counting upwards with the message `Counting passwords ...` and no progress bar, please read the [Memory limitations](docs/Limitations_and_Caveats.md#memory) section. If that doesn't help, then you've probably chosen too many tokens or typos to test resulting in more combinations than your system can handle (although the [`--max-tokens`](#token-counts) option may be able to help).
 
     Counting passwords ...
     Done
