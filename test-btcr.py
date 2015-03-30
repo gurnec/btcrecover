@@ -835,7 +835,8 @@ class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
     # that the library doesn't make any changes to the wallet file
-    def wallet_tester(self, wallet_basename, force_purepython = False, force_kdf_purepython = False, blockchain_mainpass = None):
+    def wallet_tester(self, wallet_basename, force_purepython = False, force_kdf_purepython = False,
+                      correct_pass = None, blockchain_mainpass = None, android_backuppass = None):
         assert os.path.basename(wallet_basename) == wallet_basename
         wallet_filename = os.path.join(wallet_dir, wallet_basename)
 
@@ -843,19 +844,24 @@ class Test07WalletDecryption(unittest.TestCase):
         temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
         shutil.copyfile(wallet_filename, temp_wallet_filename)
 
-        if blockchain_mainpass is None:
-            wallet = btcrecover.load_wallet(temp_wallet_filename)
-        else:
+        if android_backuppass:
+            wallet = btcrecover.WalletAndroidSpendingPIN.load_from_filename(
+                temp_wallet_filename, android_backuppass, force_purepython)
+        elif blockchain_mainpass:
             wallet = btcrecover.WalletBlockchainSecondpass.load_from_filename(
                 temp_wallet_filename, blockchain_mainpass, force_purepython)
+        else:
+            wallet = btcrecover.load_wallet(temp_wallet_filename)
 
         if force_purepython:     btcrecover.load_aes256_library(force_purepython=True)
         if force_kdf_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
 
+        if not correct_pass:
+            correct_pass = "btcr-test-password"
         self.assertEqual(wallet.return_verified_password_or_false(
             ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
         self.assertEqual(wallet.return_verified_password_or_false(
-            ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+            ["btcr-wrong-password-3", correct_pass, "btcr-wrong-password-4"]), (correct_pass, 2))
 
         del wallet
         self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
@@ -896,6 +902,18 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bitcoinj-wallet.wallet")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_androidpin(self):
+        self.wallet_tester("android-bitcoin-wallet-backup",
+                           android_backuppass="btcr-test-password", correct_pass="123456")
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_androidpin_unencrypted(self):
+        self.wallet_tester("bitcoinj-wallet.wallet", android_backuppass="IGNORED")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.wallet_tester("msigna-wallet.vault")
 
@@ -925,7 +943,7 @@ class Test07WalletDecryption(unittest.TestCase):
 
     @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
     def test_blockchain_secondpass_unencrypted(self):  # this wallet has no second-password iter_count, so this case is also tested here
-        self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="")
+        self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="IGNORED")
 
     def test_bitcoincore_pywallet(self):
         self.wallet_tester("bitcoincore-pywallet-dumpwallet.txt")
@@ -959,6 +977,12 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_bitcoinj_pp(self):
         self.wallet_tester("bitcoinj-wallet.wallet", force_purepython=True)
 
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_androidpin_pp(self):
+        self.wallet_tester("android-bitcoin-wallet-backup", force_purepython=True,
+                           android_backuppass="btcr-test-password", correct_pass="123456")
+
     def test_msigna_pp(self):
         self.wallet_tester("msigna-wallet.vault", force_purepython=True)
 
@@ -977,7 +1001,7 @@ class Test07WalletDecryption(unittest.TestCase):
                            blockchain_mainpass="btcr-test-password")
 
     def test_blockchain_secondpass_unencrypted_pp(self):  # this wallet has no second-password iter_count, so this case is also tested here
-        self.wallet_tester("blockchain-unencrypted-wallet.aes.json", force_kdf_purepython=True, blockchain_mainpass="")
+        self.wallet_tester("blockchain-unencrypted-wallet.aes.json", force_kdf_purepython=True, blockchain_mainpass="IGNORED")
 
     def test_invalid_wallet(self):
         with self.assertRaises(SystemExit) as cm:

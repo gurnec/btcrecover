@@ -395,6 +395,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
  2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
      * Armory - `%appdata%\Armory` (it's a `.wallet` file)
      * Bitcoin Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
+     * Bitcoin Wallet for Android, lost spending PINs: Please see the [Bitcoin Wallet for Android Spending PINs](#bitcoin-wallet-for-android-spending-pins) section below.
      * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-classic-wallet-files) section below
      * MultiBit HD - `%appdata%\MultiBitHD` (it's in one of the folders here, it's named `mbhd.wallet.aes`)
      * Electrum - `%appdata%\Electrum\wallets`
@@ -444,6 +445,22 @@ The `| more` at the end (the `|` symbol is a shifted `\` backslash) will introdu
 The key files have names which look like `walletname-20140407200743.key`. If you've created additional wallets, their `key-backup` directories will be located elsewhere and it's up to you to locate them. Once you have, choose the most recent `.key` file and copy it into the directory containing `btcrecover.py` for it to use.
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
+
+### Bitcoin Wallet for Android Spending PINs ###
+
+Bitcoin Wallet for Android has a *spending PIN* feature which can optionally be enabled. If you lose your spending PIN, you can use *btcrecover* to try to recover it.
+
+ 1. Open the Bitcoin Wallet app, press the menu button, and choose Safety.
+ 2. Choose *Back up wallet*.
+ 3. Type in a password to protect your wallet backup file, and press OK. You'll need to remember this password for later.
+ 4. Press the Archive button in the lower-right corner.
+ 4. Select a method of sharing the wallet backup file with your PC, for example you might choose Gmail or perhaps Drive.
+
+This wallet backup file, once saved to your PC, can be used just like any other wallet file in *btcrecover* with one important exception: when you run *btcrecover*, you **must** add the `--android-pin` option. When you do, *btcrecover* will ask you for your backup password (from step 3), and then it will try to recover the spending PIN.
+
+Because PINs usually just contain digits, your token file will usually just contain something like this (for PINs of up to 6 digits for example): `%1,6d`. (See the section on [Wildcards](#expanding-wildcards) for more details.)
+
+Note that if you don't include the `--android-pin` option, *btcrecover* will try to recover the backup password instead.
 
 ### GPU acceleration for Bitcoin Core, Armory, and Litecoin-Qt wallets###
 

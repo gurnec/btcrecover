@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.2-Unicode"
+#__version__          =  "0.13.3-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.2"
+__version__          =  "0.13.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -263,6 +263,19 @@ def est_entropy_bits(data):
             prob = float(frequency) / len(data)
             entropy_bits += prob * math.log(prob, 2)
     return entropy_bits * -1
+
+# Prompt user for a password (possibly containing Unicode characters)
+def prompt_unicode_password(prompt, error_msg):
+    from getpass import getpass
+    encoding = sys.stdin.encoding or 'ASCII'
+    if 'utf' not in encoding.lower():
+        print(prog+": warning: terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
+    password = getpass(prompt)
+    if not password:
+        error_exit(error_msg)
+    if isinstance(password, str):
+        password = password.decode(encoding)  # convert from terminal's encoding to unicode
+    return password
 
 
 ############### Armory ###############
@@ -994,7 +1007,6 @@ class WalletMultiBit(object):
 
 
 ############### bitcoinj ###############
-# TODO: PIN recovery of Wallet for Android v4.06+ encrypted (w/a known password) wallet backup files
 
 @register_wallet_class
 class WalletBitcoinj(object):
@@ -1004,7 +1016,10 @@ class WalletBitcoinj(object):
         def data_extract_id(cls): return b"bj"
 
     def passwords_per_seconds(self, seconds):
-        return max(int(round(self._passwords_per_second * seconds)), 1)
+        passwords_per_second  = self._passwords_per_second
+        passwords_per_second /= self._encryption_parameters.n / 16384  # scaled by default n
+        passwords_per_second /= self._encryption_parameters.p / 1      # scaled by default p
+        return max(int(round(passwords_per_second * seconds)), 1)
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1013,7 +1028,8 @@ class WalletBitcoinj(object):
             network_identifier_len = ord(wallet_file.read(1))
             if 1 <= network_identifier_len < 128:
                 wallet_file.seek(2 + network_identifier_len)
-                if wallet_file.read(1) in b"\x12\x1a":   # field number 2 or 3 of type length-delimited
+                c = wallet_file.read(1)
+                if c and c in b"\x12\x1a":   # field number 2 or 3 of type length-delimited
                     return True
         return False
 
@@ -1021,6 +1037,7 @@ class WalletBitcoinj(object):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
         global pylibscrypt
         import pylibscrypt
+        # This is the base estimate for the scrypt N,r,p defaults of 16384,8,1
         if not pylibscrypt._done:
             print(prog+": warning: can't find an scrypt library, performance will be severely degraded", file=sys.stderr)
             self._passwords_per_second = 0.03
@@ -1038,10 +1055,15 @@ class WalletBitcoinj(object):
     # Load a bitcoinj wallet file (the part of it we need)
     @classmethod
     def load_from_filename(cls, wallet_filename):
+        with open(wallet_filename, "rb") as wallet_file:
+            filedata = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+        return cls._load_from_filedata(filedata)
+
+    @classmethod
+    def _load_from_filedata(cls, filedata):
         import wallet_pb2
         pb_wallet = wallet_pb2.Wallet()
-        with open(wallet_filename, "rb") as wallet_file:
-            pb_wallet.ParseFromString(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+        pb_wallet.ParseFromString(filedata)
         if pb_wallet.encryption_type == wallet_pb2.Wallet.UNENCRYPTED:
             raise ValueError("bitcoinj wallet is not encrypted")
         if pb_wallet.encryption_type != wallet_pb2.Wallet.ENCRYPTED_SCRYPT_AES:
@@ -1169,6 +1191,59 @@ class WalletMultiBitHD(WalletBitcoinj):
                 return password.encode("ascii", "replace") if tstr == str else password, count
 
         return False, count
+
+
+############### Android Spending PIN ###############
+
+# don't @register_wallet_class -- it's never auto-detected and never used for a --data-extract
+class WalletAndroidSpendingPIN(WalletBitcoinj):
+
+    # Decrypt a Bitcoin Wallet for Android backup into a standard bitcoinj wallet, and load it
+    @classmethod
+    def load_from_filename(cls, wallet_filename, password = None, force_purepython = False):
+        with open(wallet_filename, "rb") as wallet_file:
+            # If we're given an unencrypted backup, just return a WalletBitcoinj
+            if WalletBitcoinj.is_wallet_file(wallet_file):
+                wallet_file.close()
+                return WalletBitcoinj.load_from_filename(wallet_filename)
+
+            wallet_file.seek(0)
+            data = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+
+        data = data.replace("\r", "").replace("\n", "")
+        data = base64.b64decode(data)
+        if not data.startswith(b"Salted__"):
+            raise ValueError("Not a Bitcoin Wallet for Android encrypted backup (missing 'Salted__')")
+        if len(data) < 32:
+            raise EOFError  ("Expected at least 32 bytes of decoded data in the encrypted backup file")
+        if len(data) % 16 != 0:
+            raise ValueError("Not a valid Bitcoin Wallet for Android encrypted backup (size not divisible by 16)")
+        salt = data[8:16]
+        data = data[16:]
+
+        if not password:
+            password = prompt_unicode_password(
+                "Please enter the password for the Bitcoin Wallet for Android backup: ",
+                "encrypted Bitcoin Wallet for Android backups must be decrypted before searching for the PIN")
+        # Convert Unicode string to a UTF-16 bytestring, truncating each code unit to 8 bits
+        password = password.encode("utf_16_le", "ignore")[::2]
+
+        # Decrypt the backup file (OpenSSL style)
+        load_aes256_library(force_purepython)
+        salted = password + salt
+        key1   = hashlib.md5(salted).digest()
+        key2   = hashlib.md5(key1 + salted).digest()
+        iv     = hashlib.md5(key2 + salted).digest()
+        data   = aes256_cbc_decrypt(key1 + key2, iv, data)
+        from cStringIO import StringIO
+        if not WalletBitcoinj.is_wallet_file(StringIO(data[:100])):
+            error_exit("can't decrypt wallet (wrong password?)")
+        # Validate and remove the PKCS7 padding
+        padding_len = ord(data[-1])
+        if not (1 <= padding_len <= 16 and data.endswith(chr(padding_len) * padding_len)):
+            error_exit("can't decrypt wallet, invalid padding (wrong password?)")
+
+        return cls._load_from_filedata(data[:-padding_len])  # WalletBitcoinj._load_from_filedata() parses the bitcoinj wallet
 
 
 ############### mSIGNA ###############
@@ -1589,15 +1664,10 @@ class WalletBlockchainSecondpass(WalletBlockchain):
         else:
             # If there were no problems getting the encrypted data, decrypt it
             if not password:
-                from getpass import getpass
-                # Replace getpass with raw_input if there's trouble reading non-ASCII characters
-                password = getpass(b"Please enter the Blockchain wallet's main password: ")
-                if not password:
-                    error_exit("encrypted Blockchain files must be decrypted before searching for the second password")
-                if isinstance(password, str):
-                    password = password.decode(sys.stdin.encoding or "ascii")
-            if isinstance(password, unicode):
-                password = password.encode("utf_8")
+                password = prompt_unicode_password(
+                    "Please enter the Blockchain wallet's main password: ",
+                    "encrypted Blockchain files must be decrypted before searching for the second password")
+            password = password.encode("utf_8")
             data, salt_and_iv = data[16:], data[:16]
             load_pbkdf2_library(force_purepython)
             load_aes256_library(force_purepython)
@@ -2139,6 +2209,7 @@ parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOU
 parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
 parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
 parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
+parser_common.add_argument("--android-pin", action="store_true", help="search for the spending pin instead of the backup password in a Bitcoin Wallet for Android")
 parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
 parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain whose password to search for in an mSIGNA vault")
 parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
@@ -2595,12 +2666,17 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # Load the wallet file (this sets the return_verified_password_or_false
     # global to the right verifier function and the wallet global)
     if args.wallet:
-        if args.blockchain_secondpass:
+        if args.android_pin:
+            loaded_wallet = WalletAndroidSpendingPIN.load_from_filename(args.wallet)
+        elif args.blockchain_secondpass:
             loaded_wallet = WalletBlockchainSecondpass.load_from_filename(args.wallet)
         else:
             load_global_wallet(args.wallet)
-            if isinstance(loaded_wallet, WalletBitcoinj):
+            if type(loaded_wallet) is WalletBitcoinj:
                 print(prog+": warning: for MultiBit, use a .key file instead of a .wallet file if possible")
+            if isinstance(loaded_wallet, WalletMultiBit) and not args.android_pin:
+                print(prog+": notice: use --android-pin to recover the spending PIN of\n"
+                           "    a Bitcoin Wallet for Android backup (instead of the backup password)")
             if args.msigna_keychain and not isinstance(loaded_wallet, WalletMsigna):
                 print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
 
@@ -2903,6 +2979,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                 passwordlist_file == sys.stdin   or
                 passwordlist_file == sys.stdin   or
                 args.exclude_passwordlist == '-' or
+                args.android_pin                 or
                 args.blockchain_secondpass
             ) and (
                 passwordlist_file != sys.stdin   or

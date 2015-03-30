@@ -13,7 +13,7 @@
      * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain.info](https://blockchain.info/wallet)
      * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Core wallets
-     * [Bitcoin Wallet for Android](https://play.google.com/store/apps/details?id=de.schildbach.wallet) encrypted backups
+     * [Bitcoin Wallet for Android](https://play.google.com/store/apps/details?id=de.schildbach.wallet) spending PINs and encrypted backups
      * [KnC Wallet for Android](https://kncwallet.com/) encrypted backups
  * Altcoin password support for most wallets derived from one of those above, including:
      * [Litecoin-Qt](https://litecoin.org/)
