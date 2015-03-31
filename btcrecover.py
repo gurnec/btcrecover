@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.3-Unicode"
+#__version__          =  "0.13.4-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.3"
+__version__          =  "0.13.4"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1017,8 +1017,10 @@ class WalletBitcoinj(object):
 
     def passwords_per_seconds(self, seconds):
         passwords_per_second  = self._passwords_per_second
-        passwords_per_second /= self._encryption_parameters.n / 16384  # scaled by default n
-        passwords_per_second /= self._encryption_parameters.p / 1      # scaled by default p
+        if hasattr(self, "_encryption_parameters"):
+            passwords_per_second /= self._encryption_parameters.n / 16384  # scaled by default N
+            passwords_per_second /= self._encryption_parameters.r / 8      # scaled by default r
+            passwords_per_second /= self._encryption_parameters.p / 1      # scaled by default p
         return max(int(round(passwords_per_second * seconds)), 1)
 
     @staticmethod
