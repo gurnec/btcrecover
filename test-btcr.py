@@ -914,6 +914,12 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bitcoinj-wallet.wallet", android_backuppass="IGNORED")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_bither(self):
+        self.wallet_tester("bither-wallet.db")
+
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.wallet_tester("msigna-wallet.vault")
 
@@ -982,6 +988,11 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_androidpin_pp(self):
         self.wallet_tester("android-bitcoin-wallet-backup", force_purepython=True,
                            android_backuppass="btcr-test-password", correct_pass="123456")
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_bither_pp(self):
+        self.wallet_tester("bither-wallet.db", force_purepython=True)
 
     def test_msigna_pp(self):
         self.wallet_tester("msigna-wallet.vault", force_purepython=True)
@@ -1101,6 +1112,19 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_bitcoinj_unicode(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
 
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_bither(self):
+        self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=")
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_bither_unicode(self):
+        self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", unicode_pw=True)
+
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=")
@@ -1214,6 +1238,17 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj_unicode_pp(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
+
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_bither_pp(self):
+        self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=", force_purepython=True)
+    #
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
+    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    def test_bither_unicode_pp(self):
+        self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", force_purepython=True, unicode_pw=True)
 
     def test_msigna_pp(self):
         self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=", force_purepython=True)
@@ -1490,6 +1525,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_multibithd_unicode",
                 "test_bitcoinj",
                 "test_bitcoinj_unicode",
+                "test_bither",
+                "test_bither_unicode",
                 "test_msigna",
                 "test_msigna_unicode",
                 "test_electrum",
@@ -1514,6 +1551,8 @@ class QuickTests(unittest.TestSuite) :
                 "test_multibithd_unicode_pp",
                 "test_bitcoinj_pp",
                 "test_bitcoinj_unicode_pp",
+                "test_bither_pp",
+                "test_bither_unicode_pp",
                 "test_msigna_pp",
                 "test_msigna_unicode_pp",
                 "test_electrum_pp",

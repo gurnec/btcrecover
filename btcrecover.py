@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.4-Unicode"
+#__version__          =  "0.13.5-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.4"
+__version__          =  "0.13.5"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -679,7 +679,7 @@ class WalletBitcoinCore(object):
         encrypted_master_key, self._salt, method, self._iter_count = struct.unpack_from(b"< 49p 9p I I", mkey)
         if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + tstr(method))
 
-        # only need the final 2 encrypted blocks plus the salt and iter_count saved above
+        # only need the final 2 encrypted blocks (half of it padding) plus the salt and iter_count saved above
         self._part_encrypted_master_key = encrypted_master_key[-32:]
         return self
 
@@ -898,7 +898,7 @@ class WalletPywallet(WalletBitcoinCore):
         if len(self._salt)           != 8:  raise NotImplementedError("Unsupported salt length")
         if self._iter_count          <= 0:  raise NotImplementedError("Unsupported iteration count")
 
-        # only need the final 2 encrypted blocks plus the salt and iter_count saved above
+        # only need the final 2 encrypted blocks (half of it padding) plus the salt and iter_count saved above
         self._part_encrypted_master_key = encrypted_master_key[-32:]
         return self
 
@@ -1008,6 +1008,10 @@ class WalletMultiBit(object):
 
 ############### bitcoinj ###############
 
+# A namedtuple with the same attributes as the protobuf message object from wallet_pb2
+# (it's a global so that it's pickleable)
+EncryptionParams = collections.namedtuple("EncryptionParams", "salt n r p")
+
 @register_wallet_class
 class WalletBitcoinj(object):
 
@@ -1077,7 +1081,7 @@ class WalletBitcoinj(object):
             if  key.type in (wallet_pb2.Key.ENCRYPTED_SCRYPT_AES, wallet_pb2.Key.DETERMINISTIC_KEY) and key.HasField("encrypted_data"):
                 encrypted_len = len(key.encrypted_data.encrypted_private_key)
                 if encrypted_len == 48:
-                    # only need the final 2 encrypted blocks plus the scrypt parameters
+                    # only need the final 2 encrypted blocks (half of it padding) plus the scrypt parameters
                     self = cls(loading=True)
                     self._part_encrypted_key    = key.encrypted_data.encrypted_private_key[-32:]
                     self._encryption_parameters = pb_wallet.encryption_parameters
@@ -1093,7 +1097,6 @@ class WalletBitcoinj(object):
         # The final 2 encrypted blocks
         self._part_encrypted_key = privkey_data[:32]
         # Create namedtuple with the same attributes as the protobuf message object from wallet_pb2
-        EncryptionParams            = collections.namedtuple("EncryptionParams", "salt n r p")
         self._encryption_parameters = EncryptionParams._make(struct.unpack(b"< 8s I H H", privkey_data[32:]))
         return self
 
@@ -1260,7 +1263,8 @@ class WalletMsigna(object):
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
-        return wallet_file.read(16) == b"SQLite format 3\0"
+        # returns "maybe yes" or "definitely no" (Bither wallets are also SQLite 3)
+        return None if wallet_file.read(16) == b"SQLite format 3\0" else False
 
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
@@ -1283,10 +1287,16 @@ class WalletMsigna(object):
         wallet_conn = sqlite3.connect(wallet_filename)
         wallet_conn.row_factory = sqlite3.Row
         select = b"SELECT * FROM Keychain"
-        if 'args' in globals() and args.msigna_keychain:
-            wallet_cur = wallet_conn.execute(select + b" WHERE name LIKE '%' || ? || '%'", (args.msigna_keychain,))
-        else:
-            wallet_cur = wallet_conn.execute(select)
+        try:
+            if "args" in globals() and args.msigna_keychain:  # args is not defined during unit tests
+                wallet_cur = wallet_conn.execute(select + b" WHERE name LIKE '%' || ? || '%'", (args.msigna_keychain,))
+            else:
+                wallet_cur = wallet_conn.execute(select)
+        except sqlite3.OperationalError as e:
+            if str(e).startswith(b"no such table"):
+                raise ValueError("Not an mSIGNA wallet: " + tstr(e))  # it might be a Bither wallet
+            else:
+                raise  # unexpected error
         keychain = wallet_cur.fetchone()
         if not keychain:
             error_exit("no such keychain found in the mSIGNA vault")
@@ -1306,7 +1316,7 @@ class WalletMsigna(object):
         if len(privkey_ciphertext) != 48:
             error_exit("mSIGNA keychain '"+tstr(keychain[b"name"])+"' has an unexpected privkey length")
 
-        # only need the final 2 encrypted blocks plus the salt
+        # only need the final 2 encrypted blocks (half of which is padding) plus the salt
         self = cls(loading=True)
         self._part_encrypted_privkey = privkey_ciphertext[-32:]
         self._salt                   = struct.pack(b"< q", keychain[b"privkey_salt"])
@@ -1774,6 +1784,86 @@ class WalletBlockchainSecondpass(WalletBlockchain):
                     return password if tstr == str else password.decode("utf_8", "replace"), count
 
         return False, count
+
+
+############### Bither ###############
+
+@register_wallet_class
+class WalletBither(WalletBitcoinj):  # not really a bitcoinj wallet, but does share some code
+
+    class __metaclass__(WalletBitcoinj.__metaclass__):
+        @property
+        def data_extract_id(cls): return b"bt"
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        # returns "maybe yes" or "definitely no" (mSIGNA wallets are also SQLite 3)
+        return None if wallet_file.read(16) == b"SQLite format 3\0" else False
+
+    def __init__(self, loading = False):
+        super(WalletBither, self).__init__(loading)
+        # Create a namedtuple with the hardcoded scrypt parameters used by Bither
+        self._encryption_parameters = EncryptionParams(None, 16384, 8, 1)
+
+    # Load a Bither wallet file (the part of it we need)
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        import sqlite3
+        wallet_conn = sqlite3.connect(wallet_filename)
+        wallet_conn.row_factory = sqlite3.Row
+        try:
+            # Newer wallets have a password_seed table with a single row
+            wallet_cur = wallet_conn.execute(b"SELECT * FROM password_seed LIMIT 1")
+            key_data   = wallet_cur.fetchone()[b"password_seed"]
+        except sqlite3.OperationalError as e:
+            if str(e).startswith(b"no such table"):
+                try:
+                    # Older wallets have an addresses table with at least one row (unless empty)
+                    wallet_cur = wallet_conn.execute(b"SELECT * FROM addresses LIMIT 1")
+                    key_data   = wallet_cur.fetchone()[b"encrypt_private_key"]
+                except sqlite3.OperationalError as e:
+                    raise ValueError("Not a Bither wallet: " + tstr(e))  # it might be an mSIGNA wallet
+                except:
+                    raise  # unexpected error
+            else:
+                raise  # unexpected error
+        if not key_data:
+            error_exit("can't find an encrypted key in the Bither wallet")
+
+        # key_data is forward-slash delimited; it contains an optional address, an encrypted key, an IV, a salt
+        key_data = key_data.split("/")
+        if len(key_data) == 4:
+            key_data.pop(0)  # remove the unneeded address, if present
+        elif len(key_data) != 3:
+            error_exit("unrecognized Bither encrypted key format (unexpected count of slash-delimited elements)")
+
+        # only need the final 2 encrypted blocks (half of which is padding) plus the salt
+        encrypted_key = base64.b16decode(key_data[0], casefold=True)
+        if len(encrypted_key) != 48:
+            error_exit("unexpected encrypted key length in Bither wallet")
+        self = cls(loading=True)
+        self._part_encrypted_key = encrypted_key[-32:]
+        #
+        # (don't need key_data[1], which is the IV)
+        #
+        salt_data = base64.b16decode(key_data[2], casefold=True)
+        if len(salt_data) == 9:
+            salt_data = salt_data[1:]  # the first byte is optionally a header containing flags which we ignore
+        elif len(salt_data) != 8:
+            error_exit("unexpected salt length in Bither wallet")
+        self._encryption_parameters = self._encryption_parameters._replace(salt=salt_data)
+        return self
+
+    # Import a Bither private key that was extracted by extract-bither-privkey.py
+    @classmethod
+    def load_from_data_extract(cls, privkey_data):
+        self = cls(loading=True)
+        # The final 2 encrypted blocks
+        self._part_encrypted_key = privkey_data[:32]
+        # The 8-byte salt
+        self._encryption_parameters = self._encryption_parameters._replace(salt=privkey_data[32:])
+        return self
 
 
 # Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
