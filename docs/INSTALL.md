@@ -19,8 +19,10 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
  * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
  * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Blockchain.info - [Python 2.7](#python-27) (2.7.8+ recommended), recommended: [PyCrypto](#pycrypto)
- * Bitcoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * KnC Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Bitcoin Wallet for Android backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Bitcoin Wallet for Android spending PIN - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
+ * KnC Wallet for Android backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Bither - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Litecoin-Qt - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * Electrum-LTC - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Litecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
@@ -97,11 +99,11 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
         Win32\Release\v120\dynamic\libsodium.dll
         x64\Release\v120\dynamic\libsodium.dll
 
-    Choose either the 32-bit version (the first one above) or the 64-bit version (the second) to match the version of Python that you've installed.
+    Choose either the 32-bit version (the first one above) or the 64-bit version (the second) to match the version of Python that you've installed. Note that the 64-bit version is recommended if it's supported by your computer (it is approximately 35% faster than the 32-bit version).
 
  4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory, and rename it to `sodium.dll`
 
- 5. Download and install the “Visual C++ Redistributable Packages for Visual Studio 2013” from Microsoft here: <http://www.microsoft.com/en-us/download/details.aspx?id=40784>
+ 5. Download and install the “Visual C++ Redistributable Packages for Visual Studio 2013” from Microsoft here: <http://www.microsoft.com/en-us/download/details.aspx?id=40784>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
 
 ##### Linux #####
 
