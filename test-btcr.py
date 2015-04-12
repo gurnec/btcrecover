@@ -914,8 +914,7 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bitcoinj-wallet.wallet", android_backuppass="IGNORED")
 
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither(self):
         self.wallet_tester("bither-wallet.db")
 
@@ -989,8 +988,7 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("android-bitcoin-wallet-backup", force_purepython=True,
                            android_backuppass="btcr-test-password", correct_pass="123456")
 
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_pp(self):
         self.wallet_tester("bither-wallet.db", force_purepython=True)
 
@@ -1112,15 +1110,13 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_bitcoinj_unicode(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
 
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bither(self):
         self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=")
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bither_unicode(self):
         self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", unicode_pw=True)
@@ -1239,14 +1235,12 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_bitcoinj_unicode_pp(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
 
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_pp(self):
         self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=", force_purepython=True)
     #
     @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
-    @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_unicode_pp(self):
         self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", force_purepython=True, unicode_pw=True)
 
