@@ -369,11 +369,11 @@ If you didn't have the autosave feature enabled, you can still manually start te
 
 ## Unicode Support ##
 
-If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII) (non-English) characters, you will need to enable Unicode support. To enable it, simply double-click the `make-unicode.py` file (you only need to do this once). This creates a new file named `btcrecoveru.py`.
+If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII#ASCII_printable_code_chart) (non-English) characters, you will need to enable Unicode support. To enable it, simply double-click the `make-unicode.py` file (you only need to do this once). This creates a new file named `btcrecoveru.py`.
 
 Anywhere in this Tutorial where you see mention of the script `btcrecover.py`, use `btcrecoveru.py` instead which is a version with Unicode support.
 
-Please note that all input to and output from `btcrecoveru.py` must be UTF-8 encoded (either with or without a Byte Order Mark, or "BOM"), so be sure to change the Encoding to UTF-8 when you save any text files.
+Please note that all input to and output from `btcrecoveru.py` must be UTF-8 encoded (either with or without a Byte Order Mark, or "BOM"), so be sure to change the Encoding to UTF-8 when you save any text files. For example in Windows Notepad, the file *Encoding* setting is right next to the *Save* button in the *File* -> *Save As...* dialog.
 
 On Windows (but usually not on Linux or OS X), you may have trouble if any of the command line options you need to use contain any non-ASCII characters. Usually, if it displays in the command prompt window correctly when you type it in, it will work correctly with `btcrecoveru.py`. If it doesn't display correctly, please read the section describing how to put [command-line options inside the tokens file](#command-line-options-inside-the-tokens-file).
 
@@ -382,7 +382,7 @@ Also on Windows (but usually not on Linux or OS X), if your password is found it
     Password found: 'btcr-????-??????'
     HTML encoded:   'btcr-&#1090;&#1077;&#1089;&#1090;-&#1087;&#1072;&#1088;&#1086;&#1083;&#1100;'
 
-As you can see, the Windows command prompt was incapable of rendering some of the characters (and they were replaced with `?` characters). To view the password that was found, copy and paste the `HTML encoded` line into a text file, and save it with a name that ends with `.html` instead of the usual `.txt`. Double-click the new `.html` file and it will open in your web browser and display the correct password:
+As you can see, the Windows command prompt was incapable of rendering some of the characters (and they were replaced with `?` characters). To view the password that was found, copy and paste the `HTML encoded` line into a text file, and save it with a name that ends with `.html` instead of the usual `.txt`. Double-click the new `.html` file and it will open in your web browser to display the correct password:
 
     HTML encoded: 'btcr-тест-пароль'
 
