@@ -43,7 +43,7 @@ if sys.platform == "win32":
     armory_path    = progfiles_path + r"\Armory"
     sys.path.extend((armory_path, armory_path + r"\library.zip"))
     # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
-    if struct.calcsize('P') * 8 == 64:  # calcsize('P') is a pointer's size in bytes
+    if struct.calcsize("P") * 8 == 64:  # calcsize("P") is a pointer's size in bytes
         assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
         progfiles_path += " (x86)"
         armory_path     = progfiles_path + r"\Armory"
@@ -489,7 +489,7 @@ class WalletBIP32(object):
             self._append_last_index = True
         else:
             self._append_last_index = False
-        path_indexes = path.split('/')
+        path_indexes = path.split("/")
         if path_indexes[0] == "m" or path_indexes[0] == "":
             del path_indexes[0]   # the optional leading "m/"
         assert path_indexes[-1] != "'", "the last path element is not hardened"
@@ -971,7 +971,7 @@ class WalletElectrum2(WalletBIP39):
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
         data = wallet_file.read(20).split()
-        return len(data) >= 2 and data[0] == '{' and data[1] == '"accounts":'
+        return len(data) >= 2 and data[0] == "{" and data[1] == '"accounts":'
 
     # Load an Electrum2 wallet file (the part of it we need, just the master public key)
     @classmethod
@@ -1048,7 +1048,7 @@ def init_gui():
     if not tk_root:
         import Tkinter as tk
         import tkFileDialog, tkSimpleDialog, tkMessageBox
-        tk_root = tk.Tk(className='seedrecover.py')  # initialize library
+        tk_root = tk.Tk(className="seedrecover.py")  # initialize library
         tk_root.withdraw()                           # but don't display a window (yet)
 
 
@@ -1321,9 +1321,9 @@ def main(argv):
 
         if args.passphrase:
             import getpass
-            encoding = sys.stdin.encoding or 'ASCII'
-            if 'utf' not in encoding.lower():
-                print('terminal does not support UTF; passwords with non-ASCII chars might not work', file=sys.stderr)
+            encoding = sys.stdin.encoding or "ASCII"
+            if "utf" not in encoding.lower():
+                print("terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
             passphrase = getpass.getpass("Please enter the encryption passphrase: ")
             if not passphrase:
                 sys.exit("canceled")
@@ -1337,9 +1337,9 @@ def main(argv):
             config_mnemonic_params["lang"] = args.language.lower()
 
         if args.mnemonic_prompt:
-            encoding = sys.stdin.encoding or 'ASCII'
-            if 'utf' not in encoding.lower():
-                print('terminal does not support UTF; mnemonics with non-ASCII chars might not work', file=sys.stderr)
+            encoding = sys.stdin.encoding or "ASCII"
+            if "utf" not in encoding.lower():
+                print("terminal does not support UTF; mnemonics with non-ASCII chars might not work", file=sys.stderr)
             mnemonic_guess = raw_input("Please enter your best guess for your mnemonic (seed)\n> ")
             if not mnemonic_guess:
                 sys.exit("canceled")
@@ -1458,16 +1458,16 @@ def main(argv):
     for phase_num, phase_params in enumerate(phases, 1):
 
         # Print a friendly message describing this phase's search settings
-        print("Phase {}/{}: ".format(phase_num, len(phases)), end='')
-        if phase_params['typos'] == 1:
-            print("1 mistake", end='')
+        print("Phase {}/{}: ".format(phase_num, len(phases)), end="")
+        if phase_params["typos"] == 1:
+            print("1 mistake", end="")
         else:
-            print("up to {} mistakes".format(phase_params['typos']), end='')
-        if phase_params.get('big_typos'):
-            if phase_params['big_typos'] == phase_params['typos'] == 1:
+            print("up to {} mistakes".format(phase_params["typos"]), end="")
+        if phase_params.get("big_typos"):
+            if phase_params["big_typos"] == phase_params["typos"] == 1:
                 print(" which can be an entirely different seed word.")
             else:
-                print(", {} of which can be an entirely different seed word.".format(phase_params['big_typos']))
+                print(", {} of which can be an entirely different seed word.".format(phase_params["big_typos"]))
         else:
             print(", excluding entirely different seed words.")
 
@@ -1499,12 +1499,12 @@ if __name__ == b"__main__":
 
         if tk_root:      # if the GUI is being used
             padding = 6
-            tk.Label(text='WARNING: seed information is sensitive, carefully protect it and do not share', fg='red') \
+            tk.Label(text="WARNING: seed information is sensitive, carefully protect it and do not share", fg="red") \
                 .pack(padx=padding, pady=padding)
-            tk.Label(text='Seed found:').pack(side=tk.LEFT, padx=padding, pady=padding)
-            entry = tk.Entry(width=80, readonlybackground='white')
+            tk.Label(text="Seed found:").pack(side=tk.LEFT, padx=padding, pady=padding)
+            entry = tk.Entry(width=80, readonlybackground="white")
             entry.insert(0, mnemonic_sentence)
-            entry.config(state='readonly')
+            entry.config(state="readonly")
             entry.select_range(0, tk.END)
             entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=padding, pady=padding)
             tk_root.deiconify()
