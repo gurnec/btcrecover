@@ -329,10 +329,11 @@ def load_armory_library():
             error_exit("Armory version 0.92 or greater is required")
 
         # These are the modules we actually need
-        global PyBtcWallet, PyBtcAddress, SecureBinaryData, KdfRomix
+        global PyBtcWallet, PyBtcAddress, SecureBinaryData, KdfRomix, armory_crypto_aes
         from armoryengine.PyBtcWallet import PyBtcWallet
         from armoryengine.PyBtcWallet import PyBtcAddress
-        from CppBlockUtils import SecureBinaryData, KdfRomix
+        from CppBlockUtils import SecureBinaryData, KdfRomix, CryptoAES
+        armory_crypto_aes = CryptoAES()
         is_armory_loaded = True
 
     finally:
@@ -366,6 +367,7 @@ class WalletArmory(object):
         state[b"binPrivKey32_Encr"] = self._address.binPrivKey32_Encr.toBinStr()
         state[b"binInitVect16"]     = self._address.binInitVect16.toBinStr()
         state[b"binPublicKey65"]    = self._address.binPublicKey65.toBinStr()
+        state[b"chaincode"]         = self._address.chaincode.toBinStr()
         state[b"memoryReqtBytes"]   = self._kdf.getMemoryReqtBytes()
         state[b"numIterations"]     = self._kdf.getNumIterations()
         state[b"salt"]              = self._kdf.getSalt().toBinStr()
@@ -375,14 +377,17 @@ class WalletArmory(object):
         # Restore unpicklable Armory library objects
         load_armory_library()
         #
-        state[b"_address"] = PyBtcAddress().createFromEncryptedKeyData(
+        address = PyBtcAddress().createFromEncryptedKeyData(
             state[b"addrStr20"],
             SecureBinaryData(state[b"binPrivKey32_Encr"]),
             SecureBinaryData(state[b"binInitVect16"]),
             pubKey=state[b"binPublicKey65"]  # optional; makes checking slightly faster
         )
+        address.chaincode  = SecureBinaryData(state[b"chaincode"])
+        state[b"_address"] = address
         del state[b"addrStr20"],     state[b"binPrivKey32_Encr"]
         del state[b"binInitVect16"], state[b"binPublicKey65"]
+        del state[b"chaincode"]
         #
         state[b"_kdf"] = KdfRomix(
             state[b"memoryReqtBytes"],
@@ -404,6 +409,7 @@ class WalletArmory(object):
             error_exit("Armory wallet cannot be watching-only")
         if not self._address.useEncryption :
             error_exit("Armory wallet is not encrypted")
+        # TODO: erase the chaincode if this wallet was likely created before Armory v0.90
         return self
 
     # Import an Armory private key that was extracted by extract-armory-privkey.py
@@ -428,10 +434,28 @@ class WalletArmory(object):
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def _return_verified_password_or_false_cpu(self, passwords):
         for count, password in enumerate(passwords, 1):
-            if self._address.verifyEncryptionKey(self._kdf.DeriveKey(SecureBinaryData(password))):
+            if self._check_encryption_key(self._kdf.DeriveKey(SecureBinaryData(password)).toBinStr()):
                 return password, count
         else:
             return False, count
+
+    xor_5c = b"".join(chr(n ^ 0x5c) for n in xrange(256))
+    xor_36 = b"".join(chr(n ^ 0x36) for n in xrange(256))
+    def _check_encryption_key(self, key):
+        chaincode = self._address.chaincode
+        if chaincode.getSize():
+            l_sha256 = hashlib.sha256
+            key = armory_crypto_aes.DecryptCFB(
+                    self._address.binPrivKey32_Encr,
+                    SecureBinaryData(key),
+                    self._address.binInitVect16) \
+                .getHash256()
+            # This is almost HMAC-SHA256, but it's not (it's what Armory unintentionally does)
+            return l_sha256(key.translate(self.xor_5c) +
+                   l_sha256(key.translate(self.xor_36) + b"Derive Chaincode from Root Key")
+                   .digest()).digest() == chaincode.toBinStr()
+        else:
+            return self._address.verifyEncryptionKey(key)
 
     # Load and initialize the OpenCL kernel for Armory, given the global wallet and these params:
     #   devices   - a list of one or more of the devices returned by get_opencl_devices()
@@ -621,7 +645,7 @@ class WalletArmory(object):
 
         # The first 32 bytes of each computed hash is the derived key. Use each to try to decrypt the private key.
         for i, password in enumerate(passwords):
-            if self._address.verifyEncryptionKey(hashes[i,:32].tostring()):
+            if self._check_encryption_key(hashes[i,:32].tostring()):
                 return password, i + 1
 
         return False, i + 1
