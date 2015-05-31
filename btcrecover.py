@@ -46,7 +46,7 @@ from __future__ import print_function, absolute_import, division, \
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.5"
+__version__          =  "0.13.6"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -748,7 +748,7 @@ class WalletBitcoinCore(object):
         # Check the local_ws sizes
         for i, device in enumerate(devices):
             if local_ws[i] is None: continue
-            max_local_ws = cl_kernel.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device)
+            max_local_ws = self._cl_kernel.get_work_group_info(pyopencl.kernel_work_group_info.WORK_GROUP_SIZE, device)
             if local_ws[i] > max_local_ws:
                 error_exit("--local-ws of", local_ws[i], "exceeds max of", max_local_ws, "for GPU '"+tstr(device.name.strip())+"' with Bitcoin Core wallets")
 
