@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.5-Unicode"
+#__version__          =  "0.13.7-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.6"
+__version__          =  "0.13.7"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2434,14 +2434,14 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     else:
         tokenlist_file = None
 
-    # If the first line of the tokenlist file starts with exactly "#--", parse it as additional arguments
+    # If the first line of the tokenlist file starts with "#\s*--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
     tokenlist_first_line_num = 1
     if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
-        first_line = tokenlist_file.readline().rstrip("\r\n")[1:]
+        first_line = tokenlist_file.readline()[1:].strip()
+        tokenlist_first_line_num = 2                     # need to pass this to parse_token_list
         if first_line.startswith("--"):                  # if it's additional args, not just a comment
             print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
-            tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
             tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
             for arg in tokenlist_args:
                 if arg.startswith("--to"):               # --tokenlist
@@ -2490,9 +2490,9 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         # Display a warning if any options (all ignored) were specified in the tokenlist file
         if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
             first_line = tokenlist_file.readline()
-            if first_line.startswith("#--"):                 # if it's additional args, not just a comment
+            tokenlist_first_line_num = 2                     # need to pass this to parse_token_list
+            if re.match("#\s*--", first_line):               # if it's additional args, not just a comment
                 print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tstr(tokenlist_file.name)+"'", file=sys.stderr)
-                tokenlist_first_line_num = 2                 # need to pass this to parse_token_list
         print("Using autosave file '"+tstr(restore_filename)+"'")
         args.skip = savestate[b"skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
@@ -3278,7 +3278,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
 
         # Ignore comments
         if line.startswith("#"):
-            if line.startswith("#--"):
+            if re.match("#\s*--", line):
                 print(prog+": warning: all options must be on the first line, ignoring options on line", tstr(line_num), file=sys.stderr)
             continue
 
@@ -3318,7 +3318,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
             if token.startswith("--") and parser_common._get_option_tuples(token):
                 if line_num == 1:
                     print(prog+": warning: token on line 1 looks like an option, "
-                               "but line 1 is missing the required '#--' at its beginning", file=sys.stderr)
+                               "but line 1 did not start like this: #--option1 ...", file=sys.stderr)
                 else:
                     print(prog+": warning: token on line", tstr(line_num), "looks like an option, "
                                " but all options must be on the first line", file=sys.stderr)
