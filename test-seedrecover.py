@@ -113,7 +113,7 @@ class TestRecoveryFromMPK(unittest.TestCase):
             u"すんぽう うけつけ ぬいくぎ きどう ごはん たかね いてざ よしゅう なにもの われる たんき さとる あじわう")
 
     def test_bitcoinj(self):
-        # an xpub at path m/0', as Bitcoin Wallet for Android would export
+        # an xpub at path m/0', as Bitcoin Wallet for Android/BlackBerry would export
         self.mpk_tester(seedrecover.WalletBitcoinj,
             "xpub67tjk7ug7iNivs1f1pmDswDDbk6kRCe4U1AXSiYLbtp6a2GaodSUovt3kNrDJ2q18TBX65aJZ7VqRBpnVJsaVQaBY2SANYw6kgZf4QLCpPu",
             "laundry foil reform disagree cotton hope loud mix wheel snow real board")

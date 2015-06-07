@@ -395,7 +395,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
  2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...”, and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
      * Armory - `%appdata%\Armory` (it's a `.wallet` file)
      * Bitcoin Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
-     * Bitcoin Wallet for Android, lost spending PINs: Please see the [Bitcoin Wallet for Android Spending PINs](#bitcoin-wallet-for-android-spending-pins) section below.
+     * Bitcoin Wallet for Android/BlackBerry, lost spending PINs: Please see the [Bitcoin Wallet for Android/BlackBerry Spending PINs](#bitcoin-wallet-for-androidblackberry-spending-pins) section below.
      * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-classic-wallet-files) section below
      * MultiBit HD - `%appdata%\MultiBitHD` (it's in one of the folders here, it's named `mbhd.wallet.aes`)
      * Electrum - `%appdata%\Electrum\wallets`
@@ -447,9 +447,9 @@ The key files have names which look like `walletname-20140407200743.key`. If you
 
 For more details on locating your MultiBit private key backup files, see: <https://www.multibit.org/en/help/v0.5/help_fileDescriptions.html>
 
-### Bitcoin Wallet for Android Spending PINs ###
+### Bitcoin Wallet for Android/BlackBerry Spending PINs ###
 
-Bitcoin Wallet for Android has a *spending PIN* feature which can optionally be enabled. If you lose your spending PIN, you can use *btcrecover* to try to recover it.
+Bitcoin Wallet for Android/BlackBerry has a *spending PIN* feature which can optionally be enabled. If you lose your spending PIN, you can use *btcrecover* to try to recover it.
 
  1. Open the Bitcoin Wallet app, press the menu button, and choose Safety.
  2. Choose *Back up wallet*.

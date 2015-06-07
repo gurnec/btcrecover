@@ -887,7 +887,7 @@ class WalletBIP39(WalletBIP32):
 
 ############### bitcoinj ###############
 
-@register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD (Beta 8+), Bitcoin Wallet for Android, Hive, breadwallet)")
+@register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD (Beta 8+), Bitcoin Wallet for Android/BlackBerry, Hive, breadwallet)")
 @btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletBitcoinj(WalletBIP39):
 
@@ -935,7 +935,7 @@ class WalletBitcoinj(WalletBIP39):
     # Returns a dummy xpub for performance testing purposes
     @staticmethod
     def _performance_xpub():
-        # an xpub at path m/0', as Bitcoin Wallet for Android would export
+        # an xpub at path m/0', as Bitcoin Wallet for Android/BlackBerry would export
         return "xpub67tjk7ug7iNivs1f1pmDswDDbk6kRCe4U1AXSiYLbtp6a2GaodSUovt3kNrDJ2q18TBX65aJZ7VqRBpnVJsaVQaBY2SANYw6kgZf4QLCpPu"
 
 

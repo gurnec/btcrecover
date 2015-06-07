@@ -906,9 +906,9 @@ class WalletPywallet(WalletBitcoinCore):
 ############### MultiBit ###############
 # - MultiBit .key backup files
 # - MultiDoge .key backup files
-# - Bitcoin Wallet for Android v3.47+ wallet backup files
-# - Bitcoin Wallet for Android v2.24 and older key backup files
-# - Bitcoin Wallet for Android v2.3 - v3.46 key backup files
+# - Bitcoin Wallet for Android/BlackBerry v3.47+ wallet backup files
+# - Bitcoin Wallet for Android/BlackBerry v2.24 and older key backup files
+# - Bitcoin Wallet for Android/BlackBerry v2.3 - v3.46 key backup files
 # - KnC for Android key backup files (same as the above)
 
 @register_wallet_class
@@ -1203,7 +1203,7 @@ class WalletMultiBitHD(WalletBitcoinj):
 # don't @register_wallet_class -- it's never auto-detected and never used for a --data-extract
 class WalletAndroidSpendingPIN(WalletBitcoinj):
 
-    # Decrypt a Bitcoin Wallet for Android backup into a standard bitcoinj wallet, and load it
+    # Decrypt a Bitcoin Wallet for Android/BlackBerry backup into a standard bitcoinj wallet, and load it
     @classmethod
     def load_from_filename(cls, wallet_filename, password = None, force_purepython = False):
         with open(wallet_filename, "rb") as wallet_file:
@@ -1218,18 +1218,18 @@ class WalletAndroidSpendingPIN(WalletBitcoinj):
         data = data.replace("\r", "").replace("\n", "")
         data = base64.b64decode(data)
         if not data.startswith(b"Salted__"):
-            raise ValueError("Not a Bitcoin Wallet for Android encrypted backup (missing 'Salted__')")
+            raise ValueError("Not a Bitcoin Wallet for Android/BlackBerry encrypted backup (missing 'Salted__')")
         if len(data) < 32:
             raise EOFError  ("Expected at least 32 bytes of decoded data in the encrypted backup file")
         if len(data) % 16 != 0:
-            raise ValueError("Not a valid Bitcoin Wallet for Android encrypted backup (size not divisible by 16)")
+            raise ValueError("Not a valid Bitcoin Wallet for Android/BlackBerry encrypted backup (size not divisible by 16)")
         salt = data[8:16]
         data = data[16:]
 
         if not password:
             password = prompt_unicode_password(
-                "Please enter the password for the Bitcoin Wallet for Android backup: ",
-                "encrypted Bitcoin Wallet for Android backups must be decrypted before searching for the PIN")
+                "Please enter the password for the Bitcoin Wallet for Android/BlackBerry backup: ",
+                "encrypted Bitcoin Wallet for Android/BlackBerry backups must be decrypted before searching for the PIN")
         # Convert Unicode string to a UTF-16 bytestring, truncating each code unit to 8 bits
         password = password.encode("utf_16_le", "ignore")[::2]
 
@@ -2301,7 +2301,7 @@ parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOU
 parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
 parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
 parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
-parser_common.add_argument("--android-pin", action="store_true", help="search for the spending pin instead of the backup password in a Bitcoin Wallet for Android")
+parser_common.add_argument("--android-pin", action="store_true", help="search for the spending pin instead of the backup password in a Bitcoin Wallet for Android/BlackBerry")
 parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
 parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain whose password to search for in an mSIGNA vault")
 parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
@@ -2768,7 +2768,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                 print(prog+": warning: for MultiBit, use a .key file instead of a .wallet file if possible")
             if isinstance(loaded_wallet, WalletMultiBit) and not args.android_pin:
                 print(prog+": notice: use --android-pin to recover the spending PIN of\n"
-                           "    a Bitcoin Wallet for Android backup (instead of the backup password)")
+                           "    a Bitcoin Wallet for Android/BlackBerry backup (instead of the backup password)")
             if args.msigna_keychain and not isinstance(loaded_wallet, WalletMsigna):
                 print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
 
