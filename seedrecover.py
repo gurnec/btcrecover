@@ -795,13 +795,23 @@ class WalletBIP39(WalletBIP32):
                         language_word_hits.setdefault(lang, 0)
                         language_word_hits[lang] += 1
             if len(language_word_hits) == 0:
-                raise ValueError("unable to determine wordlist language: 0 word hits")
-            sorted_hits = language_word_hits.items()
-            sorted_hits.sort(key=lambda x: x[1])  # sort based on hit count
-            if len(sorted_hits) > 1 and sorted_hits[-1][1] == sorted_hits[-2][1]:
-                raise ValueError("unable to determine wordlist language: top best guesses ({}, {}) have equal hits ({})"
-                    .format(sorted_hits[-1][0], sorted_hits[-2][0], sorted_hits[-1][1]))
-            lang = sorted_hits[-1][0]  # (probably) found it
+                raise ValueError("can't guess wordlist language: 0 valid words")
+            if len(language_word_hits) == 1:
+                best_guess = language_word_hits.popitem()
+            else:
+                sorted_hits = language_word_hits.items()
+                sorted_hits.sort(key=lambda x: x[1])  # sort based on hit count
+                best_guess   = sorted_hits[-1]
+                second_guess = sorted_hits[-2]
+                # at least 20% must be exclusive to the best_guess language
+                if best_guess[1] - second_guess[1] < 0.2 * len(mnemonic_guess):
+                    raise ValueError("can't guess wordlist language: top best guesses ({}, {}) are too close ({}, {})"
+                                     .format(best_guess[0], second_guess[0], best_guess[1], second_guess[1]))
+            # at least half must be valid words
+            if best_guess[1] < 0.5 * len(mnemonic_guess):
+                raise ValueError("can't guess wordlist language: best guess ({}) has only {} valid word(s)"
+                                 .format(best_guess[0], best_guess[1]))
+            lang = best_guess[0]
         #
         try:
             words = self._language_words[lang]
