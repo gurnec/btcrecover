@@ -798,20 +798,18 @@ class Test06AutosaveRestore(unittest.TestCase):
 
 
 is_armory_loadable = None
-def can_load_armory():
+def can_load_armory(permit_unicode = False):
+    if tstr == unicode and not permit_unicode:
+        return False
     global is_armory_loadable
     # Don't call the load function more than once
     # (calling more than once on success is OK though)
     if is_armory_loadable is None:
         try:
-            btcrecover.load_armory_library()
+            btcrecover.load_armory_library(permit_unicode)
             is_armory_loadable = True
         except ImportError:
             is_armory_loadable = False
-        except SystemExit as e:
-            if "do not support unicode" in e.args[0]:
-                is_armory_loadable = False
-            else: raise
     return is_armory_loadable
 
 is_protobuf_loadable = None
@@ -829,8 +827,11 @@ pylibscrypt = None
 def can_load_scrypt():
     global pylibscrypt
     if pylibscrypt is None:
-        import pylibscrypt
-    return pylibscrypt._done  # True iff a binary implementation was found
+        try:
+            import pylibscrypt
+        except ImportError:
+            pylibscrypt = False
+    return pylibscrypt and pylibscrypt._done  # True iff a binary implementation was found
 
 
 class Test07WalletDecryption(unittest.TestCase):
@@ -1018,6 +1019,61 @@ class Test07WalletDecryption(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             btcrecover.load_wallet(__file__)
         self.assertIn("unrecognized wallet format", cm.exception.code)
+
+
+class Test08BIP39Passwords(unittest.TestCase):
+
+    def bip39_tester(self, force_purepython = False, unicode_pw = False, *args, **kwargs):
+
+        btcrecover.loaded_wallet = btcrecover.WalletBIP39(*args, **kwargs)
+        if force_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
+
+        correct_pw = "btcr-test-password" if not unicode_pw else "btcr-тест-пароль"
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+        self.assertEqual(btcrecover.return_verified_password_or_false(
+            ["btcr-wrong-password-3", correct_pw, "btcr-wrong-password-4"]), (correct_pw, 2))
+
+    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
+    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+                         "requires Python 2.7.8+")
+    def test_bip39_mpk(self):
+        self.bip39_tester(
+            mpk=      "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
+            mnemonic= "certain come keen collect slab gauge photo inside mechanic deny leader drop"
+        )
+
+    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
+    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
+    def test_bip39_unicode_password(self):
+        self.bip39_tester(
+            mpk=        "xpub6CZe1G1A1CaaSepbekLMSk1sBRNA9kHZzEQCedudHAQHHB21FW9fYpQWXBevrLVQfL8JFQVFWEw3aACdr6szksaGsLiHDKyRd1rPJ6ev5ig",
+            mnemonic=   "certain come keen collect slab gauge photo inside mechanic deny leader drop",
+            unicode_pw= True
+        )
+
+    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
+    def test_bip39_unicode_mnemonic(self):
+        self.bip39_tester(
+            mpk=       "xpub6C7cXo5w4HPs6X93zKdkRNDFyHedGHwQHvmMst7HYjeudySyF3eTsWktz6JVz4CkrzuLiEbieYP8dQaxsffJXjquD3FLmnqioHe8qZwcBF3",
+            mnemonic= u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき"
+        )
+
+    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
+    def test_bip39_address(self):
+        self.bip39_tester(
+            address=       "1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn",
+            address_limit= 5,
+            mnemonic=      "certain come keen collect slab gauge photo inside mechanic deny leader drop"
+        )
+
+    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
+    def test_bip39_pp(self):
+        self.bip39_tester(
+            mpk=              "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
+            mnemonic=         "certain come keen collect slab gauge photo inside mechanic deny leader drop",
+            force_purepython= True
+        )
 
 
 def has_any_opencl_devices():
@@ -1563,6 +1619,7 @@ class QuickTests(unittest.TestSuite) :
                 "test_invalid_crc")),
             module=sys.modules[__name__]
         ))
+        self.addTests(tl.loadTestsFromTestCase(Test08BIP39Passwords))
 
 
 if __name__ == b'__main__':

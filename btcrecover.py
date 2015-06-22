@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.13.7-Unicode"
+#__version__          =  "0.14.0-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.13.7"
+__version__          =  "0.14.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -280,14 +280,11 @@ def prompt_unicode_password(prompt, error_msg):
 
 ############### Armory ###############
 
-is_armory_loaded = False
-def load_armory_library():
-    if tstr == unicode:
-        error_exit("armory wallets do not support unicode; use the ascii version of btcrecover instead")
-    global is_armory_loaded
-    if is_armory_loaded: return
-
-    # Try to add the Armory libraries to the path for various platforms
+# Try to add the Armory libraries to the path for various platforms
+is_armory_path_added = False
+def add_armory_library_path():
+    global is_armory_path_added
+    if is_armory_path_added: return
     if sys.platform == "win32":
         progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")  # default is for XP
         armory_path    = progfiles_path + r"\Armory"
@@ -302,12 +299,21 @@ def load_armory_library():
         sys.path.append("/usr/lib/armory")
     elif sys.platform == "darwin":  # untested
         sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
+    is_armory_path_added = True
+
+is_armory_loaded = False
+def load_armory_library(permit_unicode = False):
+    if tstr == unicode and not permit_unicode:
+        error_exit("armory wallets do not support unicode; use the ascii version of btcrecover instead")
+    global is_armory_loaded
+    if is_armory_loaded: return
 
     # Temporarily blank out argv before importing Armory, otherwise it attempts to process argv
     old_argv = sys.argv[1:]
     del sys.argv[1:]
-    try:
 
+    add_armory_library_path()
+    try:
         # Try up to 10 times to load the first Armory library (there's a race
         # condition on opening an Armory log file in Windows when multiprocessing)
         import random
@@ -1866,6 +1872,62 @@ class WalletBither(WalletBitcoinj):  # not really a bitcoinj wallet, but does sh
         return self
 
 
+############### BIP-39 ###############
+
+# @register_wallet_class - not a "registed" wallet since there are no wallet files nor extracts
+class WalletBIP39(object):
+
+    def __init__(self, mpk = None, address = None, address_limit = None, mnemonic = None, lang = None, path = None, is_performance = False):
+        global normalize, hmac
+        from unicodedata import normalize
+        import hmac
+        load_pbkdf2_library()
+
+        # Create a seedrecover.WalletBIP39 object which will do most of the work;
+        # this also interactively prompts the user if not enough command-line options were included
+        import seedrecover as sr
+        self.sr_wallet = sr.WalletBIP39.create_from_params(mpk, address, address_limit, path, is_performance)
+        if is_performance and not mnemonic:
+            mnemonic = "certain come keen collect slab gauge photo inside mechanic deny leader drop"
+        self.sr_wallet.config_mnemonic(mnemonic, lang)
+
+        # Verify that the entered mnemonic is valid
+        if not self.sr_wallet.verify_mnemonic_syntax(sr.mnemonic_ids_guess):
+            error_exit("one or more words are missing from the mnemonic")
+        if not self.sr_wallet._verify_checksum(sr.mnemonic_ids_guess):
+            error_exit("invalid mnemonic (the checksum is wrong)")
+        # We just verified the mnemonic checksum is valid, so 100% of the guesses will also be valid:
+        self.sr_wallet._checksum_ratio = 1
+
+        self._mnemonic = b" ".join(sr.mnemonic_ids_guess)
+
+    def __setstate__(self, state):
+        # (re-)load the required libraries after being unpickled
+        global normalize, hmac
+        from unicodedata import normalize
+        import hmac
+        load_pbkdf2_library()
+        self.__dict__ = state
+
+    def passwords_per_seconds(self, seconds):
+        return self.sr_wallet.passwords_per_seconds(seconds)
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    def return_verified_password_or_false(self, passwords):
+        # Convert Unicode strings (lazily) to normalized UTF-8 bytestrings
+        if tstr == unicode:
+            passwords = itertools.imap(lambda p: normalize("NFKD", p).encode("utf_8", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+            seed_bytes = pbkdf2_hmac(b"sha512", self._mnemonic, b"mnemonic" + password, 2048)
+            seed_bytes = hmac.new(b"Bitcoin seed", seed_bytes, hashlib.sha512).digest()
+            if self.sr_wallet._verify_seed(seed_bytes):
+                return password if tstr == str else password.decode("utf_8", "replace"), count
+
+        return False, count
+
+
 # Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
 # using either PyCrypto if it's available or a pure python library. The created functions each take
 # three bytestring arguments: key, iv, ciphertext. ciphertext must be a multiple of 16 bytes, and any
@@ -2312,6 +2374,14 @@ parser_common.add_argument("--listpass",    action="store_true", help="just list
 parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
 parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
 parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
+bip39_group = parser_common.add_argument_group("BIP-39 passwords")
+bip39_group.add_argument("--bip39",      action="store_true",   help="search for a BIP-39 password instead of from a wallet")
+bip39_group.add_argument("--mpk",        metavar="XPUB",        help="the master public key")
+bip39_group.add_argument("--addr",       metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
+bip39_group.add_argument("--addr-limit", metavar="COUNT",       help="if using an address, the gap limit")
+bip39_group.add_argument("--language",   metavar="LANG-CODE",   help="the wordlist language to use (see wordlists/README.md, default: auto)")
+bip39_group.add_argument("--bip32-path", metavar="PATH",        help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
+bip39_group.add_argument("--mnemonic-prompt", action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
 gpu_group = parser_common.add_argument_group("GPU acceleration")
 gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
 gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
@@ -2736,6 +2806,11 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         except ImportError:
             have_progress = False
 
+    # --bip39 is implied if any bip39 option is used
+    for action in bip39_group._group_actions:
+        if args.__dict__[action.dest]:
+            args.bip39 = True
+            break
 
     # --mkey and --privkey are deprecated synonyms of --data-extract
     if args.mkey or args.privkey:
@@ -2744,11 +2819,12 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     required_args = 0
     if args.wallet:       required_args += 1
     if args.data_extract: required_args += 1
+    if args.bip39:        required_args += 1
     if args.listpass:     required_args += 1
     if wallet:            required_args += 1
     if required_args != 1:
-        assert not wallet, 'custom wallet object not permitted with --wallet, --data-extract, or --listpass'
-        error_exit("argument --wallet (or --data-extract or --listpass, exactly one) is required")
+        assert not wallet, 'custom wallet object not permitted with --wallet, --data-extract, --bip39, or --listpass'
+        error_exit("argument --wallet (or --data-extract, --bip39, or --listpass, exactly one) is required")
 
     # If specificed, use a custom wallet object instead of loading a wallet file or data-extract
     global loaded_wallet
@@ -2812,6 +2888,23 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                     error_exit("can't restore previous session: the encrypted key entered is not the same")
             else:
                 savestate[b"key_crc"] = key_crc
+
+
+    # Parse --bip39 related options, and create a WalletBIP39 object
+    if args.bip39:
+        if args.mnemonic_prompt:
+            encoding = sys.stdin.encoding or "ASCII"
+            if "utf" not in encoding.lower():
+                print("terminal does not support UTF; mnemonics with non-ASCII chars might not work", file=sys.stderr)
+            mnemonic = raw_input("Please enter your mnemonic (seed)\n> ")
+            if not mnemonic:
+                sys.exit("canceled")
+            if isinstance(mnemonic, str):
+                mnemonic = mnemonic.decode(encoding)  # convert from terminal's encoding to unicode
+        else:
+            mnemonic = None
+
+        loaded_wallet = WalletBIP39(args.mpk, args.addr, args.addr_limit, mnemonic, args.language, args.bip32_path, args.performance)
 
 
     # Parse and syntax check all of the GPU related options

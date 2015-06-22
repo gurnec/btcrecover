@@ -10,6 +10,7 @@
      * [MultiBit Classic](https://multibit.org/) and [MultiBit HD](https://beta.multibit.org/)
      * [Electrum](https://electrum.org/) (1.x and 2.x)
      * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://mac.hivewallet.com/)
+     * BIP-39 passphrases (e.g. [TREZOR](https://www.bitcointrezor.com/) passphrases)
      * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain.info](https://blockchain.info/wallet)
      * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Core wallets

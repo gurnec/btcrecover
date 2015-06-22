@@ -172,6 +172,8 @@ class TestRecoveryFromAddress(unittest.TestCase):
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
 
+seedrecover.register_autodetecting_wallets()
+
 if __name__ == b'__main__':
 
     import argparse, sys, atexit

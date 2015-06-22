@@ -31,28 +31,13 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
        unicodedata, collections, struct, glob, atexit, re
 
-# Try to add the Armory libraries to the path for various platforms
-if sys.platform == "win32":
-    progfiles_path = os.environ.get("ProgramFiles",  r"C:\Program Files")  # default is for XP
-    armory_path    = progfiles_path + r"\Armory"
-    sys.path.extend((armory_path, armory_path + r"\library.zip"))
-    # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
-    if struct.calcsize("P") * 8 == 64:  # calcsize("P") is a pointer's size in bytes
-        assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
-        progfiles_path += " (x86)"
-        armory_path     = progfiles_path + r"\Armory"
-        sys.path.extend((armory_path, armory_path + r"\library.zip"))
-elif sys.platform.startswith("linux"):
-    sys.path.append("/usr/lib/armory")
-elif sys.platform == "darwin":  # untested
-    sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
-#
+btcr.add_armory_library_path()
 from CppBlockUtils import CryptoECDSA, SecureBinaryData
 
 
@@ -202,13 +187,24 @@ def load_wordlist(name, lang):
     return wordlist
 
 
-btcr.clear_registered_wallets()  # clears btcr's default wallet file auto-detection list
+def calc_passwords_per_second(checksum_ratio, kdf_overhead, scalar_multiplies):
+    """estimate the number of mnemonics that can be checked per second (per CPU core)
+
+    :param checksum_ratio: chances that a random mnemonic has the correct checksum [0.0 - 1.0]
+    :type checksum_ratio: float
+    :param kdf_overhead: overhead in seconds imposed by the kdf per each guess
+    :type kdf_overhead: float
+    :param scalar_multiplies: count of EC scalar multiplications required per each guess
+    :type scalar_multiplies: int
+    :return: estimated mnemonic check rate in hertz (per CPU core)
+    :rtype: float
+    """
+    return 1.0 / (checksum_ratio * (kdf_overhead + scalar_multiplies*0.0026) + 0.00001)
 
 
 ############### Electrum1 ###############
 
 @register_selectable_wallet_class("Electrum 1.x (including wallets upgraded to 2.x)")
-@btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletElectrum1(object):
 
     _words = None
@@ -231,7 +227,8 @@ class WalletElectrum1(object):
 
     def __init__(self, loading = False):
         assert loading, "use load_from_filename or create_from_params to create a " + self.__class__.__name__
-        self._master_pubkey = None
+        self._master_pubkey        = None
+        self._passwords_per_second = None
 
         self._load_wordlist()
         self._num_words = len(self._words)  # needs to be an instance variable so it can be pickled
@@ -249,9 +246,11 @@ class WalletElectrum1(object):
             state["_master_pubkey"] = SecureBinaryData(state["_master_pubkey"])
         self.__dict__ = state
 
-    @staticmethod
-    def passwords_per_seconds(seconds):
-        return max(int(round(8 * seconds)), 1)
+    def passwords_per_seconds(self, seconds):
+        if not self._passwords_per_second:
+            self._passwords_per_second = \
+                calc_passwords_per_second(1, 0.14, 1 if self._master_pubkey else self._addrs_to_generate)
+        return max(int(round(self._passwords_per_second * seconds)), 1)
 
     # Load an Electrum1 wallet file (the part of it we need, just the master public key)
     @classmethod
@@ -478,7 +477,9 @@ class WalletBIP32(object):
 
     def __init__(self, path = None, loading = False):
         assert loading, "use load_from_filename or create_from_params to create a " + self.__class__.__name__
-        self._chaincode = None
+        self._chaincode            = None
+        self._passwords_per_second = None
+        self._crypto_ecdsa         = CryptoECDSA()
 
         # Split the BIP32 key derivation path into its constituent indexes
         # (doesn't support the last path element for the address as hardened)
@@ -502,11 +503,34 @@ class WalletBIP32(object):
             else:
                 self._path_indexes += int(path_index),
 
+    def __getstate__(self):
+        # Delete unpicklable Armory library object
+        state = self.__dict__.copy()
+        del state["_crypto_ecdsa"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        # Restore unpicklable Armory library object
+        self._crypto_ecdsa = CryptoECDSA()
+
+    def passwords_per_seconds(self, seconds):
+        if not self._passwords_per_second:
+            scalar_multiplies = 0
+            for i in self._path_indexes:
+                if i < 2147483648:          # if it's a normal child key
+                    scalar_multiplies += 1  # then it requires a scalar multiply
+            if not self._chaincode:
+                scalar_multiplies += self._addrs_to_generate  # each addr. to generate req. a scalar multiply
+            self._passwords_per_second = \
+                calc_passwords_per_second(self._checksum_ratio, self._kdf_overhead, scalar_multiplies)
+        return max(int(round(self._passwords_per_second * seconds)), 1)
+
     # Creates a wallet instance from either an mpk or an address and address_limit.
     # If neither an mpk nor address is supplied, prompts the user for one or the other.
     # (the BIP32 key derivation path is by default BIP44's account 0)
     @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None, is_performance=False):
+    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None, is_performance = False):
         self = cls(path, loading=True)
 
         # Process the mpk (master public key) argument
@@ -631,9 +655,6 @@ class WalletBIP32(object):
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a mnemonic
     # is correct return it, else return False for item 0; return a count of mnemonics checked for item 1
     def return_verified_password_or_false(self, mnemonic_ids_list):
-        hardened_min = 2**31  # BIP32 path indexes >= this are hardened/private
-        crypto_ecdsa = CryptoECDSA()
-
         for count, mnemonic_ids in enumerate(mnemonic_ids_list, 1):
 
             # Check the (BIP39 or Electrum2) checksum; most guesses will fail this test
@@ -643,52 +664,59 @@ class WalletBIP32(object):
             # Convert the mnemonic sentence to seed bytes (according to BIP39 or Electrum2)
             seed_bytes = hmac.new("Bitcoin seed", self._derive_seed(mnemonic_ids), hashlib.sha512).digest()
 
-            # Derive the chain of private keys for the specified path as per BIP32
-            privkey_bytes   = seed_bytes[:32]
-            chaincode_bytes = seed_bytes[32:]
-            for i in self._path_indexes:
-
-                if i < hardened_min:  # if it's a normal child key
-                    data_to_hmac = compress_pubkey(  # derive the compressed public key
-                        crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
-                else:                 # else it's a hardened child key
-                    data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
-                data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
-
-                seed_bytes    = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
-
-                # The child private key is the parent one + the first half of the seed_bytes (mod n)
-                privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
-                                                bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
-                chaincode_bytes = seed_bytes[32:]
-
-            # If an extended public key was provided, check the derived chain code against it
-            if self._chaincode:
-                if seed_bytes[32:] == self._chaincode:
-                    return mnemonic_ids, count  # found it
-
-            else:
-                # (note: the rest doesn't support the last path element being hardened)
-
-                # Derive the final public keys, searching for a match with known_hash160
-                # (the first step below is a loop invariant)
-                data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
-                    crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
-                #
-                for i in xrange(self._addrs_to_generate):
-                    seed_bytes = hmac.new(chaincode_bytes,
-                        data_to_hmac + struct.pack(">I", i), hashlib.sha512).digest()
-
-                    # The final derived private key is the parent one + the first half of the seed_bytes
-                    d_privkey_bytes = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
-                                                    bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
-
-                    d_pubkey = compress_pubkey(  # a compressed public key as per BIP32
-                        crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey_bytes)).toBinStr())
-                    if pubkey_to_hash160(d_pubkey) == self._known_hash160:
-                        return mnemonic_ids, count  # found it
+            if self._verify_seed(seed_bytes):
+                return mnemonic_ids, count  # found it
 
         return False, count
+
+    def _verify_seed(self, seed_bytes):
+        # Derive the chain of private keys for the specified path as per BIP32
+        privkey_bytes   = seed_bytes[:32]
+        chaincode_bytes = seed_bytes[32:]
+        for i in self._path_indexes:
+
+            if i < 2147483648:  # if it's a normal child key
+                data_to_hmac = compress_pubkey(  # derive the compressed public key
+                    self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+            else:                 # else it's a hardened child key
+                data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
+            data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
+
+            seed_bytes = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
+
+            # The child private key is the parent one + the first half of the seed_bytes (mod n)
+            privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
+                                            bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
+            chaincode_bytes = seed_bytes[32:]
+
+        # If an extended public key was provided, check the derived chain code against it
+        if self._chaincode:
+            if chaincode_bytes == self._chaincode:
+                return True  # found it
+
+        else:
+            # (note: the rest doesn't support the last path element being hardened)
+
+            # Derive the final public keys, searching for a match with known_hash160
+            # (these first steps below are loop invariants)
+            data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
+                self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+            privkey_int = bytes_to_int(privkey_bytes)
+            #
+            for i in xrange(self._addrs_to_generate):
+                seed_bytes = hmac.new(chaincode_bytes,
+                    data_to_hmac + struct.pack(">I", i), hashlib.sha512).digest()
+
+                # The final derived private key is the parent one + the first half of the seed_bytes
+                d_privkey_bytes = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
+                                                privkey_int) % GENERATOR_ORDER)
+
+                d_pubkey = compress_pubkey(  # a compressed public key as per BIP32
+                    self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey_bytes)).toBinStr())
+                if pubkey_to_hash160(d_pubkey) == self._known_hash160:
+                    return True
+
+        return False
 
     # Returns a dummy xpub for performance testing purposes
     @staticmethod
@@ -723,24 +751,13 @@ class WalletBIP39(WalletBIP32):
         super(WalletBIP39, self).__init__(path, loading)
         if not self._language_words:
             self._load_wordlists()
-        btcr.load_pbkdf2_library()  # btcr's pbkdf2 library is used in _derive_seed()
+        pbkdf2_library_name = btcr.load_pbkdf2_library().__name__  # btcr's pbkdf2 library is used in _derive_seed()
+        self._kdf_overhead = 0.0039 if pbkdf2_library_name == "hashlib" else 0.015
 
     def __setstate__(self, state):
-        self.__dict__ = state
+        super(WalletBIP39, self).__setstate__(state)
         # (Re)load the pbkdf2 library if necessary
         btcr.load_pbkdf2_library()
-
-    def passwords_per_seconds(self, seconds):
-        # (experimentally determined; doesn't have to be perfect, just decent)
-        #
-        # number of 3-word groups in excess of the base (of 12); they speed things up:
-        extra_word_groups = (len(mnemonic_ids_guess) + num_inserts - num_deletes - 12) // 3
-        #
-        # number of priv-to-pubkey derivations per checksum-validated seed; they slow things down:
-        derivation_count = 0 if self._chaincode else len(self._path_indexes) + self._addrs_to_generate
-        #
-        est = 3500.0 * 1.6**extra_word_groups * (3.0 / max(derivation_count, 6.0) if derivation_count else 1.0)
-        return max(int(round(est * seconds)), 1)
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
     # into a bytestring (of type str) in the format required by BIP39
@@ -769,6 +786,9 @@ class WalletBIP39(WalletBIP32):
 
         # Calculate each word's index in binary (needed by _verify_checksum())
         self._word_to_binary = { word : "{:011b}".format(i) for i,word in enumerate(self._words) }
+
+        # Chances a checksum is valid, e.g. 1/16 for 12 words, 1/256 for 24 words
+        self._checksum_ratio = 2.0**( -( len(mnemonic_ids_guess) + num_inserts - num_deletes )//3 )
     #
     def _config_mnemonic(self, mnemonic_guess, lang, expected_len, closematch_cutoff):
 
@@ -838,8 +858,11 @@ class WalletBIP39(WalletBIP32):
                 close_mnemonic_ids[mnemonic_ids_guess[-1]] = \
                     tuple( (self._unicode_to_bytes(w),) for w in close_words[1:] )
             else:
-                print(u"'{}' was in your guess, but there is no similar seed word;\n"
-                       "    trying all possible seed words here instead.".format(word))
+                if __name__ == b"__main__":
+                    print(u"'{}' was in your guess, but there is no similar seed word;\n"
+                           "    trying all possible seed words here instead.".format(word))
+                else:
+                    print(u"'{}' was in your seed, but there is no similar seed word.".format(word))
                 mnemonic_ids_guess += None,
 
         guess_len = len(mnemonic_ids_guess)
@@ -889,7 +912,7 @@ class WalletBIP39(WalletBIP32):
     # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
     def _derive_seed(self, mnemonic_words):
         # Note: the words are already in BIP39's normalized form
-        return btcr.pbkdf2_hmac("sha512", " ".join(mnemonic_words), self._derivation_salt, 2048)
+        return btcr.pbkdf2_hmac("sha512", b" ".join(mnemonic_words), self._derivation_salt, 2048)
 
     # Produces an infinite stream of differing mnemonic_ids guesses (for testing)
     # (uses mnemonic_ids_guess, num_inserts, and num_deletes globals as set by config_mnemonic())
@@ -900,7 +923,6 @@ class WalletBIP39(WalletBIP32):
 ############### bitcoinj ###############
 
 @register_selectable_wallet_class("Bitcoinj compatible (MultiBit HD (Beta 8+), Bitcoin Wallet for Android/BlackBerry, Hive, breadwallet)")
-@btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletBitcoinj(WalletBIP39):
 
     def __init__(self, path = None, loading = False):
@@ -954,7 +976,6 @@ class WalletBitcoinj(WalletBIP39):
 ############### Electrum2 ###############
 
 @register_selectable_wallet_class("Electrum 2.x (initially created with 2.x)")
-@btcr.register_wallet_class  # enables wallet type auto-detection via is_wallet_file()
 class WalletElectrum2(WalletBIP39):
 
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
@@ -969,15 +990,7 @@ class WalletElectrum2(WalletBIP39):
         # Just calls WalletBIP39.__init__() with a hardcoded path
         if path: raise ValueError("can't specify a BIP32 path with Electrum 2.x wallets")
         super(WalletElectrum2, self).__init__("m/0/", loading)
-
-    def passwords_per_seconds(self, seconds):
-        # (experimentally determined; doesn't have to be perfect, just decent)
-        #
-        # number of priv-to-pubkey derivations per checksum-validated seed; they slow things down:
-        derivation_count = 0 if self._chaincode else self._addrs_to_generate
-        #
-        est = 25000.0 * (3.0 / max(derivation_count, 6.0) if derivation_count else 1.0)
-        return max(int(round(est * seconds)), 1)
+        self._checksum_ratio = 1.0 / 256.0  # 1 in 256 checksums are valid on average
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1042,7 +1055,7 @@ class WalletElectrum2(WalletBIP39):
     # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
     def _derive_seed(self, mnemonic_words):
         # Note: the words are already in Electrum2's normalized form
-        return btcr.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), "electrum", 2048)
+        return btcr.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), b"electrum", 2048)
 
     # Returns a dummy xpub for performance testing purposes
     @staticmethod
@@ -1236,6 +1249,17 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
     return False  # No error occurred; the mnemonic wasn't found
 
 
+def register_autodetecting_wallets():
+    """Registers wallets which can do file auto-detection with btcrecover's auto-detect mechanism
+
+    :rtype: None
+    """
+    btcr.clear_registered_wallets()
+    for wallet_cls, description in selectable_wallet_classes:
+        if hasattr(wallet_cls, "is_wallet_file"):
+            btcr.register_wallet_class(wallet_cls)
+
+
 def main(argv):
     global loaded_wallet
     loaded_wallet = wallet_type = None
@@ -1260,7 +1284,7 @@ def main(argv):
         parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
         parser.add_argument("--mnemonic-prompt", action="store_true",   help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
         parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
-        parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP44)")
+        parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
         parser.add_argument("--skip",        type=int, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
         parser.add_argument("--threads",     type=int, metavar="COUNT", help="number of worker threads (default: number of CPUs, {})".format(btcr.cpus))
         parser.add_argument("--worker",      metavar="ID#/TOTAL#",  help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
@@ -1499,6 +1523,7 @@ def main(argv):
 
 if __name__ == b"__main__":
 
+    register_autodetecting_wallets()
     mnemonic_sentence = main(sys.argv[1:])
 
     if mnemonic_sentence:
