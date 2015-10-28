@@ -67,7 +67,7 @@ Of course, you need to replace the wallet file name with yours, and the Bitcoin 
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-armory-privkey.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > YXI62B+/jb1Pthvjsrh+LlW5PS87FpfdBR3d5G1yWPY0cEUl3D+U2382qq0YkqoBDfnHDda/a3bOay/OKq9UWy/nra5SGyMAAEAAAgAAABiymPHbLR+L8tKm+wpnzDioxV+lMgAwB2SH0hpYvez8w5aWGQ==
     WARNING: an Armory private key, once decrypted, provides access to that key's Bitcoin
@@ -102,7 +102,7 @@ If you instead have a dump file of a Bitcoin Core wallet that was created by pyw
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-bitcoincore-mkey.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > lV/wGO5oAUM42KTfq5s3egX3Uhk6gc5gEf1R3TppgzWNW7NGZQF5t5U3Ik0qYs5/dprb+ifLDHuGNQIA+8oRWA==
     ...
@@ -130,7 +130,7 @@ Of course, you need to replace the wallet file name with yours. You should get a
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-blockchain-main-data.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > Yms6abF6aZYdu5sKpStKA4ihra6GEAeZTumFiIM0YQUkTjcQJwAAj8ekAQ==
     ...
@@ -152,7 +152,7 @@ You need to enter your wallet's main password when prompted so that the extract 
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-blockchain-second-hash.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > YnM6LeP7peG853HnQlaGswlwpwtqXKwa/1rLyeGzvKNl9HpyjnaeTCZDAaC4LbJcVkxaECcAACwXY6w=
     ...
@@ -189,7 +189,7 @@ Or like this, depending on the wallet details:
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-electrum-halfseed.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT
     ...
@@ -227,7 +227,7 @@ You should get a message which looks like this:
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-msigna-partmpk.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=
     ...
@@ -265,7 +265,7 @@ Of course, you need to replace the private key file name with yours. You should 
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file or the private key file, only the output from *extract-multibit-privkey.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > bWI6sTaHldcBFFj9zlgNpO1szOwy8elpl20OWgj+lA==
     ...
@@ -293,7 +293,7 @@ You should get a message which looks like this as a result:
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-multibit-hd-data.py*. To continue the example:
 
     cd \Users\Chris\Downloads\btcrecover-master
-    C:\python27\python btcrecover.py --extract-data --tokenlist tokens.txt
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
     Please enter the data from the extract script
     > bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=
     ...
