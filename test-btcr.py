@@ -52,8 +52,11 @@ import warnings
 warnings.simplefilter("error")
 # except this from Intel's OpenCL compiler:
 warnings.filterwarnings("ignore", r"Non-empty compiler output encountered\. Set the environment variable PYOPENCL_COMPILER_OUTPUT=1 to see more\.", UserWarning)
-# and except this from Armory:
+# except these from Armory:
 warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
+warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
+# except this from Google protobuf
+warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing __init__.py", ImportWarning)
 
 import unittest, os, cPickle, tempfile, shutil, filecmp, sys
 
