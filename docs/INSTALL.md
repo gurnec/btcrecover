@@ -9,8 +9,8 @@ Locate your wallet type in the list below, and follow the instructions in the se
 Note that for Armory wallets, you must have Armory 0.92.x or later installed on the computer where you run *btcrecover*.
 
  * Armory 0.91.x or earlier - unsupported, please upgrade Armory first
- * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit**
- * Armory 0.93.x on Windows - [Python 2.7](#python-27) **64-bit** (X86-64)
+ * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit** (x86)
+ * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
  * Armory 0.92+ on Linux or OS X - no additional requirements
  * Bitcoin Core (Bitcoin-Qt) - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
@@ -36,7 +36,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
 
 ***After*** installing the requirements for your wallet from above, if you'd like you may *optionally* install pywin32 which allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU, and slightly improves autosave safety.
 
-Download and run the latest version of the pywin32 installer for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed. Currently this is `pywin32-219.win32-py2.7.exe` for the 32-bit version or `pywin32-219.win-amd64-py2.7.exe` for the 64-bit version available in the `Build 219` folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
+Download and run the latest version of the pywin32 installer for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed. Currently this is `pywin32-220.win32-py2.7.exe` for the 32-bit version or `pywin32-220.win-amd64-py2.7.exe` for the 64-bit version available in the `Build 220` folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
 
 ----------
 
@@ -79,7 +79,7 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
  1. Download and install the “Command Line Tools for Xcode” for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
 
-2.  Open a Terminal window, and install Python pip and then PyCrypto:
+ 2. Open a Terminal window, and install Python pip and then PyCrypto:
 
         curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install pycrypto
@@ -93,18 +93,18 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
         C:\Python27\Scripts\pip install pylibscrypt
 
- 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.2-msvc.zip>
+ 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.10-msvc.zip>
 
  3. Find the correct `libsodium.dll` file from the extracted files, it will be located at one of these two paths:
 
-        Win32\Release\v120\dynamic\libsodium.dll
-        x64\Release\v120\dynamic\libsodium.dll
+        Win32\Release\v140\dynamic\libsodium.dll
+        x64\Release\v140\dynamic\libsodium.dll
 
     Choose either the 32-bit version (the first one above) or the 64-bit version (the second) to match the version of Python that you've installed. Note that the 64-bit version is recommended if it's supported by your computer (it is approximately 35% faster than the 32-bit version).
 
- 4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory, and rename it to `sodium.dll`
+ 4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory.
 
- 5. Download and install the “Visual C++ Redistributable Packages for Visual Studio 2013” from Microsoft here: <http://www.microsoft.com/en-us/download/details.aspx?id=40784>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
+ 5. Download and install the “Microsoft Visual C++ 2015 Redistributable Update 3” from Microsoft here: <https://www.microsoft.com/en-us/download/details.aspx?id=52982>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
 
 ##### Linux #####
 
@@ -117,6 +117,7 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
         sudo apt-get install libscrypt0
         sudo apt-get install python-scrypt
         sudo pip install scrypt
+        sudo apt-get install libsodium18
         sudo apt-get install libsodium13
 
 ##### OS X #####
@@ -125,7 +126,7 @@ On OS X, installing scrypt is unfortunately a bit more difficult:
 
  1. Download and install the “Command Line Tools for Xcode” for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
 
-2.  Open a Terminal window, and install Python pip and then scrypt:
+ 2. Open a Terminal window, and install Python pip and then scrypt:
 
         curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install pylibscrypt scrypt
@@ -137,29 +138,31 @@ On OS X, installing scrypt is unfortunately a bit more difficult:
 
 Open a command prompt window, and type this to install Google Protocol Buffers:
 
-    C:\Python27\Scripts\pip install pyprotobuf
+    C:\Python27\Scripts\pip install protobuf
 
 ##### Linux #####
 
 Open a terminal window, and type this to install Google Protocol Buffers:
 
-    sudo pip install pyprotobuf
+    sudo pip install protobuf
 
 ----------
 
 
 ### Windows GPU acceleration for Bitcoin Core, Armory, or Litecoin-Qt ###
 
-To enable the experimental GPU acceleration feature in Windows, download and install the **32-bit** version of [Python 2.7](#python-27) (and optionally [pywin32](#windows)) as detailed above (and *only* this version, no other version of Python can be installed except for the 32-bit version of Python 2.7).
+ 1. Download the latest version of PyOpenCL for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed, from here: <http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyopencl>
 
-For Armory, you must install a 0.92.x version of Armory; 0.93.x versions are not supported (however wallets created or used by a any version of Armory are compatible with *btcrecover*).
+    As of this writing, the 32-bit and 64-bit versions are named respectively:
 
-You will also need to download and run the installers for:
+        pyopencl-2015.1-cp27-none-win32.whl
+        pyopencl-2015.1-cp27-none-win_amd64.whl
 
- * The latest binary version of PyOpenCL for Python 2 & Python(x,y) available here: <https://code.google.com/p/pythonxy/wiki/AdditionalPlugins>. (The download link on that page is a button to the right of “pyopencl” which has an arrow pointing downwards.)
+ 2. Open a command prompt window, and type this to install PyOpenCL and its dependencies:
 
- * The latest binary version of NumPy for Python 2.7. Currently this is `numpy-1.9.2-win32-superpack-python2.7.exe`, available in the `1.9.2` folder here: <http://sourceforge.net/projects/numpy/files/NumPy/>
+        cd %USERPROFILE%\Downloads
+        C:\Python27\Scripts\pip install pyopencl-2015.1+numpy16-cp27-none-win_amd64.whl
 
- * [PyCrypto](#pycrypto) is also recommended for Bitcoin Core or Litecoin-Qt wallets for a 2x speed improvement.
+    Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
-If you encounter the error `ImportError: DLL load failed` when running *btcrecover*, you will also need to copy the file named `boost_python-vc90-mt-1_54.dll` from the `C:\Python27\DLLs\` directory into the `C:\Python27\Lib\site-packages\pyopencl\` directory (this is apparently a bug in the PyOpenCL installer).
+[PyCrypto](#pycrypto) is also recommended for Bitcoin Core or Litecoin-Qt wallets for a 2x speed improvement.
