@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA (CoinVault), Hive for OS X, Blockchain.info (v1 and v2 wallet formats, both main and second passwords), Bither, and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA (CoinVault), Hive for OS X, Blockchain.info (v1-v3 wallet formats, both main and second passwords), Bither, and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -402,6 +402,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
      * BIP-39 passphrases (e.g. TREZOR) - Please see the [BIP-39 Passphrases](#bip-39-passphrases) section below.
      * mSIGNA - `%homedrive%%homepath%` (it's a `.vault` file)
      * Bither - `%appdata%\Bither` (it's named `address.db`)
+     * Blockchain.info - it's usually named `wallet.aes.json`; if you don't have a backup of your wallet file, you can download one by running the `download-blockchain-wallet.py` tool in the `extract-scripts` directory if you know your wallet ID (and 2FA if enabled)
      * Litecoin-Qt - `%appdata%\Litecoin` (it's named `wallet.dat`)
  3. If you have a `btcrecover-tokens-auto.txt` file, you're almost done. Copy it into the directory which contains `btcrecover.py`, and then simply double-click the `btcrecover.py` file, and *btcrecover* should begin testing passwords. (You may need to rename your wallet file if it doesn't match the file name listed insided the `btcrecover-tokens-auto.txt` file.) If you don't have a `btcrecover-tokens-auto.txt` file, continue reading below.
  4. Copy your `tokens.txt` file, or your passwordlist file if you're using one, into the directory which contains `btcrecover.py`.

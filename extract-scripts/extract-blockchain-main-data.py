@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # extract-blockchain-main-data.py -- Blockchain data extractor
-# Copyright (C) 2014, 2015 Christopher Gurnee
+# Copyright (C) 2014-2016 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -40,13 +40,18 @@ data = open(wallet_filename, "rb").read(1048576)  # up to 1M, typical size is a 
 # The number of pbkdf2 iterations, or 0 for v0.0 wallet files which don't specify this
 iter_count = 0
 
-# Try to load a v2.0 wallet file first
+# Try to load a v2.0/3.0 wallet file first
 if data[0] == "{":
     try:
         data = json.loads(data)
-    except ValueError: pass
+    except ValueError: pass  # it might be a v0.0 wallet with no outer JSON encapsulation
     else:
-        if data["version"] != 2:
+        try:
+            version = data[u"version"]
+        except KeyError:     # if there's no version attribute, it might be double-JSON encapsulated; try again
+            data    = json.loads(data[u"payload"])
+            version = data[u"version"]
+        if version > 3:
             raise NotImplementedError("Unsupported Blockchain wallet version " + str(data["version"]))
         iter_count = data["pbkdf2_iterations"]
         if not isinstance(iter_count, int) or iter_count < 1:

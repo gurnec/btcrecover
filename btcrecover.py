@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # btcrecover.py -- Bitcoin wallet password recovery tool
-# Copyright (C) 2014, 2015 Christopher Gurnee
+# Copyright (C) 2014-2016 Christopher Gurnee
 #
 # This program is free software: you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.0-Unicode"
+#__version__          =  "0.14.1-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.0"
+__version__          =  "0.14.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1567,13 +1567,18 @@ class WalletBlockchain(object):
     def _parse_encrypted_blockchain_wallet(data):
         iter_count = 0
 
-        # Try to load a v2.0 wallet file (which contains an iter_count)
+        # Try to load a v2.0/3.0 wallet file (which contains an iter_count)
         if data[0] == "{":
             try:
                 data = json.loads(data)
-            except ValueError: pass
+            except ValueError: pass  # it might be a v0.0 wallet with no outer JSON encapsulation
             else:
-                if data[u"version"] != 2:
+                try:
+                    version = data[u"version"]
+                except KeyError:     # if there's no version attribute, it might be double-JSON encapsulated; try again
+                    data    = json.loads(data[u"payload"])
+                    version = data[u"version"]
+                if version > 3:
                     raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
                 iter_count = data[u"pbkdf2_iterations"]
                 if not isinstance(iter_count, int) or iter_count < 1:
@@ -1675,7 +1680,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
             data, iter_count = cls._parse_encrypted_blockchain_wallet(data)
         except KeyError as e:
             # This is the one error to expect and ignore which occurs when the wallet isn't encrypted
-            if e.args[0] == "version": pass
+            if e.args[0] == "payload": pass
             else: raise
         except StandardError as e:
             error_exit(tstr(e))
