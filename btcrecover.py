@@ -2342,60 +2342,65 @@ def positive_ints_list(argval):
 try:                  cpus = multiprocessing.cpu_count()
 except StandardError: cpus = 1
 
-# Build the list of command-line options common to both tokenlist and passwordlist files
 parser_common = argparse.ArgumentParser(add_help=False)
 prog          = tstr(parser_common.prog)
-parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --data-extract, or --listpass is required)")
-parser_common.add_argument("--typos",       type=int, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
-parser_common.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
-typo_types_group = parser_common.add_argument_group("typo types")
-typo_types_group.add_argument("--typos-capslock", action="store_true", help="try the password with caps lock turned on")
-typo_types_group.add_argument("--typos-swap",     action="store_true", help="swap two adjacent characters")
-for typo_name, typo_args in simple_typo_args.items():
-    typo_types_group.add_argument("--typos-"+typo_name, **typo_args)
-typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="insert a string or wildcard")
-for typo_name in itertools.chain(("swap",), simple_typo_args.keys(), ("insert",)):
-    typo_types_group.add_argument("--max-typos-"+typo_name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+typo_name+" typos")
-typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="#", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: %(default)s)")
-parser_common.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
-parser_common.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
-parser_common.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
-parser_common.add_argument("--delimiter",   metavar="STRING", help="the delimiter between tokens in the tokenlist or columns in the typos-map (default: whitespace)")
-parser_common.add_argument("--skip",        type=int, default=0,    metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
-parser_common.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, %(default)s)")
-parser_common.add_argument("--worker",      metavar="ID#/TOTAL#",   help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
-parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: %(default)s hours, i.e. 1 week)")
-parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
-parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
-parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
-parser_common.add_argument("--android-pin", action="store_true", help="search for the spending pin instead of the backup password in a Bitcoin Wallet for Android/BlackBerry")
-parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
-parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain whose password to search for in an mSIGNA vault")
-parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
-parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
-parser_common.add_argument("--privkey",     action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
-parser_common.add_argument("--exclude-passwordlist", metavar="FILE", nargs="?", const="-", help="never try passwords read (exactly one per line) from this file or from stdin")
-parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
-parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
-parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
-parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
-bip39_group = parser_common.add_argument_group("BIP-39 passwords")
-bip39_group.add_argument("--bip39",      action="store_true",   help="search for a BIP-39 password instead of from a wallet")
-bip39_group.add_argument("--mpk",        metavar="XPUB",        help="the master public key")
-bip39_group.add_argument("--addr",       metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
-bip39_group.add_argument("--addr-limit", metavar="COUNT",       help="if using an address, the gap limit")
-bip39_group.add_argument("--language",   metavar="LANG-CODE",   help="the wordlist language to use (see wordlists/README.md, default: auto)")
-bip39_group.add_argument("--bip32-path", metavar="PATH",        help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
-bip39_group.add_argument("--mnemonic-prompt", action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
-gpu_group = parser_common.add_argument_group("GPU acceleration")
-gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
-gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
-gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
-gpu_group.add_argument("--mem-factor", type=int,                default=1,      metavar="FACTOR", help="enable memory-saving space-time tradeoff for Armory")
-gpu_group.add_argument("--calc-memory",action="store_true",     help="list the memory requirements for an Armory wallet")
-gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
-gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
-gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: %(default)s)")
+parser_common_initialized = False
+def init_parser_common():
+    global parser_common, parser_common_initialized, typo_types_group, bip39_group
+    if not parser_common_initialized:
+        # Build the list of command-line options common to both tokenlist and passwordlist files
+        parser_common.add_argument("--wallet",      metavar="FILE", help="the wallet file (this, --data-extract, or --listpass is required)")
+        parser_common.add_argument("--typos",       type=int, metavar="COUNT", help="simulate up to this many typos; you must choose one or more typo types from the list below")
+        parser_common.add_argument("--min-typos",   type=int, default=0, metavar="COUNT", help="enforce a min # of typos included per guess")
+        typo_types_group = parser_common.add_argument_group("typo types")
+        typo_types_group.add_argument("--typos-capslock", action="store_true", help="try the password with caps lock turned on")
+        typo_types_group.add_argument("--typos-swap",     action="store_true", help="swap two adjacent characters")
+        for typo_name, typo_args in simple_typo_args.items():
+            typo_types_group.add_argument("--typos-"+typo_name, **typo_args)
+        typo_types_group.add_argument("--typos-insert",   metavar="WILDCARD-STRING", help="insert a string or wildcard")
+        for typo_name in itertools.chain(("swap",), simple_typo_args.keys(), ("insert",)):
+            typo_types_group.add_argument("--max-typos-"+typo_name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+typo_name+" typos")
+        typo_types_group.add_argument("--max-adjacent-inserts", type=int, default=1, metavar="#", help="max # of --typos-insert strings that can be inserted between a single pair of characters (default: %(default)s)")
+        parser_common.add_argument("--custom-wild", metavar="STRING", help="a custom set of characters for the %%c wildcard")
+        parser_common.add_argument("--regex-only",  metavar="STRING", help="only try passwords which match the given regular expr")
+        parser_common.add_argument("--regex-never", metavar="STRING", help="never try passwords which match the given regular expr")
+        parser_common.add_argument("--delimiter",   metavar="STRING", help="the delimiter between tokens in the tokenlist or columns in the typos-map (default: whitespace)")
+        parser_common.add_argument("--skip",        type=int, default=0,    metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
+        parser_common.add_argument("--threads",     type=int, default=cpus, metavar="COUNT", help="number of worker threads (default: number of CPUs, %(default)s)")
+        parser_common.add_argument("--worker",      metavar="ID#/TOTAL#",   help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")
+        parser_common.add_argument("--max-eta",     type=int, default=168,  metavar="HOURS", help="max estimated runtime before refusing to even start (default: %(default)s hours, i.e. 1 week)")
+        parser_common.add_argument("--no-eta",      action="store_true",    help="disable calculating the estimated time to completion")
+        parser_common.add_argument("--no-dupchecks", "-d", action="count", default=0, help="disable duplicate guess checking to save memory; specify up to four times for additional effect")
+        parser_common.add_argument("--no-progress", action="store_true",   default=not sys.stdout.isatty(), help="disable the progress bar")
+        parser_common.add_argument("--android-pin", action="store_true", help="search for the spending pin instead of the backup password in a Bitcoin Wallet for Android/BlackBerry")
+        parser_common.add_argument("--blockchain-secondpass", action="store_true", help="search for the second password instead of the main password in a Blockchain wallet")
+        parser_common.add_argument("--msigna-keychain", metavar="NAME",  help="keychain whose password to search for in an mSIGNA vault")
+        parser_common.add_argument("--data-extract",action="store_true", help="prompt for data extracted by one of the extract-* scripts instead of using a wallet file")
+        parser_common.add_argument("--mkey",        action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
+        parser_common.add_argument("--privkey",     action="store_true", help=argparse.SUPPRESS)  # deprecated, use --data-extract instead
+        parser_common.add_argument("--exclude-passwordlist", metavar="FILE", nargs="?", const="-", help="never try passwords read (exactly one per line) from this file or from stdin")
+        parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
+        parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
+        parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
+        parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
+        bip39_group = parser_common.add_argument_group("BIP-39 passwords")
+        bip39_group.add_argument("--bip39",      action="store_true",   help="search for a BIP-39 password instead of from a wallet")
+        bip39_group.add_argument("--mpk",        metavar="XPUB",        help="the master public key")
+        bip39_group.add_argument("--addr",       metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
+        bip39_group.add_argument("--addr-limit", metavar="COUNT",       help="if using an address, the gap limit")
+        bip39_group.add_argument("--language",   metavar="LANG-CODE",   help="the wordlist language to use (see wordlists/README.md, default: auto)")
+        bip39_group.add_argument("--bip32-path", metavar="PATH",        help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
+        bip39_group.add_argument("--mnemonic-prompt", action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
+        gpu_group = parser_common.add_argument_group("GPU acceleration")
+        gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
+        gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
+        gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
+        gpu_group.add_argument("--mem-factor", type=int,                default=1,      metavar="FACTOR", help="enable memory-saving space-time tradeoff for Armory")
+        gpu_group.add_argument("--calc-memory",action="store_true",     help="list the memory requirements for an Armory wallet")
+        gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
+        gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
+        gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: %(default)s)")
+        parser_common_initialized = True
 
 
 # A decorator that can be used to register a custom simple typo generator function
@@ -2403,11 +2408,12 @@ gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", 
 def register_simple_typo(name, help = None):
     assert name.isalpha() and name.islower(), "simple typo name must have only lowercase letters"
     assert name not in simple_typos,          "simple typo must not already exist"
+    init_parser_common()  # ensure typo_types_group has been initialized
     arg_params = dict(action="store_true")
     if help:
         args["help"] = help
     typo_types_group.add_argument("--typos-"+name, **arg_params)
-    typo_types_group.add_argument("--max-typos-"+name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+typo_name+" typos")
+    typo_types_group.add_argument("--max-typos-"+name, type=int, default=sys.maxint, metavar="#", help="limit the number of --typos-"+name+" typos")
     def decorator(simple_typo_generator):
         simple_typos[name] = simple_typo_generator
         return simple_typo_generator  # the decorator returns it unmodified, it just gets registered
@@ -2426,7 +2432,8 @@ def register_simple_typo(name, help = None):
 #                  (without typos) passwords to be checked; unless --no-eta is specified,
 #                  it must be possible to iterate over all the passwords more than once
 #                  (instead of specifying a --tokenlist or --passwordlist)
-# perf_iterator  - a generator function which produces an infinite stream of unique passwords
+# perf_iterator  - a generator function which produces an infinite stream of unique
+#                  passwords which is used iff a --performance test is specified
 #                  (if omitted, the default perf iterator which generates strings is used)
 # inserted_items - instead of specifying "--typos-insert items-to-insert", this can be
 #                  an iterable of the items to insert (useful if the wildcard language
@@ -2439,6 +2446,7 @@ def register_simple_typo(name, help = None):
 def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                     perf_iterator = None, inserted_items = None, check_only = None, **kwds):
     # Do some basic globals initialization; the rest are all done below
+    init_parser_common()
     init_wildcards()
     init_password_generator()
 
@@ -2471,7 +2479,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if args.pause: enable_pause()
 
     # If a simple passwordlist or base_iterator is being provided, re-parse the command line with fewer options
-    # (--help is handled by directly argparse in this case)
+    # (--help is handled directly by argparse in this case)
     if args.passwordlist or base_iterator:
         parser = argparse.ArgumentParser(add_help=True)
         parser.add_argument("--passwordlist", required=not base_iterator, nargs="?", const="-", metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
