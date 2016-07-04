@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # seedrecover.py -- Bitcoin mnemonic sentence recovery tool
-# Copyright (C) 2014, 2015 Christopher Gurnee
+# Copyright (C) 2014-2016 Christopher Gurnee
 #
 # This program is free software: you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -31,11 +31,16 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.4.3"
+__version__ = "0.4.4"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
        unicodedata, collections, struct, glob, atexit, re
+
+# Some py2exe .dlls, when registered as Windows shell extensions (e.g. SpiderOak), can interfere
+# with Python apps which spawn a shell (e.g. a file selection dialog). The code below blocks
+# a required module from loading and prevents any such py2exe .dlls from causing much trouble.
+sys.modules["win32api"] = None
 
 btcr.add_armory_library_path()
 from CppBlockUtils import CryptoECDSA, SecureBinaryData
