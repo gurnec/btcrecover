@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.2-Unicode"
+#__version__          =  "0.14.3-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.2"
+__version__          =  "0.14.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -662,20 +662,72 @@ class WalletBitcoinCore(object):
 
     # Load a Bitcoin Core BDB wallet file given the filename and extract part of the first encrypted master key
     @classmethod
-    def load_from_filename(cls, wallet_filename):
-        wallet_filename = os.path.abspath(wallet_filename)
-        import bsddb.db
-        db_env = bsddb.db.DBEnv()
-        try:
-            db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
-            db = bsddb.db.DB(db_env)
-            db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
-        except UnicodeEncodeError:
-            error_exit("the entire path and filename of Bitcoin Core wallets should be entirely ASCII")
-        mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
-        db.close()
-        db_env.close()
+    def load_from_filename(cls, wallet_filename, force_purepython = False):
+        if not force_purepython:
+            try:
+                import bsddb.db
+            except ImportError:
+                force_purepython = True
+
+        if not force_purepython:
+            db_env = bsddb.db.DBEnv()
+            wallet_filename = os.path.abspath(wallet_filename)
+            try:
+                db_env.open(os.path.dirname(wallet_filename), bsddb.db.DB_CREATE | bsddb.db.DB_INIT_MPOOL)
+                db = bsddb.db.DB(db_env)
+                db.open(wallet_filename, b"main", bsddb.db.DB_BTREE, bsddb.db.DB_RDONLY)
+            except UnicodeEncodeError:
+                error_exit("the entire path and filename of Bitcoin Core wallets must be entirely ASCII")
+            mkey = db.get(b"\x04mkey\x01\x00\x00\x00")
+            db.close()
+            db_env.close()
+
+        else:
+            def align_32bits(i):  # if not already at one, return the next 32-bit boundry
+                m = i % 4
+                return i if m == 0 else i + 4 - m
+
+            with open(wallet_filename, "rb") as wallet_file:
+                wallet_file.seek(12)
+                assert wallet_file.read(8) == b"\x62\x31\x05\x00\x09\x00\x00\x00", "is a Btree v9 file"
+                mkey = None
+
+                # Don't actually try walking the btree, just look through every btree leaf page
+                # for the value/key pair (yes they are in that order...) we're searching for
+                wallet_file.seek(20)
+                page_size        = struct.unpack(b"<I", wallet_file.read(4))[0]
+                wallet_file_size = os.path.getsize(wallet_filename)
+                for page_base in xrange(page_size, wallet_file_size, page_size):  # skip the header page
+                    wallet_file.seek(page_base + 20)
+                    (item_count, first_item_pos, btree_level, page_type) = struct.unpack(b"< H H B B", wallet_file.read(6))
+                    if page_type != 5 or btree_level != 1:
+                        continue  # skip non-btree and non-leaf pages
+                    pos = align_32bits(page_base + first_item_pos)  # position of the first item
+                    wallet_file.seek(pos)
+                    for i in xrange(item_count):    # for each item in the current page
+                        (item_len, item_type) = struct.unpack(b"< H B", wallet_file.read(3))
+                        if item_type & ~0x80 == 1:  # if it's a variable-length key or value
+                            if item_type == 1:      # if it's not marked as deleted
+                                if i % 2 == 0:      # if it's a value, save it's position
+                                    value_pos = pos + 3
+                                    value_len = item_len
+                                # else it's a key, check if it's the key we're looking for
+                                elif item_len == 9 and wallet_file.read(item_len) == b"\x04mkey\x01\x00\x00\x00":
+                                    wallet_file.seek(value_pos)
+                                    mkey = wallet_file.read(value_len)  # found it!
+                                    break
+                            pos = align_32bits(pos + 3 + item_len)  # calc the position of the next item
+                        else:
+                            pos += 12  # the two other item types have a fixed length
+                        if i + 1 < item_count:  # don't need to seek if this is the last item in the page
+                            assert pos < page_base + page_size, "next item is located in current page"
+                            wallet_file.seek(pos)
+                    else: continue  # if not found on this page, continue to next page
+                    break           # if we broke out of inner loop, break out of this one too
+
         if not mkey:
+            if force_purepython:
+                print(prog+": warning: bsddb (Berkeley DB) module not found; try installing it to resolve key-not-found errors (see INSTALL.md)", file=sys.stderr)
             raise ValueError("Encrypted master key #1 not found in the Bitcoin Core wallet file.\n"+
                              "(is this wallet encrypted? is this a standard Bitcoin Core wallet?)")
         # This is a little fragile because it assumes the encrypted key and salt sizes are

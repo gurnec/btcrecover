@@ -841,7 +841,8 @@ class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
     # that the library doesn't make any changes to the wallet file
-    def wallet_tester(self, wallet_basename, force_purepython = False, force_kdf_purepython = False,
+    def wallet_tester(self, wallet_basename,
+                      force_purepython = False, force_kdf_purepython = False, force_bsddb_purepython = False,
                       correct_pass = None, blockchain_mainpass = None, android_backuppass = None):
         assert os.path.basename(wallet_basename) == wallet_basename
         wallet_filename = os.path.join(wallet_dir, wallet_basename)
@@ -856,6 +857,9 @@ class Test07WalletDecryption(unittest.TestCase):
         elif blockchain_mainpass:
             wallet = btcrecover.WalletBlockchainSecondpass.load_from_filename(
                 temp_wallet_filename, blockchain_mainpass, force_purepython)
+        elif force_bsddb_purepython:
+            wallet = btcrecover.WalletBitcoinCore.load_from_filename(
+                temp_wallet_filename, force_bsddb_purepython)
         else:
             wallet = btcrecover.load_wallet(temp_wallet_filename)
 
@@ -969,6 +973,9 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_bitcoincore_pp(self):
         self.wallet_tester("bitcoincore-wallet.dat", force_purepython=True)
+
+    def test_bitcoincore_no_bsddb(self):
+        self.wallet_tester("bitcoincore-wallet.dat",  force_bsddb_purepython=True)
 
     def test_electrum_pp(self):
         self.wallet_tester("electrum-wallet", force_purepython=True)

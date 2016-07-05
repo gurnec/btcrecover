@@ -12,7 +12,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
  * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit** (x86)
  * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
  * Armory 0.92+ on Linux or OS X - no additional requirements
- * Bitcoin Core (Bitcoin-Qt) - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * Bitcoin Classic/Core (Bitcoin-Qt) - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
@@ -52,6 +52,8 @@ Visit the Python download page here: <https://www.python.org/downloads/windows/>
 Most distributions include Python 2.7 pre-installed.
 
 Note that for Blockchain.info wallets, Python version 2.7.8 or greater is recommended, and will run approximately 5 times faster than earlier versions. You can determine which version of Python you have installed by running `python --version` in a terminal. If your version is earlier than 2.7.8, you may want to check if your distribution has a “backports” repository with a more up-to-date version.
+
+Some OS X versions (and some Linux distributions) do not include the bsddb (Berkeley DB) Python module. This is usually not a problem, however if you encounter a `master key #1 not found` error, it might be resolved by installing the bsddb module (or a version of Python which includes it). For notes on how to do this in OS X, please see [this issue on GitHub](https://github.com/gurnec/btcrecover/issues/21).
 
 
 ### PyCrypto ###
