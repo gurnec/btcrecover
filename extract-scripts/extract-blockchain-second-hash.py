@@ -90,23 +90,36 @@ data = open(wallet_filename, "rb").read(1048576)  # up to 1M, typical size is a 
 iter_count = 0
 
 try:
-    # This will parse either an encrypted v2.0 wallet, or an unencrypted wallet
-    if data[0] == "{":
+    class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
+    try:
+
+        # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
         try:
             data = json.loads(data)
-        except ValueError: pass  # it might be a v0.0 wallet with no outer JSON encapsulation
-        else:
+        except ValueError:
+            raise MayBeBlockchainV0();
+
+        # Config files have no version attribute; they encapsulate the wallet file plus some detrius
+        if u"version" not in data:
             try:
-                version = data[u"version"]
-            except KeyError:     # if there's no version attribute, it might be double-JSON encapsulated; try again
-                data    = json.loads(data[u"payload"])
-                version = data[u"version"]
-            if version > 3:
-                raise NotImplementedError("Unsupported Blockchain wallet version " + str(data["version"]))
-            iter_count = data["pbkdf2_iterations"]
-            if not isinstance(iter_count, int) or iter_count < 1:
-                raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
-            data = data["payload"]
+                data = data[u"payload"]  # extract the wallet file from the config
+            except KeyError:
+                raise ValueError("Can't find either version nor payload attributes in Blockchain file")
+            try:
+                data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
+            except ValueError:
+                raise MayBeBlockchainV0();
+
+        # Extract what's needed from a v2.0/3.0 wallet file
+        if data[u"version"] > 3:
+            raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+        iter_count = data[u"pbkdf2_iterations"]
+        if not isinstance(iter_count, int) or iter_count < 1:
+            raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+        data = data[u"payload"]
+
+    except MayBeBlockchainV0:
+        pass
 
     # At this point we've successfully loaded an encrypted wallet (either v0.0 o v2.0).
     # Either the encrypted data was extracted from the "payload" field above, or this
@@ -158,10 +171,12 @@ try:
     # Parse the now decrypted wallet (if the wallet wasn't encrypted, it was already parsed above)
     data = json.loads(data)
 
-except KeyError as e:
+except ValueError as e:
     # This is the one error to expect and ignore which occurs when the wallet isn't encrypted
-    if e.message == "payload": pass
-    else: raise
+    if e.args[0] == "Can't find either version nor payload attributes in Blockchain file":
+        pass
+    else:
+        raise
 
 
 if not data.get("double_encryption"):

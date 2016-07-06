@@ -40,23 +40,36 @@ data = open(wallet_filename, "rb").read(1048576)  # up to 1M, typical size is a 
 # The number of pbkdf2 iterations, or 0 for v0.0 wallet files which don't specify this
 iter_count = 0
 
-# Try to load a v2.0/3.0 wallet file first
-if data[0] == "{":
+class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
+try:
+
+    # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
     try:
         data = json.loads(data)
-    except ValueError: pass  # it might be a v0.0 wallet with no outer JSON encapsulation
-    else:
+    except ValueError:
+        raise MayBeBlockchainV0();
+
+    # Config files have no version attribute; they encapsulate the wallet file plus some detrius
+    if u"version" not in data:
         try:
-            version = data[u"version"]
-        except KeyError:     # if there's no version attribute, it might be double-JSON encapsulated; try again
-            data    = json.loads(data[u"payload"])
-            version = data[u"version"]
-        if version > 3:
-            raise NotImplementedError("Unsupported Blockchain wallet version " + str(data["version"]))
-        iter_count = data["pbkdf2_iterations"]
-        if not isinstance(iter_count, int) or iter_count < 1:
-            raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
-        data = data["payload"]
+            data = data[u"payload"]  # extract the wallet file from the config
+        except KeyError:
+            raise ValueError("Can't find either version nor payload attributes in Blockchain file")
+        try:
+            data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
+        except ValueError:
+            raise MayBeBlockchainV0();
+
+    # Extract what's needed from a v2.0/3.0 wallet file
+    if data[u"version"] > 3:
+        raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+    iter_count = data[u"pbkdf2_iterations"]
+    if not isinstance(iter_count, int) or iter_count < 1:
+        raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+    data = data[u"payload"]
+
+except MayBeBlockchainV0:
+    pass
 
 # Either the encrypted data was extracted from the "payload" field above, or this is 
 # a v0.0 (a.k.a. v1) wallet file whose entire contents consist of the encrypted data

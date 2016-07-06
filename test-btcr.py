@@ -57,6 +57,8 @@ warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashli
 warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
 # except this from Google protobuf
 warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing __init__.py", ImportWarning)
+# except this from PyWin32
+warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
 
 import unittest, os, cPickle, tempfile, shutil, filecmp, sys
 

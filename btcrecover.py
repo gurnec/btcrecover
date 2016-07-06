@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.3-Unicode"
+#__version__          =  "0.14.4-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.3"
+__version__          =  "0.14.4"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -199,11 +199,14 @@ def load_wallet(wallet_filename):
 
     # If the wallet type couldn't be definitively determined, try each
     # questionable type (which must raise ValueError on a load failure)
+    uncertain_errors = []
     for wallet_type in uncertain_wallet_types:
-        try:   return wallet_type.load_from_filename(wallet_filename)
-        except ValueError: pass
+        try:
+            return wallet_type.load_from_filename(wallet_filename)
+        except ValueError as e:
+            uncertain_errors.append(tstr(wallet_type.__name__) + ": " + tstr(e))
 
-    error_exit("unrecognized wallet format")
+    error_exit("unrecognized wallet format; heuristic parser(s) reported:\n   ", "\n    ".join(uncertain_errors))
 
 # Loads a wallet object into the loaded_wallet global from a filename
 def load_global_wallet(wallet_filename):
@@ -1613,29 +1616,42 @@ class WalletBlockchain(object):
         self._encrypted_block = data[16:32]  # the first 16-byte encrypted block
         return self
 
-    # Parse the contents of an encrypted blockchain wallet (either v0 or v2) returning two
+    # Parse the contents of an encrypted blockchain wallet (v0 - v3) or config file returning two
     # values in a tuple: (encrypted_data_blob, iter_count) where iter_count == 0 for v0 wallets
     @staticmethod
     def _parse_encrypted_blockchain_wallet(data):
         iter_count = 0
 
-        # Try to load a v2.0/3.0 wallet file (which contains an iter_count)
-        if data[0] == "{":
+        class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
+        try:
+
+            # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
             try:
                 data = json.loads(data)
-            except ValueError: pass  # it might be a v0.0 wallet with no outer JSON encapsulation
-            else:
+            except ValueError:
+                raise MayBeBlockchainV0();
+
+            # Config files have no version attribute; they encapsulate the wallet file plus some detrius
+            if u"version" not in data:
                 try:
-                    version = data[u"version"]
-                except KeyError:     # if there's no version attribute, it might be double-JSON encapsulated; try again
-                    data    = json.loads(data[u"payload"])
-                    version = data[u"version"]
-                if version > 3:
-                    raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
-                iter_count = data[u"pbkdf2_iterations"]
-                if not isinstance(iter_count, int) or iter_count < 1:
-                    raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
-                data = data[u"payload"]
+                    data = data[u"payload"]  # extract the wallet file from the config
+                except KeyError:
+                    raise ValueError("Can't find either version nor payload attributes in Blockchain file")
+                try:
+                    data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
+                except ValueError:
+                    raise MayBeBlockchainV0();
+
+            # Extract what's needed from a v2.0/3.0 wallet file
+            if data[u"version"] > 3:
+                raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+            iter_count = data[u"pbkdf2_iterations"]
+            if not isinstance(iter_count, int) or iter_count < 1:
+                raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+            data = data[u"payload"]
+
+        except MayBeBlockchainV0:
+            pass
 
         # Either the encrypted data was extracted from the "payload" field above, or
         # this is a v0.0 wallet file whose entire contents consist of the encrypted data
@@ -1650,7 +1666,7 @@ class WalletBlockchain(object):
 
         # If this is (possibly) a v0.0 (a.k.a. v1) wallet file, check that the encrypted data
         # looks random, otherwise this could be some other type of base64-encoded file such
-        # as a MultiBit key file (it should be safe to skip this test for v2.0 wallets)
+        # as a MultiBit key file (it should be safe to skip this test for v2.0+ wallets)
         if not iter_count:  # if this is a v0.0 wallet
             # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
             # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
@@ -1730,10 +1746,12 @@ class WalletBlockchainSecondpass(WalletBlockchain):
         try:
             # Assuming the wallet is encrypted, get the encrypted data
             data, iter_count = cls._parse_encrypted_blockchain_wallet(data)
-        except KeyError as e:
+        except ValueError as e:
             # This is the one error to expect and ignore which occurs when the wallet isn't encrypted
-            if e.args[0] == "payload": pass
-            else: raise
+            if e.args[0] == "Can't find either version nor payload attributes in Blockchain file":
+                pass
+            else:
+                raise
         except StandardError as e:
             error_exit(tstr(e))
         else:
