@@ -31,16 +31,11 @@
 from __future__ import print_function, absolute_import, division, \
                        generators, nested_scopes, with_statement
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 import btcrecover as btcr
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
        unicodedata, collections, struct, glob, atexit, re
-
-# Some py2exe .dlls, when registered as Windows shell extensions (e.g. SpiderOak), can interfere
-# with Python apps which spawn a shell (e.g. a file selection dialog). The code below blocks
-# a required module from loading and prevents any such py2exe .dlls from causing much trouble.
-sys.modules["win32api"] = None
 
 btcr.add_armory_library_path()
 from CppBlockUtils import CryptoECDSA, SecureBinaryData
@@ -1076,6 +1071,14 @@ tk_root = None
 def init_gui():
     global tk_root, tk, tkFileDialog, tkSimpleDialog, tkMessageBox
     if not tk_root:
+
+        if sys.platform == "win32":
+            # Some py2exe .dll's, when registered as Windows shell extensions (e.g. SpiderOak), can interfere
+            # with Python scripts which spawn a shell (e.g. a file selection dialog). The code below blocks
+            # required modules from loading and prevents any such py2exe .dlls from causing too much trouble.
+            sys.modules["win32api"] = None
+            sys.modules["win32com"] = None
+
         import Tkinter as tk
         import tkFileDialog, tkSimpleDialog, tkMessageBox
         tk_root = tk.Tk(className="seedrecover.py")  # initialize library
@@ -1476,6 +1479,16 @@ def main(argv):
         raise
     except ValueError as e:
         sys.exit(e)
+
+    # Now that most of the GUI code is done, undo any Windows shell extension workarounds from init_gui()
+    if sys.platform == "win32" and tk_root:
+        del sys.modules["win32api"]
+        del sys.modules["win32com"]
+        # Some py2exe-compiled .dll shell extensions set sys.frozen, which should only be set
+        # for "frozen" py2exe .exe's; this causes problems with multiprocessing, so delete it
+        try:
+            del sys.frozen
+        except AttributeError: pass
 
     if phase:
         phases = (phase,)
