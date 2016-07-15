@@ -2029,22 +2029,20 @@ def load_aes256_library(force_purepython = False):
     # common "slowaes" package (although it's still 30x slower than the PyCrypto)
     #
     import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode, aespython.ofb_mode
-    key_expander = aespython.key_expander.KeyExpander(256)
-    AESCipher    = aespython.aes_cipher.AESCipher
+    expandKey = aespython.key_expander.expandKey
+    AESCipher = aespython.aes_cipher.AESCipher
     def aes256_decrypt_factory(BlockMode):
-        # A bytearray iv is faster, but OFB mode requires a list of ints
-        convert_iv = (lambda iv: map(ord, iv)) if BlockMode==aespython.ofb_mode.OFBMode else bytearray
         def aes256_decrypt(key, iv, ciphertext):
-            block_cipher  = AESCipher( key_expander.expand(map(ord, key)) )
+            block_cipher  = AESCipher( expandKey(bytearray(key)) )
             stream_cipher = BlockMode(block_cipher, 16)
-            stream_cipher.set_iv(convert_iv(iv))
+            stream_cipher.set_iv(bytearray(iv))
             plaintext = bytearray()
             for i in xrange(0, len(ciphertext), 16):
-                plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )  # input must be a list
+                plaintext.extend( stream_cipher.decrypt_block(bytearray(ciphertext[i:i+16])) )  # input must be a list
             return str(plaintext)
         return aes256_decrypt
-    aes256_cbc_decrypt = aes256_decrypt_factory(aespython.cbc_mode.CBCMode)
-    aes256_ofb_decrypt = aes256_decrypt_factory(aespython.ofb_mode.OFBMode)
+    aes256_cbc_decrypt = aes256_decrypt_factory(aespython.CBCMode)
+    aes256_ofb_decrypt = aes256_decrypt_factory(aespython.OFBMode)
     return aespython  # just so the caller can check which version was loaded
 
 

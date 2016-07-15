@@ -56,16 +56,15 @@ def load_crypto_libraries():
     sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
     import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode, aespython.ofb_mode
     #
-    key_expander = aespython.key_expander.KeyExpander(256)
+    expandKey = aespython.key_expander.expandKey
     def aes256_decrypt_factory(BlockMode):
         def aes256_decrypt(key, iv, ciphertext):
-            # (All of the inputs to aespython are lists of ints instead of strings)
-            block_cipher  = aespython.aes_cipher.AESCipher( key_expander.expand(map(ord, key)) )
+            block_cipher  = aespython.aes_cipher.AESCipher( expandKey(bytearray(key)) )
             stream_cipher = BlockMode(block_cipher, 16)
-            stream_cipher.set_iv(map(ord, iv))
+            stream_cipher.set_iv(bytearray(iv))
             plaintext = bytearray()
             for i in xrange(0, len(ciphertext), 16):
-                plaintext.extend( stream_cipher.decrypt_block(map(ord, ciphertext[i:i+16])) )
+                plaintext.extend( stream_cipher.decrypt_block(bytearray(ciphertext[i:i+16])) )
             return str(plaintext)
         return aes256_decrypt
     aes256_cbc_decrypt = aes256_decrypt_factory(aespython.cbc_mode.CBCMode)

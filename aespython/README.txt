@@ -8,6 +8,3 @@ This software was later optimized by, and has been downloaded from:
 
     Demur Rumed
     https://github.com/serprex/pythonaes
-
-Finally, a small patch (aes_cipher.py.patch, included) to fix CBC mode
-was applied by the author of this package, btcrecover.
