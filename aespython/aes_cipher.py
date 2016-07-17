@@ -6,59 +6,38 @@ Performs single block cipher decipher operations on a 16 element list of integer
 These integers represent 8 bit bytes in a 128 bit block.
 The result of cipher or decipher operations is the transformed 16 element list of integers.
 
-Running this file as __main__ will result in a self-test of the algorithm.
-
 Algorithm per NIST FIPS-197 http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf
 
 Copyright (c) 2010, Adam Newman http://www.caller9.com/
 Licensed under the MIT license http://www.opensource.org/licenses/mit-license.php
 """
-__author__ = "Adam Newman"
+__all__ = "AESCipher",
 
-#Normally use relative import. In test mode use local import.
-try:from .aes_tables import sbox,i_sbox,galI,galNI
-except ValueError:from aes_tables import sbox,i_sbox,galI,galNI
-ups=",".join("s%x"%x for x in range(16))
-upr=ups.replace("s","r")
-mix=",".join(",".join(("g{0}[s%x]^g{1}[s%x]^g{2}[s%x]^g{3}[s%x]^r%x"%(i+(i[0]+(0,3,2,1)[j],))).format(j&3,j+1&3,j+2&3,j+3&3) for j in (0,3,2,1)) for i in ((0,1,2,3),(4,5,6,7),(8,9,10,11),(12,13,14,15))).replace("g2","g").replace("g3","g")
-i=mix.find("g[")
-while i!=-1:
-	mix=mix[:i]+mix[i+2:i+4]+mix[i+5:]
-	i=mix.find("g[",i)
-imix=",".join(",".join(("g{0}[s%x]^g{1}[s%x]^g{2}[s%x]^g{3}[s%x]"%i).format(j&3,j+1&3,j+2&3,j+3&3) for j in (0,3,2,1)) for i in ((0,1,2,3),(4,5,6,7),(8,9,10,11),(12,13,14,15)))
-csl=["s%x"%(x*5&15) for x in range(16)]
-csr=["s%x"%(x*-3&15) for x in range(16)]
-box=",".join("s[%s]"%i for i in csl)
-ibox=",".join("s[%s]^r%x"%i for i in zip(csr,range(16)))
-xor=",".join("s[%s]^r%x"%i for i in zip(csl,range(16)))
-xori=";".join("s%x^=r%x"%(i,i) for i in range(16))
-ciph="""def decipher_block(f,s):
- g0,g1,g2,g3=galNI;ek=f._expanded_key;S=s+[0]*(16-len(s));s=sbox;R=ek[:16];X
- for f in range(!16):R=ek[f:f+16];S=B;S=M
- R=ek[f+16:]
- return """.replace("S",ups).replace("R",upr).replace("X",xori)
+from .aes_tables import sbox,i_sbox,galI,galNI
 class AESCipher:
+    __slots__ = "_Nr", "_Nrr", "_f16","_l16"
     def __init__(self,expanded_key):
-        self._expanded_key=expanded_key
-        self._Nr=len(expanded_key)-16
-    exec(ciph.replace("g2,g3","").replace("dec","c").replace("!","16,f._Nr,").replace("B",box).replace("M",mix)+"["+xor+"]")
-    exec(ciph.replace("NI","I").replace(":16","f._Nr:").replace("f+16:",":16").replace("!","f._Nr-16,0,-").replace("sbox","i_sbox").replace("B",ibox).replace("M",imix)+"["+ibox+"]")
-import unittest
-class TestCipher(unittest.TestCase):
-    def test_cipher(self):
-        """Test AES cipher with all key lengths"""
-        import test_keys
-        import key_expander
-        test_data = test_keys.TestKeys()
-        for key_size in 128, 192, 256:
-            test_key_expander = key_expander.KeyExpander(key_size)
-            test_expanded_key = test_key_expander.expand(test_data.test_key[key_size])
-            test_cipher = AESCipher(test_expanded_key)
-            test_result_ciphertext = test_cipher.cipher_block(test_data.test_block_plaintext)
-            self.assertEquals(len([i for i, j in zip(test_result_ciphertext, test_data.test_block_ciphertext_validated[key_size]) if i == j]),
-                16,msg='Test %d bit cipher'%key_size)
-            test_result_plaintext = test_cipher.decipher_block(test_data.test_block_ciphertext_validated[key_size])
-            self.assertEquals(len([i for i, j in zip(test_result_plaintext, test_data.test_block_plaintext) if i == j]),
-                16,msg='Test %d bit decipher'%key_size)
-if __name__ == "__main__":
-    unittest.main()
+        self._Nr=[expanded_key[i:i+16] for i in range(16,len(expanded_key)-16,16)]
+        self._Nrr=self._Nr[::-1]
+        self._f16=expanded_key[:16]
+        self._l16=expanded_key[-16:]
+    def cipher_block(z,s0,s=sbox,g0=galNI[0],g1=galNI[1]):
+        s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,sa,sb,sc,sd,se,sf=s0
+        r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf=z._f16
+        s0^=r0;s1^=r1;s2^=r2;s3^=r3;s4^=r4;s5^=r5;s6^=r6;s7^=r7;s8^=r8;s9^=r9;sa^=ra;sb^=rb;sc^=rc;sd^=rd;se^=re;sf^=rf
+        for r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf in z._Nr:
+            s0=s[s0];s4=s[s4];s8=s[s8];sc=s[sc]
+            s1,s2,s3,s5,s6,s7,s9,sa,sb,sd,se,sf=s[s5],s[sa],s[sf],s[s9],s[se],s[s3],s[sd],s[s2],s[s7],s[s1],s[s6],s[sb]
+            s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,sa,sb,sc,sd,se,sf=g0[s0]^g1[s1]^s2^s3^r0,s0^g0[s1]^g1[s2]^s3^r1,s0^s1^g0[s2]^g1[s3]^r2,g1[s0]^s1^s2^g0[s3]^r3,g0[s4]^g1[s5]^s6^s7^r4,s4^g0[s5]^g1[s6]^s7^r5,s4^s5^g0[s6]^g1[s7]^r6,g1[s4]^s5^s6^g0[s7]^r7,g0[s8]^g1[s9]^sa^sb^r8,s8^g0[s9]^g1[sa]^sb^r9,s8^s9^g0[sa]^g1[sb]^ra,g1[s8]^s9^sa^g0[sb]^rb,g0[sc]^g1[sd]^se^sf^rc,sc^g0[sd]^g1[se]^sf^rd,sc^sd^g0[se]^g1[sf]^re,g1[sc]^sd^se^g0[sf]^rf
+        r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf=z._l16
+        return s[s0]^r0,s[s5]^r1,s[sa]^r2,s[sf]^r3,s[s4]^r4,s[s9]^r5,s[se]^r6,s[s3]^r7,s[s8]^r8,s[sd]^r9,s[s2]^ra,s[s7]^rb,s[sc]^rc,s[s1]^rd,s[s6]^re,s[sb]^rf
+    def decipher_block(z,s0,s=i_sbox,g0=galI[0],g1=galI[1],g2=galI[2],g3=galI[3]):
+        s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,sa,sb,sc,sd,se,sf=s0
+        r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf=z._l16
+        s0^=r0;s1^=r1;s2^=r2;s3^=r3;s4^=r4;s5^=r5;s6^=r6;s7^=r7;s8^=r8;s9^=r9;sa^=ra;sb^=rb;sc^=rc;sd^=rd;se^=re;sf^=rf
+        for r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf in z._Nrr:
+            s0=s[s0]^r0;s4=s[s4]^r4;s8=s[s8]^r8;sc=s[sc]^rc
+            s1,s2,s3,s5,s6,s7,s9,sa,sb,sd,se,sf=s[sd]^r1,s[sa]^r2,s[s7]^r3,s[s1]^r5,s[se]^r6,s[sb]^r7,s[s5]^r9,s[s2]^ra,s[sf]^rb,s[s9]^rd,s[s6]^re,s[s3]^rf
+            s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,sa,sb,sc,sd,se,sf=g0[s0]^g1[s1]^g2[s2]^g3[s3],g3[s0]^g0[s1]^g1[s2]^g2[s3],g2[s0]^g3[s1]^g0[s2]^g1[s3],g1[s0]^g2[s1]^g3[s2]^g0[s3],g0[s4]^g1[s5]^g2[s6]^g3[s7],g3[s4]^g0[s5]^g1[s6]^g2[s7],g2[s4]^g3[s5]^g0[s6]^g1[s7],g1[s4]^g2[s5]^g3[s6]^g0[s7],g0[s8]^g1[s9]^g2[sa]^g3[sb],g3[s8]^g0[s9]^g1[sa]^g2[sb],g2[s8]^g3[s9]^g0[sa]^g1[sb],g1[s8]^g2[s9]^g3[sa]^g0[sb],g0[sc]^g1[sd]^g2[se]^g3[sf],g3[sc]^g0[sd]^g1[se]^g2[sf],g2[sc]^g3[sd]^g0[se]^g1[sf],g1[sc]^g2[sd]^g3[se]^g0[sf]
+        r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf=z._f16
+        return s[s0]^r0,s[sd]^r1,s[sa]^r2,s[s7]^r3,s[s4]^r4,s[s1]^r5,s[se]^r6,s[sb]^r7,s[s8]^r8,s[s5]^r9,s[s2]^ra,s[sf]^rb,s[sc]^rc,s[s9]^rd,s[s6]^re,s[s3]^rf
