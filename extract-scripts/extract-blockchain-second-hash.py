@@ -54,7 +54,7 @@ def load_crypto_libraries():
     #
     # Add the parent directory of this script's location to the library search path
     sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
-    import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode, aespython.ofb_mode
+    import aespython
     #
     expandKey = aespython.key_expander.expandKey
     def aes256_decrypt_factory(BlockMode):

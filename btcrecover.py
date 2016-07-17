@@ -2028,7 +2028,7 @@ def load_aes256_library(force_purepython = False):
     # README.txt for more information. It measures over 30x faster than the more
     # common "slowaes" package (although it's still 30x slower than the PyCrypto)
     #
-    import aespython.key_expander, aespython.aes_cipher, aespython.cbc_mode, aespython.ofb_mode
+    import aespython
     expandKey = aespython.key_expander.expandKey
     AESCipher = aespython.aes_cipher.AESCipher
     def aes256_decrypt_factory(BlockMode):
