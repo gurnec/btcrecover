@@ -2254,9 +2254,14 @@ def load_savestate(autosave_file):
 #   location = tell_ref(peekable_file)       # will be off by one;
 #   assert location == peekable_file.tell()  # will assert
 class MakePeekable(object):
-    def __init__(self, file):
-        self._file   = file
-        self._peeked = ""
+    def __new__(cls, file):
+        if isinstance(file, MakePeekable):
+            return file
+        else:
+            self         = object.__new__(cls)
+            self._file   = file
+            self._peeked = ""
+            return self
     #
     def peek(self):
         if not self._peeked:
@@ -2309,7 +2314,7 @@ class MakePeekable(object):
 
 
 # Opens a new or returns an already-opened file, if it passes the specified constraints.
-# * Only examines one file: if filename == b"__funccall" and funccall_file is not None,
+# * Only examines one file: if filename == "__funccall" and funccall_file is not None,
 #   use it. Otherwise if filename is not None, use it. Otherwise if default_filename
 #   exists, use it. Otherwise, return None.
 # * After deciding which one file to potentially use, check it against the require_data
@@ -2321,8 +2326,8 @@ class MakePeekable(object):
 #   unicode strings if and only if mode is text (is not binary / does not contain "b").
 # * The results of opening stdin more than once are undefined.
 def open_or_use(filename, mode = "r",
-        funccall_file    = None,   # already-opened file used if filename == b"__funccall"
-        permit_stdin     = None,   # when True a filename == b"-" opens stdin
+        funccall_file    = None,   # already-opened file used if filename == "__funccall"
+        permit_stdin     = None,   # when True a filename == "-" opens stdin
         default_filename = None,   # name of file that can be opened if filename == None
         require_data     = None,   # only if file is non-empty, else return None
         new_or_empty     = None,   # open if file is new or empty, else return None
@@ -2332,7 +2337,7 @@ def open_or_use(filename, mode = "r",
     assert not(require_data and new_or_empty), "open_or_use: can either require_data or be new_or_empty"
     #
     # If the already-opened file was requested
-    if funccall_file and filename == b"__funccall":
+    if funccall_file and filename == "__funccall":
         if require_data or new_or_empty:
             funccall_file.seek(0, os.SEEK_END)
             if funccall_file.tell() == 0:
@@ -2349,7 +2354,7 @@ def open_or_use(filename, mode = "r",
                 assert isinstance(funccall_file, io.TextIOBase), "already opened file isa io.TextIOBase producing unicode"
         return MakePeekable(funccall_file) if make_peekable else funccall_file;
     #
-    if permit_stdin and filename == b"-":
+    if permit_stdin and filename == "-":
         if tstr == unicode and "b" not in mode:
             sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
         if make_peekable:
@@ -2682,7 +2687,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # Do a bunch of argument sanity checking
 
     # Either we're using a passwordlist file (though it's not yet opened),
-    # or we're using a tokenlist file it it should have been found and opened by now,
+    # or we're using a tokenlist file which should have been found and opened by now,
     # or we're running a performance test (and neither is open; already checked above).
     if not (args.passwordlist or tokenlist_file or args.performance or base_iterator or args.calc_memory):
         error_exit("argument --tokenlist or --passwordlist is required (or file "+TOKENS_AUTO_FILENAME+" must be present)")
@@ -2912,8 +2917,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if wallet:
         loaded_wallet = wallet
 
-    # Load the wallet file (this sets the return_verified_password_or_false
-    # global to the right verifier function and the wallet global)
+    # Load the wallet file (this sets the loaded_wallet global)
     if args.wallet:
         if args.android_pin:
             loaded_wallet = WalletAndroidSpendingPIN.load_from_filename(args.wallet)
@@ -2947,7 +2951,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             except AttributeError: pass
             key_crc_base64 = raw_input(key_prompt)
         #
-        # Emulates load_global_wallet*(, but using the base64 key data instead of a wallet
+        # Emulates load_global_wallet(), but using the base64 key data instead of a wallet
         # file (this sets the loaded_wallet global, and returns the validated CRC)
         key_crc = load_from_base64_key(key_crc_base64)
         #
@@ -3242,7 +3246,6 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if (    not sys.stdin.closed and not sys.stdin.isatty() and (
                 args.data_extract                or
                 tokenlist_file    == sys.stdin   or
-                passwordlist_file == sys.stdin   or
                 passwordlist_file == sys.stdin   or
                 args.exclude_passwordlist == '-' or
                 args.android_pin                 or
@@ -3618,8 +3621,9 @@ class DuplicateChecker(object):
 # instead of producing lists, for each iteration single integers <= chunksize are produced
 # (only the last integer might be < than chunksize), useful for counting or skipping passwords.
 def init_password_generator():
-    global password_dups, token_combination_dups
+    global password_dups, token_combination_dups, passwordlist_ignored_lines
     password_dups = token_combination_dups = None
+    passwordlist_ignored_lines = set()  # used only in passwordlist_base_password_generator()
 #
 def password_generator(chunksize = 1, only_yield_count = False):
     assert chunksize > 0, "password_generator: chunksize > 0"
@@ -4050,7 +4054,7 @@ def permutations_nodups(sequence):
 # (which is created by parse_arguments if the file is stdin). These passwords are then
 # used by password_generator() as base passwords that can undergo further modifications.
 def passwordlist_base_password_generator():
-    global initial_passwordlist
+    global initial_passwordlist, passwordlist_ignored_lines
 
     line_num = 1
     for password_base in initial_passwordlist:  # note that these have already been syntax-checked
@@ -4065,17 +4069,24 @@ def passwordlist_base_password_generator():
             try:
                 check_chars_range(password_base, "line")
             except SystemExit as e:
-                print(prog+": warning: ignoring line "+tstr(line_num)+",", e.code)
+                if line_num not in passwordlist_ignored_lines:
+                    print(prog+": warning: ignoring line "+tstr(line_num)+",", e.code)
+                    passwordlist_ignored_lines.add(line_num)
                 continue
             if args.has_wildcards and "%" in password_base:
-                count_or_error_msg = count_valid_wildcards(password_base , permit_contracting_wildcards=True)
+                count_or_error_msg = count_valid_wildcards(password_base, permit_contracting_wildcards=True)
                 if isinstance(count_or_error_msg, basestring):
-                    print(prog+": warning: ignoring line", tstr(line_num)+":", count_or_error_msg, file=sys.stderr)
+                    if line_num not in passwordlist_ignored_lines:
+                        print(prog+": warning: ignoring line", tstr(line_num)+":", count_or_error_msg, file=sys.stderr)
+                        passwordlist_ignored_lines.add(line_num)
                     continue
                 try:
                     load_backreference_maps_from_token(password_base)
                 except IOError as e:
-                    print(prog+": warning: ignoring line", tstr(line_num)+":", e, file=sys.stderr)
+                    if line_num not in passwordlist_ignored_lines:
+                        print(prog+": warning: ignoring line", tstr(line_num)+":", e, file=sys.stderr)
+                        passwordlist_ignored_lines.add(line_num)
+                    continue
             yield password_base
 
     # Prepare for a potential future run
