@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.4-Unicode"
+#__version__          =  "0.14.5-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.4"
+__version__          =  "0.14.5"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2104,7 +2104,7 @@ def error_exit(*messages):
 
 # For ASCII builds, checks that the input string's chars are all 7-bit US-ASCII
 if tstr == str:
-    def check_chars_range(s, error_msg):
+    def check_chars_range(s, error_msg, no_replacement_chars = False):
         assert isinstance(s, str), "check_chars_range: s is of type str"
         for c in s:
             if ord(c) > 127:  # 2**7 - 1
@@ -2113,15 +2113,21 @@ if tstr == str:
 # For UTF-16 (a.k.a. "narrow" Python Unicode) builds, checks that the input unicode
 # string has no surrogate pairs (all chars fit inside one UTF-16 code unit)
 elif sys.maxunicode < 2**16:
-    def check_chars_range(s, error_msg):
+    def check_chars_range(s, error_msg, no_replacement_chars = False):
         assert isinstance(s, unicode), "check_chars_range: s is of type unicode"
         for c in s:
             if u'\uD800' <= c <= u'\uDBFF' or u'\uDC00' <= c <= u'\uDFFF':
                 error_exit(error_msg, "has character with code point > max ("+tstr(sys.maxunicode)+" / BMP)")
+            if no_replacement_chars and c == "\uFFFD":  # Unicode "REPLACEMENT CHARACTER"
+                error_exit(error_msg, "contains an invalid UTF-8 byte sequence")
 
 # For UTF-32 (a.k.a. "wide" Python Unicode) builds, UTF-32 supports all code points in a fixed width
 else:
-    def check_chars_range(s, error_msg): pass
+    def check_chars_range(s, error_msg, no_replacement_chars = False):
+        if no_replacement_chars:
+            assert isinstance(s, unicode), "check_chars_range: s is of type unicode"
+            if "\uFFFD" in s:
+                error_exit(error_msg, "contains an invalid UTF-8 byte sequence")
 
 # Returns an (order preserved) list or string with duplicate elements removed
 # (if input is a string, returns a string, otherwise returns a list)
@@ -2329,9 +2335,10 @@ def open_or_use(filename, mode = "r",
         funccall_file    = None,   # already-opened file used if filename == "__funccall"
         permit_stdin     = None,   # when True a filename == "-" opens stdin
         default_filename = None,   # name of file that can be opened if filename == None
-        require_data     = None,   # only if file is non-empty, else return None
+        require_data     = None,   # open if file is non-empty, else return None
         new_or_empty     = None,   # open if file is new or empty, else return None
-        make_peekable    = None):  # the returned file object is given a peek method
+        make_peekable    = None,   # the returned file object is given a peek method
+        decoding_errors  = None):  # the Unicode codec error mode (default: strict)
     assert not(permit_stdin and require_data), "open_or_use: stdin cannot require_data"
     assert not(permit_stdin and new_or_empty), "open_or_use: stdin is never new_or_empty"
     assert not(require_data and new_or_empty), "open_or_use: can either require_data or be new_or_empty"
@@ -2356,7 +2363,8 @@ def open_or_use(filename, mode = "r",
     #
     if permit_stdin and filename == "-":
         if tstr == unicode and "b" not in mode:
-            sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
+            sys.stdin = io.open(sys.stdin.fileno(), mode,
+                                encoding= sys.stdin.encoding or "utf_8_sig", errors= decoding_errors)
         if make_peekable:
             sys.stdin = MakePeekable(sys.stdin)
         return sys.stdin
@@ -2365,7 +2373,8 @@ def open_or_use(filename, mode = "r",
     if not filename and default_filename:
         if permit_stdin and default_filename == "-":
             if tstr == unicode and "b" not in mode:
-                sys.stdin = io.open(sys.stdin.fileno(), mode, encoding= sys.stdin.encoding or "utf_8_sig")
+                sys.stdin = io.open(sys.stdin.fileno(), mode,
+                                    encoding= sys.stdin.encoding or "utf_8_sig", errors= decoding_errors)
             if make_peekable:
                 sys.stdin = MakePeekable(sys.stdin)
             return sys.stdin
@@ -2381,7 +2390,7 @@ def open_or_use(filename, mode = "r",
         return None
     #
     if tstr == unicode and "b" not in mode:
-        file = io.open(filename, mode, encoding="utf_8_sig")
+        file = io.open(filename, mode, encoding="utf_8_sig", errors=decoding_errors)
     else:
         file = open(filename, mode)
     return MakePeekable(file) if make_peekable else file
@@ -3118,7 +3127,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # If we're using a passwordlist file, open it here. If we're opening stdin, read in at least an
     # initial portion. If we manage to read up until EOF, then we won't need to disable ETA features.
     global passwordlist_file, initial_passwordlist, passwordlist_allcached
-    passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"), permit_stdin=True)
+    passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"),
+                                    permit_stdin=True, decoding_errors="replace")
     if passwordlist_file:
         initial_passwordlist    = []
         passwordlist_allcached  = False
@@ -3141,20 +3151,22 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                     passwordlist_allcached = True
                     break
                 try:
-                    check_chars_range(line, "line")
+                    check_chars_range(line, "line", no_replacement_chars=True)
                 except SystemExit as e:
-                    line_msg = "last line," if passwordlist_isatty else "line "+tstr(line_num)+","
-                    print(prog+": warning: ignoring", line_msg, e.code)
+                    passwordlist_warn(None if passwordlist_isatty else line_num, e.code)
                     line = None  # add a None to the list so we can count line numbers correctly
                 if args.has_wildcards and "%" in line:
                     count_or_error_msg = count_valid_wildcards(line, permit_contracting_wildcards=True)
                     if isinstance(count_or_error_msg, basestring):
-                        line_msg = "last line:" if passwordlist_isatty else "line "+tstr(line_num)+":"
-                        print(prog+": warning: ignoring", line_msg, count_or_error_msg, file=sys.stderr)
+                        passwordlist_warn(None if passwordlist_isatty else line_num, count_or_error_msg)
                         line = None  # add a None to the list so we can count line numbers correctly
                     else:
                         has_any_wildcards = True
-                        load_backreference_maps_from_token(line)
+                        try:
+                            load_backreference_maps_from_token(line)
+                        except IOError as e:
+                            passwordlist_warn(None if passwordlist_isatty else line_num, e)
+                            line = None  # add a None to the list so we can count line numbers correctly
                 initial_passwordlist.append(line)
             #
             if not passwordlist_allcached and not args.no_eta:
@@ -3621,9 +3633,9 @@ class DuplicateChecker(object):
 # instead of producing lists, for each iteration single integers <= chunksize are produced
 # (only the last integer might be < than chunksize), useful for counting or skipping passwords.
 def init_password_generator():
-    global password_dups, token_combination_dups, passwordlist_ignored_lines
+    global password_dups, token_combination_dups, passwordlist_warnings
     password_dups = token_combination_dups = None
-    passwordlist_ignored_lines = set()  # used only in passwordlist_base_password_generator()
+    passwordlist_warnings = 0
 #
 def password_generator(chunksize = 1, only_yield_count = False):
     assert chunksize > 0, "password_generator: chunksize > 0"
@@ -4050,11 +4062,21 @@ def permutations_nodups(sequence):
             yield (choice,) + rest
 
 
+MAX_PASSWORDLIST_WARNINGS = 100
+def passwordlist_warn(line_num, *args):
+    global passwordlist_warnings  # initialized to 0 in init_password_generator()
+    if passwordlist_warnings is not None:
+        passwordlist_warnings += 1
+        if passwordlist_warnings <= MAX_PASSWORDLIST_WARNINGS:
+            print(prog+": warning: ignoring",
+                  "line "+tstr(line_num)+":" if line_num else "last line:",
+                  *args, file=sys.stderr)
+#
 # Produces whole passwords from a file, exactly one per line, or from the file's cache
 # (which is created by parse_arguments if the file is stdin). These passwords are then
 # used by password_generator() as base passwords that can undergo further modifications.
 def passwordlist_base_password_generator():
-    global initial_passwordlist, passwordlist_ignored_lines
+    global initial_passwordlist, passwordlist_warnings
 
     line_num = 1
     for password_base in initial_passwordlist:  # note that these have already been syntax-checked
@@ -4067,29 +4089,29 @@ def passwordlist_base_password_generator():
         for line_num, password_base in enumerate(passwordlist_file, line_num):  # not yet syntax-checked
             password_base = password_base.rstrip("\r\n")
             try:
-                check_chars_range(password_base, "line")
+                check_chars_range(password_base, "line", no_replacement_chars=True)
             except SystemExit as e:
-                if line_num not in passwordlist_ignored_lines:
-                    print(prog+": warning: ignoring line "+tstr(line_num)+",", e.code)
-                    passwordlist_ignored_lines.add(line_num)
+                passwordlist_warn(line_num, e.code)
                 continue
             if args.has_wildcards and "%" in password_base:
                 count_or_error_msg = count_valid_wildcards(password_base, permit_contracting_wildcards=True)
                 if isinstance(count_or_error_msg, basestring):
-                    if line_num not in passwordlist_ignored_lines:
-                        print(prog+": warning: ignoring line", tstr(line_num)+":", count_or_error_msg, file=sys.stderr)
-                        passwordlist_ignored_lines.add(line_num)
+                    passwordlist_warn(line_num, count_or_error_msg)
                     continue
                 try:
                     load_backreference_maps_from_token(password_base)
                 except IOError as e:
-                    if line_num not in passwordlist_ignored_lines:
-                        print(prog+": warning: ignoring line", tstr(line_num)+":", e, file=sys.stderr)
-                        passwordlist_ignored_lines.add(line_num)
+                    passwordlist_warn(line_num, e)
                     continue
             yield password_base
 
-    # Prepare for a potential future run
+    if passwordlist_warnings:
+        if passwordlist_warnings > MAX_PASSWORDLIST_WARNINGS:
+            print("\n"+prog+": warning:", passwordlist_warnings-MAX_PASSWORDLIST_WARNINGS,
+                  "additional warnings were suppressed", file=sys.stderr)
+        passwordlist_warnings = None  # ignore warnings during future runs of the same passwordlist
+
+    # Prepare for a potential future run of the same passwordlist
     if passwordlist_file != sys.stdin:
         passwordlist_file.seek(0)
 
@@ -4115,7 +4137,7 @@ def default_performance_base_password_generator():
 def expand_wildcards_generator(password_with_wildcards, prior_prefix = ""):
 
     # Quick check to see if any wildcards are present
-    if password_with_wildcards.find("%") == -1:
+    if "%" not in password_with_wildcards:
         # If none, just produce the string and end
         yield prior_prefix + password_with_wildcards
         return
