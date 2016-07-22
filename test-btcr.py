@@ -934,6 +934,10 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_bither(self):
         self.wallet_tester("bither-wallet.db")
 
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_bither_hdonly(self):
+        self.wallet_tester("bither-hdonly-wallet.db")
+
     @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.wallet_tester("msigna-wallet.vault")

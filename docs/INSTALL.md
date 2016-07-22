@@ -23,7 +23,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
  * Bitcoin Wallet for Android/BlackBerry backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Bitcoin Wallet for Android/BlackBerry spending PIN - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
  * KnC Wallet for Android backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Bither - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
+ * Bither - [Python 2.7](#python-27), [scrypt](#scrypt), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCrypto](#pycrypto)
  * Litecoin-Qt - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * Electrum-LTC - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Litecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)

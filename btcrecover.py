@@ -39,14 +39,14 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.5-Unicode"
+#__version__          =  "0.14.6-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.5"
+__version__          =  "0.14.6"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1876,6 +1876,9 @@ class WalletBither(object):
         @property
         def data_extract_id(cls): return b"bt"
 
+    def passwords_per_seconds(self, seconds):
+        return max(int(round(self._passwords_per_second * seconds)), 1)
+
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
@@ -1885,6 +1888,20 @@ class WalletBither(object):
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
         # loading crypto libraries is done in load_from_*
+
+    def __getstate__(self):
+        # Delete unpicklable Armory library object
+        state = self.__dict__.copy()
+        del state["_crypto_ecdsa"]
+        return state
+
+    def __setstate__(self, state):
+        # (re-)load the required libraries after being unpickled
+        global pylibscrypt, seedrecover
+        import pylibscrypt, seedrecover
+        load_aes256_library()
+        self.__dict__ = state
+        self._crypto_ecdsa = seedrecover.CryptoECDSA()
 
     # Load a Bither wallet file (the part of it we need)
     @classmethod
@@ -1922,11 +1939,11 @@ class WalletBither(object):
         # Create a bitcoinj wallet (which loads required libraries); we may or may not actually use it
         bitcoinj_wallet = WalletBitcoinj(loading=True)
 
-        # key_data is forward-slash delimited; it contains an optional address, an encrypted key, an IV, a salt
+        # key_data is forward-slash delimited; it contains an optional pubkey hash, an encrypted key, an IV, a salt
         key_data = key_data.split(b"/")
         if len(key_data) == 1:
             key_data = key_data.split(b":")  # old Bither wallets used ":" as the delimiter
-        address = key_data.pop(0) if len(key_data) == 4 else None
+        pubkey_hash = key_data.pop(0) if len(key_data) == 4 else None
         if len(key_data) != 3:
             error_exit("unrecognized Bither encrypted key format (expected 3-4 slash-delimited elements, found {})"
                        .format(len(key_data)))
@@ -1939,21 +1956,34 @@ class WalletBither(object):
             flags = ord(salt[0])
             salt  = salt[1:]
         else:
-            flags = 0
+            flags = 1  # this is the is_compressed flag; if not present it defaults to compressed
             if len(salt) != 8:
                 error_exit("unexpected salt length ({}) in Bither wallet".format(len(salt)))
 
-        # Return a bitcoinj wallet to do the work if it's compatible with one (it's faster)
+        # Return a WalletBitcoinj object to do the work if it's compatible with one (it's faster)
         if is_bitcoinj_compatible:
             if len(encrypted_key) != 48:
-                error_exit("unexpected encrypted key length in Bither wallet")
+                error_exit("unexpected encrypted key length in Bither wallet (expected 48, found {})"
+                           .format(len(encrypted_key)))
             # only need the last 2 encrypted blocks (half of which is padding) plus the salt (don't need the iv)
             bitcoinj_wallet._part_encrypted_key    = encrypted_key[-32:]
-            bitcoinj_wallet._encryption_parameters = EncryptionParams(salt, 16384, 8, 1)
+            bitcoinj_wallet._encryption_parameters = EncryptionParams(salt, 16384, 8, 1)  # hardcoded except the salt
             return bitcoinj_wallet
 
+        # Constuct and return a WalletBither object
         else:
-            raise NotImplementedError("Bither Wallets w/o loose keys are not currently supported")
+            if not pubkey_hash:
+                error_exit("pubkey hash160 not present in Bither password_seed")
+            global seedrecover
+            import seedrecover  # imports Armory library plus some other needed utility functions
+            self = cls(loading=True)
+            self._passwords_per_second = bitcoinj_wallet._passwords_per_second  # they're the same
+            self._iv_encrypted_key     = base64.b16decode(iv, casefold=True) + encrypted_key
+            self._salt                 = salt  # already hex decoded
+            self._pubkey_hash160       = base64.b16decode(pubkey_hash, casefold=True)[1:]  # strip the bitcoin version byte
+            self._is_compressed        = bool(flags & 1)  # 1 is the is_compressed flag
+            self._crypto_ecdsa         = seedrecover.CryptoECDSA()
+            return self
 
     # Import a Bither private key that was extracted by extract-bither-privkey.py
     @classmethod
@@ -1963,8 +1993,41 @@ class WalletBither(object):
         # The final 2 encrypted blocks
         bitcoinj_wallet._part_encrypted_key = privkey_data[:32]
         # The 8-byte salt and default scrypt parameters
-        bitcoinj_wallet._encryption_parameters = EncryptionParams(privkey_data[32:], 16384, 8, 1)
+        bitcoinj_wallet._encryption_parameters = EncryptionParams(privkey_data[32:], 16384, 8, 1)  # hardcoded except the salt
         return bitcoinj_wallet
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    def return_verified_password_or_false(self, passwords):
+        # Copy a few globals into local for a small speed boost
+        l_scrypt             = pylibscrypt.scrypt
+        l_aes256_cbc_decrypt = aes256_cbc_decrypt
+        iv_encrypted_key     = self._iv_encrypted_key  # 16-byte iv + encrypted_key
+        salt                 = self._salt
+
+        # Convert strings (lazily) to UTF-16BE bytestrings
+        passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+            derived_aeskey = l_scrypt(password, salt, 16384, 8, 1, 32)  # scrypt params are hardcoded except the salt
+
+            # Decrypt and check if the last 16-byte block of iv_encrypted_key is valid PKCS7 padding
+            privkey_end = l_aes256_cbc_decrypt(derived_aeskey, iv_encrypted_key[-32:-16], iv_encrypted_key[-16:])
+            padding_len = ord(privkey_end[-1])
+            if not (1 <= padding_len <= 16 and privkey_end.endswith(chr(padding_len) * padding_len)):
+                continue
+            privkey_end = privkey_end[:-padding_len]  # trim the padding
+
+            # Decrypt the rest of the encrypted_key, derive its pubkey, and compare it to what's expected
+            privkey = l_aes256_cbc_decrypt(derived_aeskey, iv_encrypted_key[:16], iv_encrypted_key[16:-16]) + privkey_end
+            pubkey  = self._crypto_ecdsa.ComputePublicKey(seedrecover.SecureBinaryData(privkey)).toBinStr()
+            if self._is_compressed:
+                pubkey = seedrecover.compress_pubkey(pubkey)
+            if (seedrecover.pubkey_to_hash160(pubkey) == self._pubkey_hash160):
+                password = password.decode("utf_16_be", "replace")
+                return password.encode("ascii", "replace") if tstr == str else password, count
+
+        return False, count
 
 
 ############### BIP-39 ###############
@@ -2955,7 +3018,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         else:
             load_global_wallet(args.wallet)
             if type(loaded_wallet) is WalletBitcoinj:
-                print(prog+": warning: for MultiBit, use a .key file instead of a .wallet file if possible")
+                print(prog+": notice: for MultiBit, use a .key file instead of a .wallet file if possible")
             if isinstance(loaded_wallet, WalletMultiBit) and not args.android_pin:
                 print(prog+": notice: use --android-pin to recover the spending PIN of\n"
                            "    a Bitcoin Wallet for Android/BlackBerry backup (instead of the backup password)")
@@ -5041,6 +5104,7 @@ def main():
             if password_found:
                 passwords_tried += passwords_tried_last - 1  # just before the found password
                 if progress:
+                    progress.next_update = 0  # force a screen update
                     progress.update(passwords_tried)
                     print()  # move down to the line below the progress bar
                 break
