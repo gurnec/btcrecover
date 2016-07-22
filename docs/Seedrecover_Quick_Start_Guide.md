@@ -13,16 +13,16 @@ Additional requirements are described below.
 
  1. Follow [these instructions](INSTALL.md#python-27) to download and install Python 2.7.
 
- 2. Visit this page to download Armory for Windows: <https://bitcoinarmory.com/download/>. If you installed the 64-bit version of Python, download and install the latest version of Armory. If you installed the 32-bit version of Python, download and install a **0.92.x** version of Armory.
+ 2. Visit this page to download Armory for Windows: <https://github.com/goatpig/BitcoinArmory/releases>. If you installed the 64-bit version of Python, download and install the latest version of Armory. If you installed the 32-bit version of Python, download and install a **0.93.x** version of Armory.
 
     (*seedrecover.py* uses Armory's included Crypto++ library to accelerate the Eliptic Curve math it needs to perform; you do not need to start Armory for any reason.)
 
 
 ### Linux and OS X ###
 
-Download and install the latest version of Armory from here: <https://bitcoinarmory.com/download/>. Because Armory has a number of dependencies, installing it on Linux or OS X isn't always easy. For Debian-like distributions, a shell script has been provided (in the same directory as this README file) which will automatically download Armory, verify its signature, and then install it along with all of the required dependencies. Simply run it from a terminal window:
+Download and install the latest version of Armory from here: <https://github.com/goatpig/BitcoinArmory/releases>. Because Armory has a number of dependencies, installing it on Linux or OS X isn't always easy. For Debian-like distributions, a shell script has been provided (in the same directory as this README file) which will automatically download and install Armory along with all of its required dependencies. Simply run it from a terminal window:
 
-    sudo ./install-armory.sh
+    bash install-armory.sh
 
 (*seedrecover.py* uses Armory's included Crypto++ library to accelerate the Eliptic Curve math it needs to perform; you do not need to start Armory for any reason.)
 
