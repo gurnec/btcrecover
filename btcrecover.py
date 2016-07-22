@@ -1870,7 +1870,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
 ############### Bither ###############
 
 @register_wallet_class
-class WalletBither(WalletBitcoinj):  # not really a bitcoinj wallet, but does share some code
+class WalletBither(object):
 
     class __metaclass__(WalletBitcoinj.__metaclass__):
         @property
@@ -1883,9 +1883,8 @@ class WalletBither(WalletBitcoinj):  # not really a bitcoinj wallet, but does sh
         return None if wallet_file.read(16) == b"SQLite format 3\0" else False
 
     def __init__(self, loading = False):
-        super(WalletBither, self).__init__(loading)
-        # Create a namedtuple with the hardcoded scrypt parameters used by Bither
-        self._encryption_parameters = EncryptionParams(None, 16384, 8, 1)
+        assert loading, 'use load_from_* to create a ' + self.__class__.__name__
+        # loading crypto libraries is done in load_from_*
 
     # Load a Bither wallet file (the part of it we need)
     @classmethod
@@ -1893,58 +1892,79 @@ class WalletBither(WalletBitcoinj):  # not really a bitcoinj wallet, but does sh
         import sqlite3
         wallet_conn = sqlite3.connect(wallet_filename)
         wallet_conn.row_factory = sqlite3.Row
+
+        is_bitcoinj_compatible  = None
+        # Try to find an encrypted loose key first; they're faster to check
         try:
-            # Newer wallets have a password_seed table with a single row
-            wallet_cur = wallet_conn.execute(b"SELECT * FROM password_seed LIMIT 1")
-            key_data   = wallet_cur.fetchone()[b"password_seed"]
-        except sqlite3.OperationalError as e:
-            if str(e).startswith(b"no such table"):
-                try:
-                    # Older wallets have an addresses table with at least one row (unless empty)
-                    wallet_cur = wallet_conn.execute(b"SELECT * FROM addresses LIMIT 1")
-                    key_data   = wallet_cur.fetchone()[b"encrypt_private_key"]
-                except sqlite3.OperationalError as e:
-                    raise ValueError("Not a Bither wallet: " + tstr(e))  # it might be an mSIGNA wallet
-                except:
-                    raise  # unexpected error
+            wallet_cur = wallet_conn.execute(b"SELECT encrypt_private_key FROM addresses LIMIT 1")
+            key_data   = wallet_cur.fetchone()
+            if key_data:
+                key_data = key_data[b"encrypt_private_key"]
+                is_bitcoinj_compatible = True  # if found, the KDF & encryption are bitcoinj compatible
             else:
-                raise  # unexpected error
+                e1 = "no encrypted keys present in addresses table"
+        except sqlite3.OperationalError as e1:
+            if str(e1).startswith(b"no such table"):
+                key_data = None
+            else: raise  # unexpected error
+
         if not key_data:
-            error_exit("can't find an encrypted key in the Bither wallet")
+            # Newer wallets w/o loose keys have a password_seed table with a single row
+            try:
+                wallet_cur = wallet_conn.execute(b"SELECT password_seed FROM password_seed LIMIT 1")
+                key_data   = wallet_cur.fetchone()
+            except sqlite3.OperationalError as e2:
+                raise ValueError("Not a Bither wallet: {}, {}".format(e1, e2))  # it might be an mSIGNA wallet
+            if not key_data:
+                error_exit("can't find an encrypted key or password seed in the Bither wallet")
+            key_data = key_data[b"password_seed"]
+
+        # Create a bitcoinj wallet (which loads required libraries); we may or may not actually use it
+        bitcoinj_wallet = WalletBitcoinj(loading=True)
 
         # key_data is forward-slash delimited; it contains an optional address, an encrypted key, an IV, a salt
-        key_data = key_data.split("/")
-        if len(key_data) == 4:
-            key_data.pop(0)  # remove the unneeded address, if present
-        elif len(key_data) != 3:
-            error_exit("unrecognized Bither encrypted key format (unexpected count of slash-delimited elements)")
+        key_data = key_data.split(b"/")
+        if len(key_data) == 1:
+            key_data = key_data.split(b":")  # old Bither wallets used ":" as the delimiter
+        address = key_data.pop(0) if len(key_data) == 4 else None
+        if len(key_data) != 3:
+            error_exit("unrecognized Bither encrypted key format (expected 3-4 slash-delimited elements, found {})"
+                       .format(len(key_data)))
+        (encrypted_key, iv, salt) = key_data
+        encrypted_key = base64.b16decode(encrypted_key, casefold=True)
 
-        # only need the final 2 encrypted blocks (half of which is padding) plus the salt
-        encrypted_key = base64.b16decode(key_data[0], casefold=True)
-        if len(encrypted_key) != 48:
-            error_exit("unexpected encrypted key length in Bither wallet")
-        self = cls(loading=True)
-        self._part_encrypted_key = encrypted_key[-32:]
-        #
-        # (don't need key_data[1], which is the IV)
-        #
-        salt_data = base64.b16decode(key_data[2], casefold=True)
-        if len(salt_data) == 9:
-            salt_data = salt_data[1:]  # the first byte is optionally a header containing flags which we ignore
-        elif len(salt_data) != 8:
-            error_exit("unexpected salt length in Bither wallet")
-        self._encryption_parameters = self._encryption_parameters._replace(salt=salt_data)
-        return self
+        # The first salt byte is optionally a flags byte
+        salt = base64.b16decode(salt, casefold=True)
+        if len(salt) == 9:
+            flags = ord(salt[0])
+            salt  = salt[1:]
+        else:
+            flags = 0
+            if len(salt) != 8:
+                error_exit("unexpected salt length ({}) in Bither wallet".format(len(salt)))
+
+        # Return a bitcoinj wallet to do the work if it's compatible with one (it's faster)
+        if is_bitcoinj_compatible:
+            if len(encrypted_key) != 48:
+                error_exit("unexpected encrypted key length in Bither wallet")
+            # only need the last 2 encrypted blocks (half of which is padding) plus the salt (don't need the iv)
+            bitcoinj_wallet._part_encrypted_key    = encrypted_key[-32:]
+            bitcoinj_wallet._encryption_parameters = EncryptionParams(salt, 16384, 8, 1)
+            return bitcoinj_wallet
+
+        else:
+            raise NotImplementedError("Bither Wallets w/o loose keys are not currently supported")
 
     # Import a Bither private key that was extracted by extract-bither-privkey.py
     @classmethod
     def load_from_data_extract(cls, privkey_data):
-        self = cls(loading=True)
+        assert len(privkey_data) == 40, "extract-bither-privkey.py only extracts keys from bitcoinj compatible wallets"
+        bitcoinj_wallet = WalletBitcoinj(loading=True)
         # The final 2 encrypted blocks
-        self._part_encrypted_key = privkey_data[:32]
-        # The 8-byte salt
-        self._encryption_parameters = self._encryption_parameters._replace(salt=privkey_data[32:])
-        return self
+        bitcoinj_wallet._part_encrypted_key = privkey_data[:32]
+        # The 8-byte salt and default scrypt parameters
+        bitcoinj_wallet._encryption_parameters = EncryptionParams(privkey_data[32:], 16384, 8, 1)
+        return bitcoinj_wallet
 
 
 ############### BIP-39 ###############
