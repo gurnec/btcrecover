@@ -5,15 +5,15 @@
 ## Features ##
 
  * Bitcoin wallet password recovery support for:
-     * [Armory](https://bitcoinarmory.com/)
-     * [Bitcoin Core (Bitcoin-Qt)](https://bitcoin.org/en/download)
+     * [Armory](https://github.com/goatpig/BitcoinArmory)
+     * [Bitcoin Classic](https://bitcoinclassic.com/)/[XT](https://bitcoinxt.software/)/[Core](https://bitcoincore.org/)
      * [MultiBit Classic](https://multibit.org/) and [MultiBit HD](https://beta.multibit.org/)
      * [Electrum](https://electrum.org/) (1.x and 2.x)
      * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://mac.hivewallet.com/)
      * BIP-39 passphrases (e.g. [TREZOR](https://www.bitcointrezor.com/) passphrases)
      * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain.info](https://blockchain.info/wallet)
-     * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Core wallets
+     * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Classic/XT/Core wallets
      * [Bitcoin Wallet for Android/BlackBerry](https://play.google.com/store/apps/details?id=de.schildbach.wallet) spending PINs and encrypted backups
      * [KnC Wallet for Android](https://kncwallet.com/) encrypted backups
      * [Bither](https://bither.net/)
@@ -34,11 +34,13 @@
      * BIP-32/39/44 compliant wallets, including:
          * [Mycelium for Android](https://play.google.com/store/apps/details?id=com.mycelium.wallet)
          * [TREZOR](https://www.bitcointrezor.com/)
+         * [Bither](https://bither.net/)
+         * [Blockchain.info](https://blockchain.info/wallet)
  * [Free and Open Source](http://en.wikipedia.org/wiki/Free_and_open-source_software) - anyone can download, inspect, use, and redistribute this software
  * Supported on Windows, Linux, and OS X
  * Support for Unicode passwords and seeds
  * Multithreaded searches, with user-selectable thread count
- * Experimental [GPU acceleration](docs/GPU_Acceleration.md) for Bitcoin Core, Armory, and derived altcoin wallets
+ * Experimental [GPU acceleration](docs/GPU_Acceleration.md) for Bitcoin Classic/XT/Core, Armory, and derived altcoin wallets
  * Wildcard expansion for passwords
  * Typo simulation for passwords and seeds
  * Progress bar and ETA display (at the command line)

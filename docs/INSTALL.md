@@ -12,7 +12,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
  * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit** (x86)
  * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
  * Armory 0.92+ on Linux or OS X - no additional requirements
- * Bitcoin Classic/Core (Bitcoin-Qt) - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * Bitcoin Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
@@ -151,7 +151,7 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 ----------
 
 
-### Windows GPU acceleration for Bitcoin Core, Armory, or Litecoin-Qt ###
+### Windows GPU acceleration for Bitcoin Classic/XT/Core, Armory, or Litecoin-Qt ###
 
  1. Download the latest version of PyOpenCL for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed, from here: <http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyopencl>
 
@@ -167,4 +167,4 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 
     Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
-[PyCrypto](#pycrypto) is also recommended for Bitcoin Core or Litecoin-Qt wallets for a 2x speed improvement.
+[PyCrypto](#pycrypto) is also recommended for Bitcoin Classic/XT/Core or Litecoin-Qt wallets for a 2x speed improvement.

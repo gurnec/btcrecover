@@ -1,7 +1,7 @@
 # *btcrecover* Tutorial #
 
 
-*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Core (a.k.a. Bitcoin-Qt), MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA (CoinVault), Hive for OS X, Blockchain.info (v1-v3 wallet formats, both main and second passwords), Bither, and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
+*btcrecover* is a free and open source multithreaded wallet password recovery tool with support for Armory, Bitcoin Classic/XT/Core, MultiBit (Classic and HD), Electrum (1.x and 2.x), mSIGNA (CoinVault), Hive for OS X, Blockchain.info (v1-v3 wallet formats, both main and second passwords), Bither, and Bitcoin & KNC Wallets for Android. It is designed for the case where you already know most of your password, but need assistance in trying different possible combinations. This tutorial will guide you through the features it has to offer.
 
 If you find *btcrecover* helpful, please consider a small donation to help support my efforts:
 **[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
@@ -394,7 +394,7 @@ As you can see, the Windows command prompt was incapable of rendering some of th
  1. Unzip the `btcrecover-master.zip` file, it contains a single directory named "btcrecover-master". Inside the btcrecover-master directory is the Python script (program) file `btcrecover.py`.
  2. **Make a copy of your wallet file** into the directory which contains `btcrecover.py`. On Windows, you can usually find your wallet file by clicking on the Start Menu, then “Run...” (or for Windows 8+ by holding down the *Windows* key and pressing `r`), and then typing in one of the following paths and clicking OK. Some wallet software allows you to create multiple wallets, for example Armory wallets have an ID which you can view in the Armory interface, and the wallet file names contain this ID. Of course, you need to be sure to copy the correct wallet file.
      * Armory - `%appdata%\Armory` (it's a `.wallet` file)
-     * Bitcoin Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
+     * Bitcoin Classic/XT/Core - `%appdata%\Bitcoin` (it's named `wallet.dat`)
      * Bitcoin Wallet for Android/BlackBerry, lost spending PINs - Please see the [Bitcoin Wallet for Android/BlackBerry Spending PINs](#bitcoin-wallet-for-androidblackberry-spending-pins) section below.
      * MultiBit Classic - Please see the [Finding MultiBit Classic Wallet Files](#finding-multibit-classic-wallet-files) section below.
      * MultiBit HD - `%appdata%\MultiBitHD` (it's in one of the folders here, it's named `mbhd.wallet.aes`)
@@ -480,9 +480,9 @@ Once you have this information, run *btcrecover* normally, except that *instead*
 
 When you run this, you will be prompted for your master public key (or your address), and your seed.
 
-### GPU acceleration for Bitcoin Core, Armory, and Litecoin-Qt wallets###
+### GPU acceleration for Bitcoin Classic/XT/Core, Armory, and Litecoin-Qt wallets###
 
-*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Core or Litecoin-Qt wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
+*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Classic/XT/Core or Litecoin-Qt wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
 
 For more information, please see the [GPU Acceleration Guide](docs/GPU_Acceleration.md).
 
