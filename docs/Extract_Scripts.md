@@ -18,6 +18,7 @@ If you'd prefer to download just a single extract script, please select the one 
 
  * Armory - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-armory-privkey.py>
  * Bitcoin Classic/XT/Core - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bitcoincore-mkey.py>
+ * Bither - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bither-partkey.py>
  * Blockchain main password - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-main-data.py>
  * Blockchain second password -  <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-second-hash.py>
  * Electrum 1.x - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-electrum-halfseed.py>
@@ -33,6 +34,7 @@ If you're on Windows, you will also need to install the latest version of Python
 
  * [Armory](#usage-for-armory)
  * [Bitcoin Classic/XT/Core (including pywallet dump files)](#usage-for-bitcoin-classicxtcore)
+ * [Bither](#usage-for-bither)
  * [Blockchain.info](#usage-for-blockchaininfo)
  * [Electrum (1.x or 2.x)](#usage-for-electrum)
  * [mSIGNA](#usage-for-msigna)
@@ -113,6 +115,36 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 The *extract-bitcoincore-mkey.py* script is intentionally short and should be easy to read for any Python programmer. It opens a wallet.dat file using the Python bsddb.db library (the Berkeley DB library which comes with Python 2.7), and then extracts a single key/value pair with the key string of `\x04mkey\x01\x00\x00\x00`. This key/value pair contains an encrypted version of the Bitcoin Classic/XT/Core “master key”, or mkey for short, along with some other information required to try decrypting the mkey, specifically the mkey salt and iteration count. This information is then converted to base64 format for easy copy/paste, and printed to the screen.
 
 The encrypted mkey is useful to *btcrecover*, but it does not contain any of your Bitcoin address or private key information. *btcrecover* can attempt to decrypt the mkey by trying different password combinations. Should it succeed, it and whoever runs it will then know the password to your wallet file, but without the rest of your wallet file, the password and the decrypted mkey are of no use.
+
+
+### Usage for Bither ###
+
+After downloading the script, **make a copy of your wallet file into a different folder** (to make it easy, into the same folder as the extract script). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open the folder which usually contains your wallet file: `%appdata%\Bither`. From here you can copy and paste your wallet file (it's usually named `address.db`), into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming your wallet file is in the same folder):
+
+    cd \Users\Chris\Downloads\btcrecover-master\extract-scripts
+    C:\python27\python extract-bither-partkey.py address.db
+
+You should get a message which looks like this:
+
+    Bither partial encrypted private key, salt, and crc in base64:
+    YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=
+
+When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-bither-partkey.py*. To continue the example:
+
+    cd \Users\Chris\Downloads\btcrecover-master
+    C:\python27\python btcrecover.py --data-extract --tokenlist tokens.txt
+    Please enter the data from the extract script
+    > YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=
+    ...
+    Password found: xxxx
+
+#### Bither Technical Details ####
+
+The *extract-bither-partkey.py* script is intentionally short and should be easy to read for any Python programmer. A Bither encrypted private key is 48 bytes long. It contains 32 bytes of encrypted private key data, followed by 16 bytes of encrypted padding.
+
+Because only the last half of the private key is extracted, the private key cannot be feasibly reconstructed even if this half of the private key could be decrypted (assuming the password search succeeds). The remaining 16 bytes of padding, once decrypted, is predictable, and this allows *btcrecover* to use it to check passwords. It tries decrypting the bytes with each password, and once this results in valid padding, it has found the correct password.
+
+Without access to the rest of your wallet file, it is impossible the decrypted padding could ever lead to a loss of funds.
 
 
 ### Usage for Blockchain.info ###

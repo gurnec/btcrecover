@@ -1908,7 +1908,6 @@ class WalletBither(object):
     def load_from_filename(cls, wallet_filename):
         import sqlite3
         wallet_conn = sqlite3.connect(wallet_filename)
-        wallet_conn.row_factory = sqlite3.Row
 
         is_bitcoinj_compatible  = None
         # Try to find an encrypted loose key first; they're faster to check
@@ -1916,7 +1915,7 @@ class WalletBither(object):
             wallet_cur = wallet_conn.execute(b"SELECT encrypt_private_key FROM addresses LIMIT 1")
             key_data   = wallet_cur.fetchone()
             if key_data:
-                key_data = key_data[b"encrypt_private_key"]
+                key_data = key_data[0]
                 is_bitcoinj_compatible = True  # if found, the KDF & encryption are bitcoinj compatible
             else:
                 e1 = "no encrypted keys present in addresses table"
@@ -1934,7 +1933,7 @@ class WalletBither(object):
                 raise ValueError("Not a Bither wallet: {}, {}".format(e1, e2))  # it might be an mSIGNA wallet
             if not key_data:
                 error_exit("can't find an encrypted key or password seed in the Bither wallet")
-            key_data = key_data[b"password_seed"]
+            key_data = key_data[0]
 
         # Create a bitcoinj wallet (which loads required libraries); we may or may not actually use it
         bitcoinj_wallet = WalletBitcoinj(loading=True)
