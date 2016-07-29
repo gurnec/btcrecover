@@ -2659,7 +2659,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         sys.exit(0)
 
 
-    if args.performance and (base_iterator or args.tokenlist or args.passwordlist):
+    if args.performance and (base_iterator or args.passwordlist or args.tokenlist):
         error_exit("--performance cannot be used with --tokenlist or --passwordlist")
 
     if args.list_gpus:
