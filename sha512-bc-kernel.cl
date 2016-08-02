@@ -1,7 +1,7 @@
 /*
- * Developed by Claudio André <claudio.andre at correios.net.br> in 2012
+ * Developed by Claudio André <claudioandre.br at gmail.com> in 2012
  *
- * Copyright (c) 2012 Claudio André <claudio.andre at correios.net.br>
+ * Copyright (c) 2012-2015 Claudio André <claudioandre.br at gmail.com>
  * This program comes with ABSOLUTELY NO WARRANTY; express or implied.
  *
  * This is free software, and you are welcome to redistribute it
@@ -21,20 +21,28 @@
 
 // From opencl_device_info.h
 
-// Copied from common-opencl.h
-#define DEV_UNKNOWN                 0
-#define DEV_CPU                     1
-#define DEV_GPU                     2
-#define DEV_ACCELERATOR             4
-#define DEV_AMD                     64
-#define DEV_NVIDIA                  128
-#define DEV_INTEL                   256
-#define PLATFORM_APPLE              512
-#define DEV_AMD_GCN                 1024
-#define DEV_AMD_VLIW4               2048
-#define DEV_AMD_VLIW5               4096
-#define DEV_NO_BYTE_ADDRESSABLE     8192
-#define DEV_USE_LOCAL               32768
+//Copied from common-opencl.h
+#define DEV_UNKNOWN                 0       //0
+#define DEV_CPU                     (1 << 0)    //1
+#define DEV_GPU                     (1 << 1)    //2
+#define DEV_ACCELERATOR             (1 << 2)    //4
+#define DEV_AMD                     (1 << 3)    //8
+#define DEV_NVIDIA                  (1 << 4)    //16
+#define DEV_INTEL                   (1 << 5)    //32
+#define PLATFORM_APPLE              (1 << 6)    //64
+#define DEV_AMD_GCN_10              (1 << 7)    //128
+#define DEV_AMD_GCN_11              (1 << 8)    //256
+#define DEV_AMD_GCN_12              (1 << 9)    //512
+#define DEV_AMD_VLIW4               (1 << 12)   //4096
+#define DEV_AMD_VLIW5               (1 << 13)   //8192
+#define DEV_NV_C2X                  (1 << 14)   //16384
+#define DEV_NV_C30                  (1 << 15)   //32768
+#define DEV_NV_C32                  (1 << 16)   //65536
+#define DEV_NV_C35                  (1 << 17)   //131072
+#define DEV_NV_C5X                  (1 << 18)   //262144
+#define DEV_USE_LOCAL               (1 << 20)   //1048576
+#define DEV_NO_BYTE_ADDRESSABLE     (1 << 21)   //2097152
+#define DEV_MESA                    (1 << 22)   //4M
 
 #define cpu(n)                      ((n & DEV_CPU) == (DEV_CPU))
 #define gpu(n)                      ((n & DEV_GPU) == (DEV_GPU))
@@ -42,42 +50,97 @@
 #define gpu_nvidia(n)               ((n & DEV_NVIDIA) && gpu(n))
 #define gpu_intel(n)                ((n & DEV_INTEL) && gpu(n))
 #define cpu_amd(n)                  ((n & DEV_AMD) && cpu(n))
-#define amd_gcn(n)                  ((n & DEV_AMD_GCN) && gpu_amd(n))
+#define cpu_intel(n)                ((n & DEV_INTEL) && cpu(n))
+#define amd_gcn_10(n)               ((n & DEV_AMD_GCN_10) && gpu_amd(n))
+#define amd_gcn_11(n)               ((n & DEV_AMD_GCN_11) && gpu_amd(n))
+#define amd_gcn_12(n)               ((n & DEV_AMD_GCN_12) && gpu_amd(n))
+#define amd_gcn(n)                  (amd_gcn_10(n) || (amd_gcn_11(n)) || amd_gcn_12(n))
 #define amd_vliw4(n)                ((n & DEV_AMD_VLIW4) && gpu_amd(n))
 #define amd_vliw5(n)                ((n & DEV_AMD_VLIW5) && gpu_amd(n))
+#define nvidia_sm_2x(n)             ((n & DEV_NV_C2X) && gpu_nvidia(n))
+#define nvidia_sm_3x(n)             (((n & DEV_NV_C30) || (n & DEV_NV_C32) || (n & DEV_NV_C35)) && gpu_nvidia(n))
+#define nvidia_sm_5x(n)             ((n & DEV_NV_C5X) && gpu_nvidia(n))
 #define no_byte_addressable(n)      ((n & DEV_NO_BYTE_ADDRESSABLE))
 #define use_local(n)                ((n & DEV_USE_LOCAL))
 #define platform_apple(p)           (get_platform_vendor_id(p) == PLATFORM_APPLE)
 
+// From opencl_misc.h
 
-// From opencl_sha2_common.h
+/* Note: long is *always* 64-bit in OpenCL */
+typedef uint uint32_t;
+typedef ulong uint64_t;
 
-// Type names definition.
-// NOTE: long is always 64-bit in OpenCL, and long long is 128 bit.
-#define uint32_t unsigned int
-#define uint64_t unsigned long
+// TODO: I've no recent NVIDIA hardware to test this, so it's disabled on NVIDIA for safety
+//#if !gpu_nvidia(DEVICE_INFO) || SM_MAJOR >= 5
+#if !gpu_nvidia(DEVICE_INFO)
+#define USE_BITSELECT 1
+#endif
 
+#if cpu(DEVICE_INFO)
+#define HAVE_ANDNOT 1
+#endif
 
-// From opencl_sha512.h
+// TODO: I've no recent NVIDIA hardware to test this, so it's disabled for safety
+//#if SM_MAJOR >= 5 && (DEV_VER_MAJOR > 352 || (DEV_VER_MAJOR == 352 && DEV_VER_MINOR >= 21))
+//#define HAVE_LUT3	1
+//inline uint lut3(uint a, uint b, uint c, uint imm)
+//{
+//	uint r;
+//	asm("lop3.b32 %0, %1, %2, %3, %4;"
+//	    : "=r" (r)
+//	    : "r" (a), "r" (b), "r" (c), "i" (imm));
+//	return r;
+//}
+//#endif
 
-// Macros
-#define SWAP(n) \
+#if USE_BITSELECT
+#define SWAP64(n)	bitselect( \
+		bitselect(rotate(n, 24UL), \
+		          rotate(n, 8UL), 0x000000FF000000FFUL), \
+		bitselect(rotate(n, 56UL), \
+		          rotate(n, 40UL), 0x00FF000000FF0000UL), \
+		0xFFFF0000FFFF0000UL)
+#else
+// You would not believe how many driver bugs variants of this macro reveal
+#define SWAP64(n) \
             (((n)             << 56)   | (((n) & 0xff00)     << 40) |   \
             (((n) & 0xff0000) << 24)   | (((n) & 0xff000000) << 8)  |   \
             (((n) >> 8)  & 0xff000000) | (((n) >> 24) & 0xff0000)   |   \
             (((n) >> 40) & 0xff00)     | ((n)  >> 56))
-
-#if gpu_amd(DEVICE_INFO)
-        #define Ch(x,y,z)       bitselect(z, y, x)
-        #define Maj(x,y,z)      bitselect(x, y, z ^ x)
-        #define ror(x, n)       rotate(x, (64UL-n))
-        #define SWAP64(n)       (as_ulong(as_uchar8(n).s76543210))
-#else
-        #define Ch(x,y,z)       ((x & y) ^ ( (~x) & z))
-        #define Maj(x,y,z)      ((x & y) ^ (x & z) ^ (y & z))
-        #define ror(x, n)       ((x >> n) | (x << (64-n)))
-        #define SWAP64(n)       SWAP(n)
 #endif
+
+// From opencl_sha2_common.h
+
+//Macros.
+#ifdef USE_BITSELECT
+#define Ch(x, y, z)     bitselect(z, y, x)
+#define Maj(x, y, z)    bitselect(x, y, z ^ x)
+#else
+
+#if HAVE_LUT3 && BITS_32
+#define Ch(x, y, z) lut3(x, y, z, 0xca)
+#elif HAVE_ANDNOT
+#define Ch(x, y, z) ((x & y) ^ ((~x) & z))
+#else
+#define Ch(x, y, z) (z ^ (x & (y ^ z)))
+#endif
+
+#if HAVE_LUT3 && BITS_32
+#define Maj(x, y, z) lut3(x, y, z, 0xe8)
+#else
+#define Maj(x, y, z) ((x & y) | (z & (x | y)))
+#endif
+#endif
+
+// From opencl_sha512.h
+
+//Macros.
+#if (cpu(DEVICE_INFO))
+#define ror(x, n)             ((x >> n) | (x << (64UL-n)))
+#else
+#define ror(x, n)             (rotate(x, (64UL-n)))
+#endif
+
 #define Sigma0(x)               ((ror(x,28UL)) ^ (ror(x,34UL)) ^ (ror(x,39UL)))
 #define Sigma1(x)               ((ror(x,14UL)) ^ (ror(x,18UL)) ^ (ror(x,41UL)))
 #define sigma0(x)               ((ror(x,1UL))  ^ (ror(x,8UL))  ^ (x>>7))
@@ -124,7 +187,7 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 		               uint32_t  iterations)
 {
     uint64_t a, b, c, d, e, f, g, h;
-    uint64_t t1, t2;
+    uint64_t t;
     uint64_t w[16];
 
     // Get location of the hash to work on for this kernel
@@ -156,33 +219,33 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 
 	#pragma unroll
 	for (int i = 0; i < 16; i++) {
-	    t1 = k[i] + w[i] + h + Sigma1(e) + Ch(e, f, g);
-	    t2 = Maj(a, b, c) + Sigma0(a);
+	    t = k[i] + w[i] + h + Sigma1(e) + Ch(e, f, g);
 
 	    h = g;
 	    g = f;
 	    f = e;
-	    e = d + t1;
+	    e = d + t;
+	    t = t + Maj(a, b, c) + Sigma0(a);
 	    d = c;
 	    c = b;
 	    b = a;
-	    a = t1 + t2;
+	    a = t;
 	}
 
 	#pragma unroll
 	for (int i = 16; i < 80; i++) {
 	    w[i & 15] = sigma1(w[(i - 2) & 15]) + sigma0(w[(i - 15) & 15]) + w[(i - 16) & 15] + w[(i - 7) & 15];
-	    t1 = k[i] + w[i & 15] + h + Sigma1(e) + Ch(e, f, g);
-	    t2 = Maj(a, b, c) + Sigma0(a);
+	    t = k[i] + w[i & 15] + h + Sigma1(e) + Ch(e, f, g);
 
 	    h = g;
 	    g = f;
 	    f = e;
-	    e = d + t1;
+	    e = d + t;
+	    t = t + Maj(a, b, c) + Sigma0(a);
 	    d = c;
 	    c = b;
 	    b = a;
-	    a = t1 + t2;
+	    a = t;
 	}
 
 	// Copy resulting SHA512 hash back into the local input variable
