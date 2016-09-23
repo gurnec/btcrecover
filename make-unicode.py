@@ -26,7 +26,7 @@
 #                      Thank You!
 
 from __future__ import print_function
-import os.path as path
+import os, os.path as path
 
 
 install_dir = path.dirname(__file__)
@@ -46,6 +46,7 @@ def make_unicode_version(ascii_name, unicode_name):
         return False
 
     print("making "+unicode_name)
+    key_strings = 0
     with open(ascii_version_path, "rb") as ascii_version:
         with open(unicode_version_path, "wb") as unicode_version:
 
@@ -53,11 +54,13 @@ def make_unicode_version(ascii_name, unicode_name):
             for line in ascii_version:
                 unicode_version.write(line)
                 if line.startswith("# Uncomment for Unicode support"):
+                    key_strings += 1
                     break
 
             # Uncomment the block of code up until the next "key" string
             for line in ascii_version:
                 if line.startswith("# Uncomment for ASCII-only support"):
+                    key_strings += 1
                     unicode_version.write(line)
                     break
                 unicode_version.write(line[1:] if line.startswith("#") else line)
@@ -73,6 +76,13 @@ def make_unicode_version(ascii_name, unicode_name):
             # Copy the rest of the file
             for line in ascii_version:
                 unicode_version.write(line)
+
+    assert key_strings == 2, "expected 2 key strings in {} (found {})".format(ascii_name, key_strings)
+
+    # chmod +x unicode_version_path
+    mode = os.stat(unicode_version_path).st_mode
+    mode |= (mode & 0o444) >> 2           # "copy" any read bits to corresponding executable bits
+    os.chmod(unicode_version_path, mode)  # (harmless NOOP on Windows)
 
     return True
 
