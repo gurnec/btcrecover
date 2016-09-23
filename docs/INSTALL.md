@@ -112,6 +112,7 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
  1. Open a terminal window, and type this to install pylibscrypt:
 
+        sudo apt-get install python-pip
         sudo pip install pylibscrypt
 
  2. Install one of the scrypt libraries listed under the Requirements section here: <https://pypi.python.org/pypi/pylibscrypt>. For example on Debian-like distributions, try ***one*** of these commands:
@@ -146,6 +147,7 @@ Open a command prompt window, and type this to install Google Protocol Buffers:
 
 Open a terminal window, and type this to install Google Protocol Buffers:
 
+    sudo apt-get install python-pip
     sudo pip install protobuf
 
 ----------
