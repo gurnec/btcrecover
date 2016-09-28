@@ -39,14 +39,15 @@ from __future__ import print_function, absolute_import, division, \
 #preferredencoding = locale.getpreferredencoding()
 #tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
 #tchr              = unichr
-#__version__          =  "0.14.7-Unicode"
+#__version__          =  "0.14.8-Unicode"
 #__ordering_version__ = b"0.6.4-Unicode"  # must be updated whenever password ordering changes
 
 # Uncomment for ASCII-only support (and comment out the previous block)
 tstr            = str
 tstr_from_stdin = str
 tchr            = chr
-__version__          =  "0.14.7"
+io              = None
+__version__          =  "0.14.8"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1622,14 +1623,11 @@ class WalletBlockchain(object):
     def _parse_encrypted_blockchain_wallet(data):
         iter_count = 0
 
-        class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
-        try:
-
+        while True:  # "loops" exactly once; only here so we've something to break out of
             # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
             try:
                 data = json.loads(data)
-            except ValueError:
-                raise MayBeBlockchainV0();
+            except ValueError: break
 
             # Config files have no version attribute; they encapsulate the wallet file plus some detrius
             if u"version" not in data:
@@ -1639,8 +1637,7 @@ class WalletBlockchain(object):
                     raise ValueError("Can't find either version nor payload attributes in Blockchain file")
                 try:
                     data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
-                except ValueError:
-                    raise MayBeBlockchainV0();
+                except ValueError: break
 
             # Extract what's needed from a v2.0/3.0 wallet file
             if data[u"version"] > 3:
@@ -1650,8 +1647,7 @@ class WalletBlockchain(object):
                 raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
             data = data[u"payload"]
 
-        except MayBeBlockchainV0:
-            pass
+            break
 
         # Either the encrypted data was extracted from the "payload" field above, or
         # this is a v0.0 wallet file whose entire contents consist of the encrypted data
@@ -3208,6 +3204,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
 
     # If we're using a passwordlist file, open it here. If we're opening stdin, read in at least an
     # initial portion. If we manage to read up until EOF, then we won't need to disable ETA features.
+    # TODO: support --autosave with --passwordlist files and short stdin inputs
     global passwordlist_file, initial_passwordlist, passwordlist_allcached
     passwordlist_file = open_or_use(args.passwordlist, "r", kwds.get("passwordlist"),
                                     permit_stdin=True, decoding_errors="replace")
