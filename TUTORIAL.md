@@ -14,14 +14,15 @@ If you find *btcrecover* helpful, please consider a small donation to help suppo
 This tutorial is pretty long... you don't have to read the whole thing. Here are some places to start.
 
  1. Read the [Installation Guide](docs/INSTALL.md) for instructions and download links.
- 2. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If not, and you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
- 3. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a `tokens.txt` file you'll need later.
- 4. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
-     * If you skipped step 3 above, read the simple [Passwordlist](#the-passwordlist) section instead.
- 5. Read the [Running *btcrecover*](#running-btcrecover) section to see how to put these pieces together and how to run *btcrecover* in a Command Prompt window.
+ 2. (optional) Run the unit tests by double-clicking on `run-all-tests.py`. If you encounter any failures, please [report them here](https://github.com/gurnec/btcrecover/issues).
+ 3. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If not, and you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
+ 4. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a `tokens.txt` file you'll need later.
+ 5. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
+     * If you skipped step 4 above, read the simple [Passwordlist](#the-passwordlist) section instead.
+ 6. Read the [Running *btcrecover*](#running-btcrecover) section to see how to put these pieces together and how to run *btcrecover* in a Command Prompt window.
      * (optional) Read the [Testing your config](#testing-your-config) section to view the passwords that will be tested.
      * (optional) If you're testing a lot of combinations that will take a long time, use the [Autosave](#autosave) feature to safeguard against losing your progress.
- 6. (optional, but highly recommended) Donate huge sums of Bitcoin to the donation address above once your password's been found.
+ 7. (optional, but highly recommended) Donate huge sums of Bitcoin to the donation address above once your password's been found.
 
 
 ## The Token File ##
@@ -369,13 +370,11 @@ If you didn't have the autosave feature enabled, you can still manually start te
 
 ## Unicode Support ##
 
-If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII#ASCII_printable_code_chart) (non-English) characters, you will need to enable Unicode support. To enable it, simply double-click the `make-unicode.py` file (you only need to do this once). This creates a new file named `btcrecoveru.py`.
+If your password contains any non-[ASCII](https://en.wikipedia.org/wiki/ASCII#ASCII_printable_code_chart) (non-English) characters, you will need to add the `--utf8` command-line option to enable Unicode support.
 
-Anywhere in this Tutorial where you see mention of the script `btcrecover.py`, use `btcrecoveru.py` instead which is a version with Unicode support.
+Please note that all input to and output from *btcrecover* must be UTF-8 encoded (either with or without a Byte Order Mark, or "BOM"), so be sure to change the Encoding to UTF-8 when you save any text files. For example in Windows Notepad, the file *Encoding* setting is right next to the *Save* button in the *File* -> *Save As...* dialog.
 
-Please note that all input to and output from `btcrecoveru.py` must be UTF-8 encoded (either with or without a Byte Order Mark, or "BOM"), so be sure to change the Encoding to UTF-8 when you save any text files. For example in Windows Notepad, the file *Encoding* setting is right next to the *Save* button in the *File* -> *Save As...* dialog.
-
-On Windows (but usually not on Linux or OS X), you may have trouble if any of the command line options you need to use contain any non-ASCII characters. Usually, if it displays in the command prompt window correctly when you type it in, it will work correctly with `btcrecoveru.py`. If it doesn't display correctly, please read the section describing how to put [command-line options inside the tokens file](#command-line-options-inside-the-tokens-file).
+On Windows (but usually not on Linux or OS X), you may have trouble if any of the command line options you need to use contain any non-ASCII characters. Usually, if it displays in the command prompt window correctly when you type it in, it will work correctly with `btcrecover.py`. If it doesn't display correctly, please read the section describing how to put [command-line options inside the tokens file](#command-line-options-inside-the-tokens-file).
 
 Also on Windows (but usually not on Linux or OS X), if your password is found it may not be displayed correctly in the command prompt window. Here is an example of what an incorrect output might look like:
 
@@ -520,9 +519,9 @@ Please see the separate [Limitations and Caveats](docs/Limitations_and_Caveats.m
 
 # Copyright and License #
 
-btcrecover.py -- Bitcoin wallet password recovery tool
+btcrecover -- Bitcoin wallet password and seed recovery tool
 
-Copyright (C) 2014, 2015 Christopher Gurnee
+Copyright (C) 2014-2016 Christopher Gurnee
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
 

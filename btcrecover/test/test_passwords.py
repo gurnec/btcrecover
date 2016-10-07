@@ -1,8 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# test-btcr.py -- unit tests for btcrecovery.py
-# Copyright (C) 2014, 2015 Christopher Gurnee
+# test_passwords.py -- unit tests for btcrecover.py
+# Copyright (C) 2014-2016 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -26,26 +26,8 @@
 #
 #                      Thank You!
 
-# (all futures as of 2.6 and 2.7 except unicode_literals)
-from __future__ import print_function, absolute_import, division, \
-                       generators, nested_scopes, with_statement
-
-# Uncomment for Unicode support (and comment out the next block)
-#from __future__ import unicode_literals
-#import btcrecoveru as btcrecover, io
-#StringIOSubclassable = io.StringIO
-#BytesIO  = io.BytesIO
-#StringIO = io.StringIO
-#tstr = unicode
-#tchr = unichr
-
-# Uncomment for ASCII-only support (and comment out the previous block)
-import btcrecover, StringIO, cStringIO
-StringIOSubclassable = StringIO.StringIO
-BytesIO  = StringIO.StringIO
-StringIO = cStringIO.StringIO
-tstr = str
-tchr = chr
+# (all optional futures for 2.7)
+from __future__ import print_function, absolute_import, division, unicode_literals
 
 import warnings
 # Convert warnings to errors:
@@ -60,20 +42,53 @@ warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing 
 # except this from PyWin32
 warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
 
-import unittest, os, cPickle, tempfile, shutil, filecmp, sys
-
-wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
-typos_dir  = os.path.join(os.path.dirname(__file__), "typos")
-
+from btcrecover import btcrpass
+import os, unittest, cPickle, tempfile, shutil, filecmp, sys
 
 class NonClosingBase(object):
     pass
 
-class StringIONonClosing(StringIOSubclassable, NonClosingBase):
-    def close(self): pass
+# Enables either ANSI or Unicode mode for all tests based on either
+# the value of tstr or the value of the BTCR_CHAR_MODE env. variable
+def setUpModule():
+    global tstr, tchr, utf8_opt, BytesIO, StringIO, BytesIONonClosing, StringIONonClosing
+    try:
+        if tstr not in (str, unicode):
+            assert False
+    except NameError:
+        tstr = unicode if os.getenv("BTCR_CHAR_MODE", "").lower() == "unicode" else str
 
-class BytesIONonClosing(BytesIO, NonClosingBase):
-    def close(self): pass
+    if tstr == str:
+        import StringIO, cStringIO
+        BytesIO  = StringIO.StringIO
+        StringIO = cStringIO.StringIO
+        class BytesIONonClosing(BytesIO, NonClosingBase):
+            def close(self): pass
+        class StringIONonClosing(BytesIO, NonClosingBase):
+            def close(self): pass
+        btcrpass.enable_ansi_mode()
+        tstr = str
+        tchr = chr
+        utf8_opt = ""
+        print("** Testing in ANSI character mode **")
+
+    else:
+        import io
+        BytesIO  = io.BytesIO
+        StringIO = io.StringIO
+        class BytesIONonClosing(BytesIO, NonClosingBase):
+            def close(self): pass
+        class StringIONonClosing(StringIO, NonClosingBase):
+            def close(self): pass
+        btcrpass.enable_unicode_mode()
+        tstr = unicode
+        tchr = unichr
+        utf8_opt = " --utf8"
+        print("** Testing in Unicode character mode **")
+
+WALLET_DIR = os.path.join(os.path.dirname(__file__), "test-wallets")
+TYPOS_DIR  = os.path.join(os.path.dirname(__file__), "..", "..", "typos")
+
 
 class GeneratorTester(unittest.TestCase):
 
@@ -88,15 +103,18 @@ class GeneratorTester(unittest.TestCase):
                           chunksize = sys.maxint, expected_skipped = None, **extra_kwds):
         assert isinstance(tokenlist, list)
         assert isinstance(expected_passwords, list)
-        tokenlist_str = "\n".join(tokenlist)
-        args          = (" __funccall --listpass "+extra_cmd_line).split()
+        tokenlist_str = tstr("\n".join(tokenlist))
+        args          = (tstr(" __funccall --listpass "+extra_cmd_line+utf8_opt)).split()
 
-        btcrecover.parse_arguments(["--tokenlist"] + args, tokenlist=StringIO(tokenlist_str), **extra_kwds)
-        tok_it, skipped = btcrecover.password_generator_factory(chunksize)
+        btcrpass.parse_arguments([tstr("--tokenlist")] + args, tokenlist=StringIO(tokenlist_str), **extra_kwds)
+        tok_it, skipped = btcrpass.password_generator_factory(chunksize)
         if expected_skipped is not None:
             self.assertEqual(skipped, expected_skipped)
         try:
-            self.assertEqual(tok_it.next(), expected_passwords)
+            generated_passwords = tok_it.next()
+            for p in generated_passwords:
+                self.assertIs(type(p), tstr)
+            self.assertEqual(generated_passwords, expected_passwords)
         except StopIteration:
             self.assertEqual([], expected_passwords)
         if not test_passwordlist: return tok_it,
@@ -105,12 +123,15 @@ class GeneratorTester(unittest.TestCase):
         for sio in filter(lambda s: isinstance(s, NonClosingBase), extra_kwds.values()):
             sio.seek(0)
 
-        btcrecover.parse_arguments(["--passwordlist"] + args, passwordlist=StringIO(tokenlist_str), **extra_kwds)
-        pwl_it, skipped = btcrecover.password_generator_factory(chunksize)
+        btcrpass.parse_arguments([tstr("--passwordlist")] + args, passwordlist=StringIO(tokenlist_str), **extra_kwds)
+        pwl_it, skipped = btcrpass.password_generator_factory(chunksize)
         if expected_skipped is not None:
             self.assertEqual(skipped, expected_skipped)
         try:
-            self.assertEqual(pwl_it.next(), expected_passwords)
+            generated_passwords = pwl_it.next()
+            for p in generated_passwords:
+                self.assertIs(type(p), tstr)
+            self.assertEqual(generated_passwords, expected_passwords)
         except StopIteration:
             self.assertEqual([], expected_passwords)
         return tok_it, pwl_it
@@ -122,9 +143,9 @@ class GeneratorTester(unittest.TestCase):
     def expect_syntax_failure(self, tokenlist, expected_error, extra_cmd_line = "", **extra_kwds):
         assert isinstance(tokenlist, list)
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(
-                ("--tokenlist __funccall --listpass "+extra_cmd_line).split(),
-                tokenlist = StringIO("\n".join(tokenlist)),
+            btcrpass.parse_arguments(
+                (tstr("--tokenlist __funccall --listpass "+extra_cmd_line+utf8_opt)).split(),
+                tokenlist = StringIO(tstr("\n".join(tokenlist))),
                 **extra_kwds)
         self.assertIn(expected_error, cm.exception.code)
 
@@ -133,8 +154,8 @@ class Test01Basics(GeneratorTester):
 
     def test_alternate(self):
         self.do_generator_test(["one", "two"], ["one", "two", "twoone", "onetwo"])
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_alternate_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.do_generator_test(["один", "два"], ["один", "два", "дваодин", "одиндва"])
 
     def test_mutex(self):
@@ -161,9 +182,9 @@ class Test01Basics(GeneratorTester):
         self.assertRaises(StopIteration, tok_it.next)
 
     def test_only_yield_count(self):
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one two three four five six"))
-        tok_it = btcrecover.password_generator(2, only_yield_count=True)
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one two three four five six")))
+        tok_it = btcrpass.password_generator(2, only_yield_count=True)
         self.assertEqual(tok_it.next(), 2)
         self.assertIsNone(tok_it.send( (3, True) ))
         self.assertEqual(tok_it.next(), 3)
@@ -171,9 +192,9 @@ class Test01Basics(GeneratorTester):
         self.assertEqual(tok_it.next(), ["six"])
         self.assertRaises(StopIteration, tok_it.next)
 
-        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
-            passwordlist = StringIO("one two three four five six".replace(" ", "\n")))
-        pwl_it = btcrecover.password_generator(2, only_yield_count=True)
+        btcrpass.parse_arguments(("--passwordlist __funccall --listpass"+utf8_opt).split(),
+                                 passwordlist = StringIO(tstr("one two three four five six".replace(" ", "\n"))))
+        pwl_it = btcrpass.password_generator(2, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 2)
         self.assertIsNone(pwl_it.send( (3, True) ))
         self.assertEqual(pwl_it.next(), 3)
@@ -182,37 +203,37 @@ class Test01Basics(GeneratorTester):
         self.assertRaises(StopIteration, pwl_it.next)
 
     def test_only_yield_count_all(self):
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one two three"))
-        tok_it = btcrecover.password_generator(4, only_yield_count=True)
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one two three")))
+        tok_it = btcrpass.password_generator(4, only_yield_count=True)
         self.assertEqual(tok_it.next(), 3)
         self.assertRaises(StopIteration, tok_it.next)
 
-        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
-            passwordlist = StringIO("one two three".replace(" ", "\n")))
-        pwl_it = btcrecover.password_generator(4, only_yield_count=True)
+        btcrpass.parse_arguments(("--passwordlist __funccall --listpass"+utf8_opt).split(),
+                                 passwordlist = StringIO(tstr("one two three".replace(" ", "\n"))))
+        pwl_it = btcrpass.password_generator(4, only_yield_count=True)
         self.assertEqual(pwl_it.next(), 3)
         self.assertRaises(StopIteration, pwl_it.next)
 
     def test_count(self):
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one two three"))
-        self.assertEqual(btcrecover.count_and_check_eta(1.0), 3)
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one two three")))
+        self.assertEqual(btcrpass.count_and_check_eta(1.0), 3)
     def test_count_zero(self):
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO(""))
-        self.assertEqual(btcrecover.count_and_check_eta(1.0), 0)
-    # the size of a "chunk" is == btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("")))
+        self.assertEqual(btcrpass.count_and_check_eta(1.0), 0)
+    # the size of a "chunk" is == btcrpass.PASSWORDS_BETWEEN_UPDATES == 100000
     def test_count_one_chunk(self):
-        assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("%5d"))
-        self.assertEqual(btcrecover.count_and_check_eta(1.0), 100000)
+        assert btcrpass.PASSWORDS_BETWEEN_UPDATES == 100000
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("%5d")))
+        self.assertEqual(btcrpass.count_and_check_eta(1.0), 100000)
     def test_count_two_chunks(self):
-        assert btcrecover.PASSWORDS_BETWEEN_UPDATES == 100000
-        btcrecover.parse_arguments("--tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("%5d 100000"))
-        self.assertEqual(btcrecover.count_and_check_eta(1.0), 100001)
+        assert btcrpass.PASSWORDS_BETWEEN_UPDATES == 100000
+        btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("%5d 100000")))
+        self.assertEqual(btcrpass.count_and_check_eta(1.0), 100001)
 
     def test_token_counts_min_0(self):
         self.do_generator_test(["one"], ["", "one"], "--min-tokens 0")
@@ -293,17 +314,17 @@ class Test02Anchors(GeneratorTester):
         self.do_generator_test(["one", "one", "^,$two"], ["one", "oneone", "onetwoone"], "-d")
 
 
-LEET_MAP_FILE = os.path.join(typos_dir, "leet-map.txt")
+LEET_MAP_FILE = os.path.join(TYPOS_DIR, "leet-map.txt")
 class Test03WildCards(GeneratorTester):
 
     def test_basics_1(self):
         self.do_generator_test(["%d"], map(tstr, xrange(10)), "--has-wildcards", True)
     def test_basics_2(self):
-        self.do_generator_test(["%dtest"], [tstr(i)+"test" for i in xrange(10)], "--has-wildcards", True)
+        self.do_generator_test(["%dtest"], [unicode(i)+"test" for i in xrange(10)], "--has-wildcards", True)
     def test_basics_3(self):
-        self.do_generator_test(["te%dst"], ["te"+tstr(i)+"st" for i in xrange(10)], "--has-wildcards", True)
+        self.do_generator_test(["te%dst"], ["te"+unicode(i)+"st" for i in xrange(10)], "--has-wildcards", True)
     def test_basics_4(self):
-        self.do_generator_test(["test%d"], ["test"+tstr(i) for i in xrange(10)], "--has-wildcards", True)
+        self.do_generator_test(["test%d"], ["test"+unicode(i) for i in xrange(10)], "--has-wildcards", True)
 
     def test_invalid_nocust(self):
         self.expect_syntax_failure(["%c"],    "invalid wildcard")
@@ -427,8 +448,8 @@ class Test04Typos(GeneratorTester):
     def test_capslock_nocaps(self):
         self.do_generator_test(["123"], ["123"],
             "--typos-capslock --typos 2 -d", True)
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_capslock_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.do_generator_test(["Один2Три"], ["Один2Три", "оДИН2тРИ"],
             "--typos-capslock --typos 2 -d", True)
 
@@ -513,12 +534,12 @@ class Test04Typos(GeneratorTester):
         self.do_generator_test(["axb"],
             ["axb", "Axb", "Bxb", "axA", "axB", "AxA", "AxB", "BxA", "BxB"],
             "--typos-map __funccall --typos 2 -d", True,
-            typos_map=StringIONonClosing(" ab \t AB \n x x \n a aB "))
+            typos_map=StringIONonClosing(tstr(" ab \t AB \n x x \n a aB ")))
     def test_map_max(self):
         self.do_generator_test(["axb"],
             ["axb", "Axb", "Bxb", "axA", "axB"],
             "--typos-map __funccall --max-typos-map 1 --typos 2 -d", True,
-            typos_map=StringIONonClosing(" ab \t AB \n x x \n a aB "))
+            typos_map=StringIONonClosing(tstr(" ab \t AB \n x x \n a aB ")))
 
     def test_z_all(self):
         self.do_generator_test(["12"],
@@ -553,29 +574,32 @@ class Test04Typos(GeneratorTester):
             True)
 
 
-LARGE_TOKENLIST_LEN = 2 * btcrecover.PASSWORDS_BETWEEN_UPDATES
-LARGE_TOKENLIST     = " ".join(tstr(i) for i in xrange(LARGE_TOKENLIST_LEN))
-LARGE_LAST_TOKEN    = tstr(LARGE_TOKENLIST_LEN - 1)
 class Test05CommandLine(GeneratorTester):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.LARGE_TOKENLIST_LEN = 2 * btcrpass.PASSWORDS_BETWEEN_UPDATES
+        cls.LARGE_TOKENLIST     = tstr(" ").join(tstr(i) for i in xrange(cls.LARGE_TOKENLIST_LEN))
+        cls.LARGE_LAST_TOKEN    = tstr(cls.LARGE_TOKENLIST_LEN - 1)
 
     def test_embedded_tokenlist_option(self):
         self.do_generator_test(["#--typos-capslock", "one"], ["one", "ONE"])
     def test_embedded_tokenlist_overwridden_option(self):
         self.do_generator_test(["#--skip 1", "one two"], [], "--skip 2")
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_embedded_tokenlist_option_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.do_generator_test(["#--typos-insert в", "да"], ["да", "вда", "два", "дав"])
     def test_embedded_tokenlist_option_invalid(self):
         self.expect_syntax_failure(["#--tokenlist file"], "--tokenlist option is not permitted inside a tokenlist file")
 
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.do_generator_test(["да"], ["да", "вда", "два", "дав"], "--typos-insert в")
 
     def test_passwordlist_no_wildcards(self):
-        btcrecover.parse_arguments("--passwordlist __funccall --listpass".split(),
-            passwordlist = StringIO("%%"))
-        tok_it, skipped = btcrecover.password_generator_factory(2)
+        btcrpass.parse_arguments(("--passwordlist __funccall --listpass"+utf8_opt).split(),
+                                 passwordlist = StringIO(tstr("%%")))
+        tok_it, skipped = btcrpass.password_generator_factory(2)
         self.assertEqual(tok_it.next(), ["%%"])
 
     def test_regex_only(self):
@@ -590,7 +614,7 @@ class Test05CommandLine(GeneratorTester):
     def test_delimiter_typosmap(self):
         self.do_generator_test(["axb"], ["axb", "Axb", " xb", "axA", "ax ", "AxA", "Ax ", " xA", " x " ],
             "--delimiter ** --typos-map __funccall --typos 2 -d",
-            True, typos_map=StringIONonClosing(" ab **A \n x **x"))
+            True, typos_map=StringIONonClosing(tstr(" ab **A \n x **x")))
 
     # Try to test the myriad of --skip related boundary conditions in password_generator_factory()
     def test_skip(self):
@@ -600,66 +624,78 @@ class Test05CommandLine(GeneratorTester):
     def test_skip_all_pastend_1(self):
         self.do_generator_test(["one"], [], "--skip 2", True, sys.maxint, 1)
     def test_skip_all_pastend_2(self):
-        self.do_generator_test(["one"], [], "--skip " + str(LARGE_TOKENLIST_LEN), True, sys.maxint, 1)
+        self.do_generator_test(["one"], [], "--skip " + unicode(self.LARGE_TOKENLIST_LEN), True, sys.maxint, 1)
     def test_skip_empty_1(self):
         self.do_generator_test([], [], "--skip 1", True, sys.maxint, 0)
     def test_skip_empty_2(self):
-        self.do_generator_test([], [], "--skip " + str(LARGE_TOKENLIST_LEN), True, sys.maxint, 0)
+        self.do_generator_test([], [], "--skip " + unicode(self.LARGE_TOKENLIST_LEN), True, sys.maxint, 0)
     def test_skip_large_1(self):
-        self.do_generator_test([LARGE_TOKENLIST], [LARGE_LAST_TOKEN], "-d --skip "+str(LARGE_TOKENLIST_LEN-1), False, sys.maxint, LARGE_TOKENLIST_LEN-1)
+        self.do_generator_test([self.LARGE_TOKENLIST], [self.LARGE_LAST_TOKEN],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN - 1),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN - 1)
     def test_skip_large_1_all_exact(self):
-        self.do_generator_test([LARGE_TOKENLIST], [],                 "-d --skip "+str(LARGE_TOKENLIST_LEN  ), False, sys.maxint, LARGE_TOKENLIST_LEN)
+        self.do_generator_test([self.LARGE_TOKENLIST], [],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN)
     def test_skip_large_1_all_pastend(self):
-        self.do_generator_test([LARGE_TOKENLIST], [],                 "-d --skip "+str(LARGE_TOKENLIST_LEN+1), False, sys.maxint, LARGE_TOKENLIST_LEN)
+        self.do_generator_test([self.LARGE_TOKENLIST], [],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN + 1),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN)
     def test_skip_large_2(self):
-        self.do_generator_test([LARGE_TOKENLIST + " last"], ["last"], "-d --skip "+str(LARGE_TOKENLIST_LEN  ), False, sys.maxint, LARGE_TOKENLIST_LEN)
+        self.do_generator_test([self.LARGE_TOKENLIST + " last"], ["last"],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN)
     def test_skip_large_2_all_exact(self):
-        self.do_generator_test([LARGE_TOKENLIST + " last"], [],       "-d --skip "+str(LARGE_TOKENLIST_LEN+1), False, sys.maxint, LARGE_TOKENLIST_LEN+1)
+        self.do_generator_test([self.LARGE_TOKENLIST + " last"], [],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN + 1),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN + 1)
     def test_skip_large_2_all_pastend(self):
-        self.do_generator_test([LARGE_TOKENLIST + " last"], [],       "-d --skip "+str(LARGE_TOKENLIST_LEN+2), False, sys.maxint, LARGE_TOKENLIST_LEN+1)
+        self.do_generator_test([self.LARGE_TOKENLIST + " last"], [],
+                               "-d --skip " + unicode(self.LARGE_TOKENLIST_LEN + 2),
+                               False, sys.maxint, self.LARGE_TOKENLIST_LEN + 1)
     def test_skip_end2end(self):
-        btcrecover.parse_arguments("--skip 2 --tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one \n two"))
-        self.assertIn("2 password combinations (plus 2 skipped)", btcrecover.main()[1])
+        btcrpass.parse_arguments(("--skip 2 --tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one \n two")))
+        self.assertIn("2 password combinations (plus 2 skipped)", btcrpass.main()[1])
     def test_skip_end2end_all_exact(self):
-        btcrecover.parse_arguments("--skip 4 --tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one \n two"))
-        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main()[1])
+        btcrpass.parse_arguments(("--skip 4 --tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one \n two")))
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrpass.main()[1])
     def test_skip_end2end_all_pastend(self):
-        btcrecover.parse_arguments("--skip 5 --tokenlist __funccall --listpass".split(),
-            tokenlist = StringIO("one \n two"))
-        self.assertIn("0 password combinations (plus 4 skipped)", btcrecover.main()[1])
+        btcrpass.parse_arguments(("--skip 5 --tokenlist __funccall --listpass"+utf8_opt).split(),
+                                 tokenlist = StringIO(tstr("one \n two")))
+        self.assertIn("0 password combinations (plus 4 skipped)", btcrpass.main()[1])
     def test_skip_end2end_all_noeta(self):
-        btcrecover.parse_arguments("--skip 5 --tokenlist __funccall --no-eta --data-extract".split(),
-            tokenlist    = StringIO("one \n two"),
-            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
-        self.assertIn("Skipped all 4 passwords", btcrecover.main()[1])
+        btcrpass.parse_arguments(("--skip 5 --tokenlist __funccall --no-eta --data-extract"+utf8_opt).split(),
+                                 tokenlist    = StringIO(tstr("one \n two")),
+                                 data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
+        self.assertIn("Skipped all 4 passwords", btcrpass.main()[1])
 
     def test_max_eta(self):
-        btcrecover.parse_arguments("--max-eta 1 --tokenlist __funccall --data-extract".split(),
-            tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10 11"),
-            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
+        btcrpass.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract"+utf8_opt).split(),
+                                 tokenlist    = StringIO(tstr("1 2 3 4 5 6 7 8 9 10 11")),
+                                 data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
+            btcrpass.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > --max-eta option (1 hours)", cm.exception.code)
     def test_max_eta_ok(self):
-        btcrecover.parse_arguments("--max-eta 1 --tokenlist __funccall --data-extract".split(),
-            tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10"),
-            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
-        self.assertEqual(btcrecover.count_and_check_eta(360.0), 10)  # 360s * 10 passwords <= 1 hour
+        btcrpass.parse_arguments(("--max-eta 1 --tokenlist __funccall --data-extract"+utf8_opt).split(),
+                                 tokenlist    = StringIO(tstr("1 2 3 4 5 6 7 8 9 10")),
+                                 data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
+        self.assertEqual(btcrpass.count_and_check_eta(360.0), 10)  # 360s * 10 passwords <= 1 hour
     def test_max_eta_skip(self):
-        btcrecover.parse_arguments("--max-eta 1 --skip 4 --tokenlist __funccall --data-extract".split(),
-            tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
-            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
+        btcrpass.parse_arguments(("--max-eta 1 --skip 4 --tokenlist __funccall --data-extract"+utf8_opt).split(),
+                                 tokenlist    = StringIO(tstr("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15")),
+                                 data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
+            btcrpass.count_and_check_eta(360.0)  # 360s * 11 passwords > 1 hour
         self.assertIn("at least 11 passwords to try, ETA > --max-eta option (1 hours)", cm.exception.code)
     def test_max_eta_skip_ok(self):
-        btcrecover.parse_arguments("--max-eta 1 --skip 5 --tokenlist __funccall --data-extract".split(),
-            tokenlist    = StringIO("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"),
-            data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
+        btcrpass.parse_arguments(("--max-eta 1 --skip 5 --tokenlist __funccall --data-extract"+utf8_opt).split(),
+                                 tokenlist    = StringIO(tstr("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15")),
+                                 data_extract = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")  # dummy data-extract not actually tested
         # 360s * 10 passwords <= 1 hour, but count_and_check_eta still returns the total count of 15
-        self.assertEqual(btcrecover.count_and_check_eta(360.0), 15)
+        self.assertEqual(btcrpass.count_and_check_eta(360.0), 15)
 
     def test_worker(self):
         self.do_generator_test(["one two three four five six seven eight"], ["one", "four", "seven"],
@@ -676,56 +712,59 @@ class Test05CommandLine(GeneratorTester):
     def test_no_dupchecks_2(self):
         self.do_generator_test(["one", "one"], ["one", "oneone"], "-d")
         # Duplicate code works differently the second time around; test it also
-        self.assertEqual(btcrecover.password_generator(3).next(), ["one", "oneone"])
+        self.assertEqual(btcrpass.password_generator(3).next(), ["one", "oneone"])
 
     def test_no_dupchecks_3(self):
         self.do_generator_test(["%[ab] %[a-b]"], ["a", "b", "a", "b"], "-d")
         self.do_generator_test(["%[ab] %[a-b]"], ["a", "b"])
         # Duplicate code works differently the second time around; test it also
-        self.assertEqual(btcrecover.password_generator(3).next(), ["a", "b"])
+        self.assertEqual(btcrpass.password_generator(3).next(), ["a", "b"])
 
     # Need to check four different code paths for --exclude-passwordlist
     def test_exclude(self):
         self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], "--exclude-passwordlist __funccall",
-                               exclude_passwordlist=StringIO("exc1\nexc2"))
+                               exclude_passwordlist=StringIO(tstr("exc1\nexc2")))
     def test_exclude_nodupchecks(self):
         self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], "--exclude-passwordlist __funccall -dd",
-                               exclude_passwordlist=StringIO("exc1\nexc2"))
+                               exclude_passwordlist=StringIO(tstr("exc1\nexc2")))
     def test_exclude_noeta(self):
         self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], "--exclude-passwordlist __funccall --no-eta",
-                               exclude_passwordlist=StringIO("exc1\nexc2"))
+                               exclude_passwordlist=StringIO(tstr("exc1\nexc2")))
     def test_exclude_noeta_nodupchecks(self):
         self.do_generator_test(["exc1 exc2 inc exc1 exc2"], ["inc"], "--exclude-passwordlist __funccall --no-eta -dd",
-                               exclude_passwordlist=StringIO("exc1\nexc2"))
+                               exclude_passwordlist=StringIO(tstr("exc1\nexc2")))
 
 
 SAVESLOT_SIZE = 4096
-AUTOSAVE_ARGS = "--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1".split()
-AUTOSAVE_TOKENLIST    = "^one \n two \n three \n"
-AUTOSAVE_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
 class Test06AutosaveRestore(unittest.TestCase):
 
-    autosave_file = BytesIONonClosing()
+    @classmethod
+    def setUpClass(cls):
+        cls.AUTOSAVE_ARGS = (
+            tstr("--autosave __funccall --tokenlist __funccall --data-extract --no-progress --threads 1"+utf8_opt)).split()
+        cls.AUTOSAVE_TOKENLIST    = tstr("^one \n two \n three \n")
+        cls.AUTOSAVE_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
+        cls.autosave_file         = BytesIONonClosing()
 
     def run_autosave_parse_arguments(self, autosave_file):
-        btcrecover.parse_arguments(AUTOSAVE_ARGS,
-            autosave     = autosave_file,
-            tokenlist    = StringIO(AUTOSAVE_TOKENLIST),
-            data_extract = AUTOSAVE_DATA_EXTRACT)
+        btcrpass.parse_arguments(self.AUTOSAVE_ARGS,
+                                 autosave     = autosave_file,
+                                 tokenlist    = StringIO(self.AUTOSAVE_TOKENLIST),
+                                 data_extract = self.AUTOSAVE_DATA_EXTRACT)
 
     def run_restore_parse_arguments(self, restore_file):
-        btcrecover.parse_arguments("--restore __funccall".split(),
-            restore      = restore_file,
-            tokenlist    = StringIO(AUTOSAVE_TOKENLIST),
-            data_extract = AUTOSAVE_DATA_EXTRACT)
+        btcrpass.parse_arguments("--restore __funccall".split(),
+                                 restore      = restore_file,
+                                 tokenlist    = StringIO(self.AUTOSAVE_TOKENLIST),
+                                 data_extract = self.AUTOSAVE_DATA_EXTRACT)
 
     # These test_ functions are in alphabetical order (the same order they're executed in)
 
     # Create the initial autosave data
     def test_autosave(self):
-        autosave_file = self.__class__.autosave_file
+        autosave_file = self.autosave_file
         self.run_autosave_parse_arguments(autosave_file)
-        self.assertIn("Password search exhausted", btcrecover.main()[1])
+        self.assertIn("Password search exhausted", btcrpass.main()[1])
         #
         # Load slot 0, and verify it was created before any passwords were tested
         autosave_file.seek(0)
@@ -742,56 +781,56 @@ class Test06AutosaveRestore(unittest.TestCase):
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
     # and make sure all of the passwords have already been tested
     def test_autosave_restore(self):
-        self.run_autosave_parse_arguments(BytesIONonClosing(self.__class__.autosave_file.getvalue()))
-        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main()[1])
+        self.run_autosave_parse_arguments(BytesIONonClosing(self.autosave_file.getvalue()))
+        self.assertIn("Skipped all 9 passwords, exiting", btcrpass.main()[1])
 
     # Using --restore, restore (a copy of) the autosave data created by test_autosave(),
     # and make sure all of the passwords have already been tested
     def test_restore(self):
-        self.run_restore_parse_arguments(BytesIONonClosing(self.__class__.autosave_file.getvalue()))
-        self.assertIn("Skipped all 9 passwords, exiting", btcrecover.main()[1])
+        self.run_restore_parse_arguments(BytesIONonClosing(self.autosave_file.getvalue()))
+        self.assertIn("Skipped all 9 passwords, exiting", btcrpass.main()[1])
 
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
     # but change the arguments to generate an error
     def test_restore_changed_args(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(AUTOSAVE_ARGS + ["--typos-capslock"],
-                autosave     = BytesIO(self.__class__.autosave_file.getvalue()),
-                tokenlist    = StringIO(AUTOSAVE_TOKENLIST),
-                data_extract = AUTOSAVE_DATA_EXTRACT)
+            btcrpass.parse_arguments(self.AUTOSAVE_ARGS + ["--typos-capslock"],
+                                     autosave     = BytesIO(self.autosave_file.getvalue()),
+                                     tokenlist    = StringIO(self.AUTOSAVE_TOKENLIST),
+                                     data_extract = self.AUTOSAVE_DATA_EXTRACT)
         self.assertIn("can't restore previous session: the command line options have changed", cm.exception.code)
 
     # Using --autosave, restore (a copy of) the autosave data created by test_autosave(),
     # but change the tokenlist file to generate an error
     def test_restore_changed_tokenlist(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments(AUTOSAVE_ARGS,
-                autosave     = BytesIO(self.__class__.autosave_file.getvalue()),
-                tokenlist    = StringIO(AUTOSAVE_TOKENLIST + "four"),
-                data_extract = AUTOSAVE_DATA_EXTRACT)
+            btcrpass.parse_arguments(self.AUTOSAVE_ARGS,
+                                     autosave     = BytesIO(self.autosave_file.getvalue()),
+                                     tokenlist    = StringIO(self.AUTOSAVE_TOKENLIST + "four"),
+                                     data_extract = self.AUTOSAVE_DATA_EXTRACT)
         self.assertIn("can't restore previous session: the tokenlist file has changed", cm.exception.code)
 
     # Using --restore, restore (a copy of) the autosave data created by test_autosave(),
     # but change the data_extract to generate an error
     def test_restore_changed_data_extract(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.parse_arguments("--restore __funccall".split(),
-                restore      = BytesIO(self.__class__.autosave_file.getvalue()),
-                tokenlist    = StringIO(AUTOSAVE_TOKENLIST),
-                data_extract = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
+            btcrpass.parse_arguments("--restore __funccall".split(),
+                                     restore      = BytesIO(self.autosave_file.getvalue()),
+                                     tokenlist    = StringIO(self.AUTOSAVE_TOKENLIST),
+                                     data_extract = "bWI6ACkebfNQTLk75CfI5X3svX6AC7NFeGsgUxKNFg==")  # has a valid CRC
         self.assertIn("can't restore previous session: the encrypted key entered is not the same", cm.exception.code)
 
     # Using --restore, restore the autosave data created by test_autosave(),
     # but remove the last byte from slot 1 to make it invalid
     def test_restore_truncated(self):
-        autosave_file = self.__class__.autosave_file
+        autosave_file = self.autosave_file
         autosave_file.seek(-1, os.SEEK_END)
         autosave_file.truncate()
         self.run_restore_parse_arguments(autosave_file)
         #
         # Slot 1 had the final save, but since it is invalid, the loader should fall
         # back to slot 0 with the initial save, so the passwords should be tried again.
-        self.assertIn("Password search exhausted", btcrecover.main()[1])
+        self.assertIn("Password search exhausted", btcrpass.main()[1])
         #
         # Because slot 1 was invalid, it is the first slot overwritten. Load it, and
         # verify it was written to before any passwords were tested
@@ -815,7 +854,7 @@ def can_load_armory(permit_unicode = False):
     # (calling more than once on success is OK though)
     if is_armory_loadable is None:
         try:
-            btcrecover.load_armory_library(permit_unicode)
+            btcrpass.load_armory_library(permit_unicode)
             is_armory_loadable = True
         except ImportError:
             is_armory_loadable = False
@@ -826,7 +865,7 @@ def can_load_protobuf():
     global is_protobuf_loadable
     if is_protobuf_loadable is None:
         try:
-            import wallet_pb2
+            from .. import wallet_pb2
             is_protobuf_loadable = True
         except ImportError:
             is_protobuf_loadable = False
@@ -851,73 +890,74 @@ class Test07WalletDecryption(unittest.TestCase):
                       force_purepython = False, force_kdf_purepython = False, force_bsddb_purepython = False,
                       correct_pass = None, blockchain_mainpass = None, android_backuppass = None):
         assert os.path.basename(wallet_basename) == wallet_basename
-        wallet_filename = os.path.join(wallet_dir, wallet_basename)
+        wallet_filename = os.path.join(WALLET_DIR, wallet_basename)
 
         temp_dir = tempfile.mkdtemp("-test-btcr")
         temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
         shutil.copyfile(wallet_filename, temp_wallet_filename)
 
         if android_backuppass:
-            wallet = btcrecover.WalletAndroidSpendingPIN.load_from_filename(
-                temp_wallet_filename, android_backuppass, force_purepython)
+            wallet = btcrpass.WalletAndroidSpendingPIN.load_from_filename(
+                temp_wallet_filename, tstr(android_backuppass), force_purepython)
         elif blockchain_mainpass:
-            wallet = btcrecover.WalletBlockchainSecondpass.load_from_filename(
-                temp_wallet_filename, blockchain_mainpass, force_purepython)
+            wallet = btcrpass.WalletBlockchainSecondpass.load_from_filename(
+                temp_wallet_filename, tstr(blockchain_mainpass), force_purepython)
         elif force_bsddb_purepython:
-            wallet = btcrecover.WalletBitcoinCore.load_from_filename(
+            wallet = btcrpass.WalletBitcoinCore.load_from_filename(
                 temp_wallet_filename, force_bsddb_purepython)
         else:
-            wallet = btcrecover.load_wallet(temp_wallet_filename)
+            wallet = btcrpass.load_wallet(temp_wallet_filename)
 
-        if force_purepython:     btcrecover.load_aes256_library(force_purepython=True)
-        if force_kdf_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
+        if force_purepython:     btcrpass.load_aes256_library(force_purepython=True)
+        if force_kdf_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
 
         if not correct_pass:
             correct_pass = "btcr-test-password"
+        correct_pass = tstr(correct_pass)
         self.assertEqual(wallet.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
         self.assertEqual(wallet.return_verified_password_or_false(
-            ["btcr-wrong-password-3", correct_pass, "btcr-wrong-password-4"]), (correct_pass, 2))
+            [tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4")]), (correct_pass, 2))
 
         del wallet
         self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
         shutil.rmtree(temp_dir)
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     def test_armory(self):
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
         self.wallet_tester("armory-wallet.wallet")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoincore(self):
         self.wallet_tester("bitcoincore-wallet.dat")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum(self):
         self.wallet_tester("electrum-wallet")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum2(self):
         self.wallet_tester("electrum2-wallet")
 
     def test_electrum2_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum2-wallet")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
         self.wallet_tester("mbhd.wallet.aes")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj(self):
         self.wallet_tester("bitcoinj-wallet.wallet")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_androidpin(self):
@@ -929,46 +969,46 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_androidpin_unencrypted(self):
         self.wallet_tester("bitcoinj-wallet.wallet", android_backuppass="IGNORED")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither(self):
         self.wallet_tester("bither-wallet.db")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
     def test_bither_hdonly(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("bither-hdonly-wallet.db")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.wallet_tester("msigna-wallet.vault")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_secondpass_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_secondpass_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
 
-    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
+    @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
     def test_blockchain_secondpass_unencrypted(self):  # this wallet has no second-password iter_count, so this case is also tested here
         self.wallet_tester("blockchain-unencrypted-wallet.aes.json", blockchain_mainpass="IGNORED")
 
@@ -980,7 +1020,7 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_blockchain_invalid(self):
         # A base64-containing file that's mostly but not entirely encrypted (random)
         with self.assertRaises(ValueError) as cm:
-            btcrecover.WalletBlockchain.load_from_filename(os.path.join(wallet_dir, "multibit-wallet.key"))
+            btcrpass.WalletBlockchain.load_from_filename(os.path.join(WALLET_DIR, "multibit-wallet.key"))
         self.assertIn("Doesn't look random enough to be an encrypted Blockchain wallet", cm.exception.args[0])
 
     def test_bitcoincore_pp(self):
@@ -1018,8 +1058,8 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bither-wallet.db", force_purepython=True)
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
     def test_bither_hdonly_pp(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("bither-hdonly-wallet.db", force_purepython=True)
 
     def test_msigna_pp(self):
@@ -1044,7 +1084,7 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_invalid_wallet(self):
         with self.assertRaises(SystemExit) as cm:
-            btcrecover.load_wallet(__file__)
+            btcrpass.load_wallet(__file__)
         self.assertIn("unrecognized wallet format", cm.exception.code)
 
 
@@ -1052,50 +1092,50 @@ class Test08BIP39Passwords(unittest.TestCase):
 
     def bip39_tester(self, force_purepython = False, unicode_pw = False, *args, **kwargs):
 
-        btcrecover.loaded_wallet = btcrecover.WalletBIP39(*args, **kwargs)
-        if force_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
+        btcrpass.loaded_wallet = btcrpass.WalletBIP39(*args, **kwargs)
+        if force_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
 
-        correct_pw = "btcr-test-password" if not unicode_pw else "btcr-тест-пароль"
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-3", correct_pw, "btcr-wrong-password-4"]), (correct_pw, 2))
+        correct_pw = tstr("btcr-test-password") if not unicode_pw else "btcr-тест-пароль"
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-3"), correct_pw, tstr("btcr-wrong-password-4")]), (correct_pw, 2))
 
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
-    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires Python 2.7.8+")
     def test_bip39_mpk(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=      "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
             mnemonic= "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         )
 
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_bip39_unicode_password(self):
+        if tstr != unicode:                          self.skipTest("Unicode mode only")
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=        "xpub6CZe1G1A1CaaSepbekLMSk1sBRNA9kHZzEQCedudHAQHHB21FW9fYpQWXBevrLVQfL8JFQVFWEw3aACdr6szksaGsLiHDKyRd1rPJ6ev5ig",
             mnemonic=   "certain come keen collect slab gauge photo inside mechanic deny leader drop",
             unicode_pw= True
         )
 
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
     def test_bip39_unicode_mnemonic(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=       "xpub6C7cXo5w4HPs6X93zKdkRNDFyHedGHwQHvmMst7HYjeudySyF3eTsWktz6JVz4CkrzuLiEbieYP8dQaxsffJXjquD3FLmnqioHe8qZwcBF3",
             mnemonic= u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき"
         )
 
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
     def test_bip39_address(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             address=       "1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn",
             address_limit= 5,
             mnemonic=      "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         )
 
-    @unittest.skipUnless(can_load_armory(permit_unicode=True), "requires Armory")
     def test_bip39_pp(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=              "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
             mnemonic=         "certain come keen collect slab gauge photo inside mechanic deny leader drop",
@@ -1104,7 +1144,7 @@ class Test08BIP39Passwords(unittest.TestCase):
 
 
 def has_any_opencl_devices():
-    try:   devs = btcrecover.get_opencl_devices()
+    try:   devs = btcrpass.get_opencl_devices()
     except ImportError: return False
     return len(devs) > 0
 
@@ -1112,201 +1152,201 @@ def has_any_opencl_devices():
 class Test08KeyDecryption(unittest.TestCase):
 
     def key_tester(self, key_crc_base64, force_purepython = False, force_kdf_purepython = False, unicode_pw = False):
-        btcrecover.load_from_base64_key(key_crc_base64)
-        if force_purepython:     btcrecover.load_aes256_library(force_purepython=True)
-        if force_kdf_purepython: btcrecover.load_pbkdf2_library(force_purepython=True)
+        btcrpass.load_from_base64_key(key_crc_base64)
+        if force_purepython:     btcrpass.load_aes256_library(force_purepython=True)
+        if force_kdf_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
 
-        correct_pw = "btcr-test-password" if not unicode_pw else "btcr-тест-пароль"
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-3", correct_pw, "btcr-wrong-password-4"]), (correct_pw, 2))
+        correct_pw = tstr("btcr-test-password") if not unicode_pw else "btcr-тест-пароль"
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-3"), correct_pw, tstr("btcr-wrong-password-4")]), (correct_pw, 2))
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     def test_armory(self):
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
         self.key_tester("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoincore(self):
         self.key_tester("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoincore_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6YK6OX8bVP2Ar/j2dZBBQ+F0pEn8kZK6rlXiAWA==", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multidoge(self):
         self.key_tester("bWI6IdK25nMhHI9n4zlb1cUtWBl7mL7gh7ZtxkYaDw==")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multidoge_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6ry78W+RkeTi2dVt2omZMfXRi46xDsIhr0jKN3g==", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_androidwallet(self):
         self.key_tester("bWI6Ii/ZEeDjUJKq704wzUxKudpvAralnrOQtXM4og==")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_androidwallet_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6f1QdX7xXtC0zG7XK9pTGTifie5FUeAGhJ05esw==", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_androidknc(self):
         self.key_tester("bWI6n6ccPSkbrmxQpdfKNAOBFppQLGloPDHE2sOucQ====")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_androidknc_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
         self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", unicode_pw=True)
 
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bitcoinj_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bither(self):
         self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_bither_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna(self):
         self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_msigna_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bXM6i9OkMzrIJqWvpM+Dxq795jeFFxiB6DtBwuGmeEtfHLLOjMvoJRAWeSsf+Pg=", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum(self):
         self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("ZWw6rLwP/stP422FgteriIgvq4LD90adedrAqz61gKuYDRrx3+Q+", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum2(self):
         self.key_tester("ZTI69B961mYKYFV7Bg1zRYZ8ZGw4cE+2D8NF3lp6d2XPe8qTdJUz")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum2_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("ZTI6k2tz83Lzs83hyQPRj2g90f7nVYHYM20qLv4NIVIzUNNqVWv8", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_v0(self):
         self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_v0_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("Yms68OsennSoypcGGUvhrhEBFCiIkAK2Qphnfdc3Ungk/SoAAAAAcr6jYQ==", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_aes256_library().__name__ == b"Crypto" and
-                         btcrecover.load_pbkdf2_library().__name__ == b"hashlib",
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
+                         btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires PyCrypto and Python 2.7.8+")
     def test_blockchain_v2(self):
         self.key_tester("Yms6abF6aZYdu5sKpStKA4ihra6GEAeZTumFiIM0YQUkTjcQJwAAj8ekAQ==")
 
-    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
+    @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
     def test_blockchain_secondpass(self):                # extracted from blockchain-v0.0-wallet.aes.json which has a second password iter_count
         self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaCgAAACsWXkw=")
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
-    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
+    @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
     def test_blockchain_secondpass_unicode(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YnM6/e8Inpbesj+CYE0YvdXLewgN5UH9KFvliZrI43OmYnyHbCa71RBD57XO0CbuADDTCgAAACCVL/w=", unicode_pw=True)
 
-    @unittest.skipUnless(btcrecover.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
+    @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib", "requires Python 2.7.8+")
     def test_blockchain_secondpass_no_iter_count(self):  # extracted from blockchain-unencrypted-wallet.aes.json which is missing a second password iter_count
         self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaAAAAAE/24yM=")
 
     def test_bitcoincore_pp(self):
         self.key_tester("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_bitcoincore_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo", force_purepython=True, unicode_pw=True)
 
     def test_multibit_pp(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_multibit_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6YK6OX8bVP2Ar/j2dZBBQ+F0pEn8kZK6rlXiAWA==", force_purepython=True, unicode_pw=True)
 
     def test_multidoge_pp(self):
         self.key_tester("bWI6IdK25nMhHI9n4zlb1cUtWBl7mL7gh7ZtxkYaDw==", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_multidoge_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6ry78W+RkeTi2dVt2omZMfXRi46xDsIhr0jKN3g==", force_purepython=True, unicode_pw=True)
 
     def test_androidwallet_pp(self):
         self.key_tester("bWI6Ii/ZEeDjUJKq704wzUxKudpvAralnrOQtXM4og==", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_androidwallet_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6f1QdX7xXtC0zG7XK9pTGTifie5FUeAGhJ05esw==", force_purepython=True, unicode_pw=True)
 
     def test_androidknc_pp(self):
         self.key_tester("bWI6n6ccPSkbrmxQpdfKNAOBFppQLGloPDHE2sOucQ==", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_androidknc_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", force_purepython=True, unicode_pw=True)
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_pp(self):
         self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode,   "Unicode builds only")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", force_purepython=True, unicode_pw=True)
 
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
@@ -1314,47 +1354,47 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_bitcoinj_pp(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", force_purepython=True, unicode_pw=True)
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_pp(self):
         self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", force_purepython=True, unicode_pw=True)
 
     def test_msigna_pp(self):
         self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_msigna_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("bXM6i9OkMzrIJqWvpM+Dxq795jeFFxiB6DtBwuGmeEtfHLLOjMvoJRAWeSsf+Pg=", force_purepython=True, unicode_pw=True)
 
     def test_electrum_pp(self):
         self.key_tester("ZWw6kLJxTDF7LxneT7c5DblJ9k9WYwV6YUIUQO+IDiIXzMUZvsCT", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_electrum_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("ZWw6rLwP/stP422FgteriIgvq4LD90adedrAqz61gKuYDRrx3+Q+", force_purepython=True, unicode_pw=True)
 
     def test_electrum2_pp(self):
         self.key_tester("ZTI69B961mYKYFV7Bg1zRYZ8ZGw4cE+2D8NF3lp6d2XPe8qTdJUz", force_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_electrum2_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("ZTI6k2tz83Lzs83hyQPRj2g90f7nVYHYM20qLv4NIVIzUNNqVWv8", force_purepython=True, unicode_pw=True)
 
     def test_blockchain_v0_pp(self):
         self.key_tester("Yms69Z9y1J66ceYKkrXy11mHR+YDD8WrPJeTNaAnO7LO7YgAAAAAbnp7YQ==", force_purepython=True, force_kdf_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_blockchain_v0_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("Yms68OsennSoypcGGUvhrhEBFCiIkAK2Qphnfdc3Ungk/SoAAAAAcr6jYQ==", force_purepython=True, force_kdf_purepython=True, unicode_pw=True)
 
     def test_blockchain_v2_pp(self):
@@ -1363,8 +1403,8 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_blockchain_secondpass_pp(self):                # extracted from blockchain-v0.0-wallet.aes.json which has a second password iter_count
         self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaCgAAACsWXkw=", force_kdf_purepython=True)
     #
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     def test_blockchain_secondpass_unicode_pp(self):
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("YnM6/e8Inpbesj+CYE0YvdXLewgN5UH9KFvliZrI43OmYnyHbCa71RBD57XO0CbuADDTCgAAACCVL/w=", force_kdf_purepython=True, unicode_pw=True)
 
     def test_blockchain_secondpass_no_iter_count_pp(self):  # extracted from blockchain-unencrypted-wallet.aes.json which is missing a second password iter_count
@@ -1372,173 +1412,191 @@ class Test08KeyDecryption(unittest.TestCase):
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):
-        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
+        btcrpass.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
                 dev.name.strip() + " found a false positive")
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), tstr("btcr-test-password"), tstr("btcr-wrong-password-4")]), (tstr("btcr-test-password"), 2),
                 dev.name.strip() + " failed to find password")
 
-    @unittest.skipUnless(tstr == unicode, "Unicode builds only")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl_unicode(self):
-        btcrecover.load_from_base64_key("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo")
+        if tstr != unicode: self.skipTest("Unicode mode only")
+        btcrpass.load_from_base64_key("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
+            self.assertEqual(btcrpass.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-тест-пароль", "btcr-wrong-password-4"]), ("btcr-тест-пароль", 2),
                 dev.name.strip() + " failed to find password")
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
     def test_bitcoincore_cl_no_interrupts(self):
-        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
+        btcrpass.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), tstr("btcr-test-password"), tstr("btcr-wrong-password-4")]), (tstr("btcr-test-password"), 2))
 
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl_sli(self):
         devices_by_name = dict()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in devices_by_name: break
             else: devices_by_name[dev.name] = dev
         else:
             self.skipTest("requires two identical OpenCL devices")
 
-        btcrecover.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
-        btcrecover.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [2, 2], 200)
+        btcrpass.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
+        btcrpass.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [2, 2], 200)
 
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4"]), (False, 4))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-5", "btcr-test-password", "btcr-wrong-password-6"]), ("btcr-test-password", 2))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-test-password"]), ("btcr-test-password", 3))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-wrong-password-3"), tstr("btcr-wrong-password-4")]), (False, 4))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-5"), tstr("btcr-test-password"), tstr("btcr-wrong-password-6")]), (tstr("btcr-test-password"), 2))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-5"), tstr("btcr-wrong-password-6"), tstr("btcr-test-password")]), (tstr("btcr-test-password"), 3))
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl(self):
-        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
+        btcrpass.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
                 dev.name.strip() + " found a false positive")
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), tstr("btcr-test-password"), tstr("btcr-wrong-password-4")]), (tstr("btcr-test-password"), 2),
                 dev.name.strip() + " failed to find password")
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl_mem_factor(self):
-        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
+        btcrpass.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [8], [8], 200, save_every=3)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [8], [8], 200, save_every=3)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
                 dev.name.strip() + " found a false positive")
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2),
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), tstr("btcr-test-password"), tstr("btcr-wrong-password-4")]), (tstr("btcr-test-password"), 2),
                 dev.name.strip() + " failed to find password")
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     @unittest.skipIf(sys.platform == "win32", "windows kills and restarts drivers which take too long")
     def test_armory_cl_no_interrupts(self):
-        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
+        btcrpass.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
         dev_names_tested = set()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrecover.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
+            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
 
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-1", "btcr-wrong-password-2"]), (False, 2))
-            self.assertEqual(btcrecover.return_verified_password_or_false(
-                ["btcr-wrong-password-3", "btcr-test-password", "btcr-wrong-password-4"]), ("btcr-test-password", 2))
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+            self.assertEqual(btcrpass.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), tstr("btcr-test-password"), tstr("btcr-wrong-password-4")]), (tstr("btcr-test-password"), 2))
 
-    @unittest.skipUnless(can_load_armory(), "requires Armory and ASCII version of btcrecover")
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_armory_cl_sli(self):
+        if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
         devices_by_name = dict()
-        for dev in btcrecover.get_opencl_devices():
+        for dev in btcrpass.get_opencl_devices():
             if dev.name in devices_by_name: break
             else: devices_by_name[dev.name] = dev
         else:
             self.skipTest("requires two identical OpenCL devices")
 
-        btcrecover.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
-        btcrecover.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [4, 4], 200)
+        btcrpass.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
+        btcrpass.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [4, 4], 200)
 
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4",
-             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-wrong-password-8"]), (False, 8))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-test-password",    "btcr-wrong-password-4",
-             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-wrong-password-8"]), ("btcr-test-password", 3))
-        self.assertEqual(btcrecover.return_verified_password_or_false(
-            ["btcr-wrong-password-1", "btcr-wrong-password-2", "btcr-wrong-password-3", "btcr-wrong-password-4",
-             "btcr-wrong-password-5", "btcr-wrong-password-6", "btcr-wrong-password-7", "btcr-test-password"]), ("btcr-test-password", 8))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-wrong-password-3"), tstr("btcr-wrong-password-4"),
+             tstr("btcr-wrong-password-5"), tstr("btcr-wrong-password-6"), tstr("btcr-wrong-password-7"), tstr("btcr-wrong-password-8")]), (False, 8))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-test-password"),    tstr("btcr-wrong-password-4"),
+             tstr("btcr-wrong-password-5"), tstr("btcr-wrong-password-6"), tstr("btcr-wrong-password-7"), tstr("btcr-wrong-password-8")]), (tstr("btcr-test-password"), 3))
+        self.assertEqual(btcrpass.return_verified_password_or_false(
+            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-wrong-password-3"), tstr("btcr-wrong-password-4"),
+             tstr("btcr-wrong-password-5"), tstr("btcr-wrong-password-6"), tstr("btcr-wrong-password-7"), tstr("btcr-test-password")]), (tstr("btcr-test-password"), 8))
 
     def test_invalid_crc(self):
         with self.assertRaises(SystemExit) as cm:
             self.key_tester("aWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
         self.assertIn("encrypted key data is corrupted (failed CRC check)", cm.exception.code)
 
+class GPUTests(unittest.TestSuite) :
+    def __init__(self):
+        super(GPUTests, self).__init__()
+        self.addTest(unittest.defaultTestLoader.loadTestsFromNames(("Test08KeyDecryption." + method_name
+            for method_name in (
+                "test_bitcoincore_cl",
+                "test_bitcoincore_cl_unicode",
+                "test_bitcoincore_cl_no_interrupts",
+                "test_bitcoincore_cl_sli",
+                "test_armory_cl",
+                "test_armory_cl_mem_factor",
+                "test_armory_cl_no_interrupts",
+                "test_armory_cl_sli")),
+            module=sys.modules[__name__]
+        ))
 
-E2E_ARGS = "--tokenlist __funccall --exclude-passwordlist __funccall --data-extract --autosave __funccall " \
-           "--typos 3 --typos-case --typos-repeat --typos-swap --no-progress".split()
-E2E_TOKENLIST    = "+ ^%0,1[b-c]tcr-- \n"  "+ ^,$%0,1<Test- \n"  "^3$pas \n"  "+ wrod$"
-E2E_EXCLUDELIST  = "tCr--Test-wrod\n" "btcr-Tsett-paaswrod\n" "ctcr--Test-pAssrwod"  # passwords #4, #100004, & #120004
-E2E_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
+
 class Test09EndToEnd(unittest.TestCase):
 
-    autosave_file = BytesIONonClosing()
+    @classmethod
+    def setUpClass(cls):
+        cls.E2E_ARGS         = tstr("--tokenlist __funccall --exclude-passwordlist __funccall --data-extract --autosave __funccall "
+                                    "--typos 3 --typos-case --typos-repeat --typos-swap --no-progress"+utf8_opt).split()
+        cls.E2E_TOKENLIST    = tstr("+ ^%0,1[b-c]tcr-- \n"  "+ ^,$%0,1<Test- \n"  "^3$pas \n"  "+ wrod$")
+        cls.E2E_EXCLUDELIST  = tstr("tCr--Test-wrod\n" "btcr-Tsett-paaswrod\n" "ctcr--Test-pAssrwod")  # passwords #4, #100004, & #120004
+        cls.E2E_DATA_EXTRACT = "bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA=="
+        cls.autosave_file    = BytesIONonClosing()
 
     # These test_ functions are in alphabetical order (the same order they're executed in)
 
     # A test of multiple features at once
     def test_end_to_end(self):
-        autosave_file = self.__class__.autosave_file
-        btcrecover.parse_arguments(E2E_ARGS,
-            tokenlist            = StringIO(E2E_TOKENLIST),
-            exclude_passwordlist = StringIO(E2E_EXCLUDELIST),
-            data_extract         = E2E_DATA_EXTRACT,
-            autosave             = autosave_file)
-        self.assertEqual("btcr-test-password", btcrecover.main()[0])
+        autosave_file = self.autosave_file
+        btcrpass.parse_arguments(self.E2E_ARGS,
+                                 tokenlist            = StringIO(self.E2E_TOKENLIST),
+                                 exclude_passwordlist = StringIO(self.E2E_EXCLUDELIST),
+                                 data_extract         = self.E2E_DATA_EXTRACT,
+                                 autosave             = autosave_file)
+        self.assertEqual("btcr-test-password", btcrpass.main()[0])
 
         # Verify the exact password number where it was found to ensure password ordering hasn't changed
         autosave_file.seek(SAVESLOT_SIZE)
@@ -1550,7 +1608,7 @@ class Test09EndToEnd(unittest.TestCase):
         self.test_end_to_end()
 
         # Verify the password number where the search started
-        autosave_file = self.__class__.autosave_file
+        autosave_file = self.autosave_file
         autosave_file.seek(0)
         savestate = cPickle.load(autosave_file)
         self.assertEqual(savestate.get(b"skip"), 103762)
@@ -1558,12 +1616,12 @@ class Test09EndToEnd(unittest.TestCase):
     # Repeat the first test with a new autosave file, using --skip to start just after the password is located
     def test_skip(self):
         autosave_file = BytesIONonClosing()
-        btcrecover.parse_arguments(E2E_ARGS + ["--skip=103763"],
-            tokenlist            = StringIO(E2E_TOKENLIST),
-            exclude_passwordlist = StringIO(E2E_EXCLUDELIST),
-            data_extract         = E2E_DATA_EXTRACT,
-            autosave             = autosave_file)
-        self.assertIn("Password search exhausted", btcrecover.main()[1])
+        btcrpass.parse_arguments(self.E2E_ARGS + [tstr("--skip=103763")],
+                                 tokenlist            = StringIO(self.E2E_TOKENLIST),
+                                 exclude_passwordlist = StringIO(self.E2E_EXCLUDELIST),
+                                 data_extract         = self.E2E_DATA_EXTRACT,
+                                 autosave             = autosave_file)
+        self.assertIn("Password search exhausted", btcrpass.main()[1])
 
         # Verify the password number where the search started
         autosave_file.seek(0)
@@ -1651,17 +1709,16 @@ class QuickTests(unittest.TestSuite) :
 
 if __name__ == b'__main__':
 
-    import argparse, atexit
+    import argparse
 
     # Add two new arguments to those already provided by unittest.main()
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--utf8",      action="store_true")
     parser.add_argument("--no-buffer", action="store_true")
-    parser.add_argument("--no-pause",  action="store_true")
     args, unittest_args = parser.parse_known_args()
     sys.argv[1:] = unittest_args
 
-    # By default, pause before exiting
-    if not args.no_pause:
-        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
+    global tstr
+    tstr = unicode if args.utf8 else str
 
     unittest.main(buffer = not args.no_buffer)

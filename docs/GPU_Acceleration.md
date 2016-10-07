@@ -4,10 +4,10 @@
 
 In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](INSTALL.md#windows-gpu-acceleration-for-bitcoin-classicxtcore-armory-or-litecoin-qt) section of the Installation Guide. GPU acceleration should also work on Linux and OS X, however instructions for installing the required Python libraries are not currently included in this tutorial.
 
-Due to its experimental status, it's highly recommended that you run the GPU unit tests before running it with a wallet. The two commands below will run the relevant tests for Bitcoin Classic/XT/Core and Armory, respectively (or you can leave out the test names to run all of the unit tests if you'd prefer). The "_sli" tests will be skipped and can be ignored if you don't have multiple identical GPUs installed in your system.
+Due to its experimental status, it's highly recommended that you run the GPU unit tests before running it with a wallet. The two commands below will run the relevant tests in ASCII and Unicode modes, respectively (or you can leave out `GPUTests` to run all of the unit tests if you'd prefer). Any skipped tests can be safely ignored.
 
-    C:\python27\python test-btcr.py -v Test08KeyDecryption.test_bitcoincore_cl Test08KeyDecryption.test_bitcoincore_cl_sli
-    C:\python27\python test-btcr.py -v Test08KeyDecryption.test_armory_cl Test08KeyDecryption.test_armory_cl_mem_factor Test08KeyDecryption.test_armory_cl_sli
+    C:\python27\python -m btcrecover.test.test_passwords -v GPUTests
+    C:\python27\python -m btcrecover.test.test_passwords -v --utf8 GPUTests
 
 Assuming the tests do not fail, GPU support can be enabled by adding the `--enable-gpu` option to the command line. There are other additional options, specifically `--global-ws` and `--local-ws`, which should also be provided along with particular values to improve the search performance. Unfortunately, the exact values for these options can only be determined by trial and error, as detailed below.
 

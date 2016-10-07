@@ -1,8 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# test-seedrecover.py -- unit tests for seedrecover.py
-# Copyright (C) 2014, 2015 Christopher Gurnee
+# test_seeds.py -- unit tests for seedrecover.py
+# Copyright (C) 2014-2016 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -26,20 +26,27 @@
 #
 #                      Thank You!
 
-# (all futures as of 2.6 and 2.7 except unicode_literals)
-from __future__ import print_function, absolute_import, division, \
-                       generators, nested_scopes, with_statement
+# (all optional futures for 2.7 except unicode_literals)
+from __future__ import print_function, absolute_import, division
 
 import warnings
 # Convert warnings to errors:
 warnings.simplefilter("error")
+# except these from Armory:
+warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
+warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
 
-import seedrecover, unittest, os, tempfile, shutil, filecmp
+from .. import btcrseed
+import unittest, os, tempfile, shutil, filecmp, sys
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 
 
 class TestRecoveryFromWallet(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        btcrseed.register_autodetecting_wallets()
 
     # Checks a test wallet against the known password, and ensures
     # that the library doesn't make any changes to the wallet file
@@ -51,11 +58,11 @@ class TestRecoveryFromWallet(unittest.TestCase):
         temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
         shutil.copyfile(wallet_filename, temp_wallet_filename)
 
-        wallet = seedrecover.btcr.load_wallet(wallet_filename)
+        wallet = btcrseed.btcrpass.load_wallet(wallet_filename)
 
         # Convert the mnemonic string into a mnemonic_ids_guess
         wallet.config_mnemonic(correct_mnemonic)
-        correct_mnemonic = seedrecover.mnemonic_ids_guess
+        correct_mnemonic = btcrseed.mnemonic_ids_guess
 
         # Creates wrong mnemonic id guesses
         wrong_mnemonic_iter = wallet.performance_iterator()
@@ -87,7 +94,7 @@ class TestRecoveryFromMPK(unittest.TestCase):
 
         # Convert the mnemonic string into a mnemonic_ids_guess
         wallet.config_mnemonic(correct_mnemonic)
-        correct_mnemonic = seedrecover.mnemonic_ids_guess
+        correct_mnemonic = btcrseed.mnemonic_ids_guess
 
         # Creates wrong mnemonic id guesses
         wrong_mnemonic_iter = wallet.performance_iterator()
@@ -98,35 +105,35 @@ class TestRecoveryFromMPK(unittest.TestCase):
             (wrong_mnemonic_iter.next(), correct_mnemonic, wrong_mnemonic_iter.next())), (correct_mnemonic, 2))
 
     def test_electrum1(self):
-        self.mpk_tester(seedrecover.WalletElectrum1,
+        self.mpk_tester(btcrseed.WalletElectrum1,
             "c79b02697b32d9af63f7d2bd882f4c8198d04f0e4dfc5c232ca0c18a87ccc64ae8829404fdc48eec7111b99bda72a7196f9eb8eb42e92514a758f5122b6b5fea",
             "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
 
     def test_electrum2(self):
-        self.mpk_tester(seedrecover.WalletElectrum2,
+        self.mpk_tester(btcrseed.WalletElectrum2,
             "xpub661MyMwAqRbcGsUXkGBkytQkYZ6M16bFWwTocQDdPSm6eJ1wUsxG5qty1kTCUq7EztwMscUstHVo1XCJMxWyLn4PP1asLjt4gPt3HkA81qe",
             "eagle pair eager human cage forget pony fall robot vague later bright acid")
 
     def test_electrum2_ja(self):
-        self.mpk_tester(seedrecover.WalletElectrum2,
+        self.mpk_tester(btcrseed.WalletElectrum2,
             "xpub661MyMwAqRbcFAyy6MaWCK5uGHhgvMZNaFbKy1TbSrcEm8oCgD3N2AfzPC8ndmdvcQbY8EbU414X4xNrs9dcNgcntShiBFJYJ6HJy7zKnQV",
             u"すんぽう うけつけ ぬいくぎ きどう ごはん たかね いてざ よしゅう なにもの われる たんき さとる あじわう")
 
     def test_bitcoinj(self):
         # an xpub at path m/0', as Bitcoin Wallet for Android/BlackBerry would export
-        self.mpk_tester(seedrecover.WalletBitcoinj,
+        self.mpk_tester(btcrseed.WalletBitcoinj,
             "xpub67tjk7ug7iNivs1f1pmDswDDbk6kRCe4U1AXSiYLbtp6a2GaodSUovt3kNrDJ2q18TBX65aJZ7VqRBpnVJsaVQaBY2SANYw6kgZf4QLCpPu",
             "laundry foil reform disagree cotton hope loud mix wheel snow real board")
 
     def test_bip44(self):
         # an xpub at path m/44'/0'/0', as Mycelium for Android would export
-        self.mpk_tester(seedrecover.WalletBIP39,
+        self.mpk_tester(btcrseed.WalletBIP39,
             "xpub6BgCDhMefYxRS1gbVbxyokYzQji65v1eGJXGEiGdoobvFBShcNeJt97zoJBkNtbASLyTPYXJHRvkb3ahxaVVGEtC1AD4LyuBXULZcfCjBZx",
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
     def test_bip44_ja(self):
         # an xpub at path m/44'/0'/0'
-        self.mpk_tester(seedrecover.WalletBIP39,
+        self.mpk_tester(btcrseed.WalletBIP39,
             "xpub6BfYc7HCQuKNxRMfmUhtkJ8HQ5A4t4zTy8cAQWjD7x5SZAdUD2QM2WoymmGfAD84mgbXbxyWiR922dyRtZUK2JPtBr8YLTzcQod3orvGB3k",
             u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき")
 
@@ -139,7 +146,7 @@ class TestRecoveryFromAddress(unittest.TestCase):
 
         # Convert the mnemonic string into a mnemonic_ids_guess
         wallet.config_mnemonic(correct_mnemonic)
-        correct_mnemonic_ids = seedrecover.mnemonic_ids_guess
+        correct_mnemonic_ids = btcrseed.mnemonic_ids_guess
 
         # Creates wrong mnemonic id guesses
         wrong_mnemonic_iter = wallet.performance_iterator()
@@ -156,37 +163,37 @@ class TestRecoveryFromAddress(unittest.TestCase):
             (correct_mnemonic_ids,)), (False, 1))
 
     def test_electrum1(self):
-        self.address_tester(seedrecover.WalletElectrum1, "12zAz6pAB6LhzGSZFCc6g9uBSWzwESEsPT", 3,
+        self.address_tester(btcrseed.WalletElectrum1, "12zAz6pAB6LhzGSZFCc6g9uBSWzwESEsPT", 3,
             "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
 
     def test_electrum2(self):
-        self.address_tester(seedrecover.WalletElectrum2, "14dpd9nayyoyCTNki5UUsm1KnAZ1x7o83E", 5,
+        self.address_tester(btcrseed.WalletElectrum2, "14dpd9nayyoyCTNki5UUsm1KnAZ1x7o83E", 5,
             "eagle pair eager human cage forget pony fall robot vague later bright acid")
 
     def test_bitcoinj(self):
-        self.address_tester(seedrecover.WalletBitcoinj, "17Czu38CcLwWr8jFZrDJBHWiEDd2QWhPSU", 4,
+        self.address_tester(btcrseed.WalletBitcoinj, "17Czu38CcLwWr8jFZrDJBHWiEDd2QWhPSU", 4,
             "skin join dog sponsor camera puppy ritual diagram arrow poverty boy elbow")
 
     def test_bip44(self):
-        self.address_tester(seedrecover.WalletBIP39, "1AiAYaVJ7SCkDeNqgFz7UDecycgzb6LoT3", 2,
+        self.address_tester(btcrseed.WalletBIP39, "1AiAYaVJ7SCkDeNqgFz7UDecycgzb6LoT3", 2,
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
 
-seedrecover.register_autodetecting_wallets()
+# All seed tests are quick
+class QuickTests(unittest.TestSuite) :
+    def __init__(self):
+        super(QuickTests, self).__init__()
+        self.addTests(unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]))
+
 
 if __name__ == b'__main__':
 
-    import argparse, sys, atexit
+    import argparse
 
-    # Add two new arguments to those already provided by unittest.main()
+    # Add one new argument to those already provided by unittest.main()
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--no-buffer", action="store_true")
-    parser.add_argument("--no-pause",  action="store_true")
     args, unittest_args = parser.parse_known_args()
     sys.argv[1:] = unittest_args
-
-    # By default, pause before exiting
-    if not args.no_pause:
-        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
 
     unittest.main(buffer = not args.no_buffer)
