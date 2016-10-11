@@ -6,7 +6,7 @@ Although this software is unlikely to harm any wallet files, **you are strongly 
 
 Because this software is beta software, and also because it interacts with other beta software, it’s entirely possible that it may fail to find a password which it’s been correctly configure by you to find.
 
-### Delimiters, Spaces, and Special Symbols in Passwords###
+### Delimiters, Spaces, and Special Symbols in Passwords ###
 
 By default, *btcrecover* uses one or more whitespaces to separate tokens in the tokenlist file, and to separated to-be-replaced characters from their replacements in the typos-map file. It also ignores any extra whitespace in these files. This makes it difficult to test passwords which include spaces and certain other symbols.
 
@@ -30,7 +30,7 @@ When *btcrecover* starts, it's first task is to count all the passwords it's abo
 
 Although this initial counting phase can be skipped by using the `--no-eta` option, it's not recommended. If you do use `--no-eta`, it's highly recommended that you also use `--no-dupchecks` at the same time.
 
-You may want to always use a single `--no-dupchecks` option when working with MultiBit or Electrum wallets because the duplicate checking can actually decrease CPU efficiency (and always decreases memory efficiency) with these wallets in many cases.
+You may want to always use a single `--no-dupchecks` option when working with MultiBit Classic or Electrum wallets because the duplicate checking can actually decrease CPU efficiency (and always decreases memory efficiency) with these wallets in many cases.
 
 If you specify `--no-dupchecks` more than once, it will disable even more of the duplicate checking logic:
 

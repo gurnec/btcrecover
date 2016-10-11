@@ -201,7 +201,7 @@ def calc_passwords_per_second(checksum_ratio, kdf_overhead, scalar_multiplies):
 
 ############### Electrum1 ###############
 
-@register_selectable_wallet_class("Electrum 1.x (including wallets upgraded to 2.x)")
+@register_selectable_wallet_class("Electrum 1.x (including wallets later upgraded to 2.x)")
 class WalletElectrum1(object):
 
     _words = None
@@ -972,7 +972,7 @@ class WalletBitcoinj(WalletBIP39):
 
 ############### Electrum2 ###############
 
-@register_selectable_wallet_class("Electrum 2.x (initially created with 2.x)")
+@register_selectable_wallet_class('Electrum 2.x ("standard" wallets initially created with 2.x)')
 class WalletElectrum2(WalletBIP39):
 
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
@@ -1289,7 +1289,7 @@ def main(argv):
         parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
         parser.add_argument("--mnemonic-prompt", action="store_true",   help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
         parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
-        parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
+        parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP44 account 0)")
         parser.add_argument("--skip",        type=int, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
         parser.add_argument("--threads", type=int, metavar="COUNT", help="number of worker threads (default: number of CPUs, {})".format(btcrpass.cpus))
         parser.add_argument("--worker",      metavar="ID#/TOTAL#",  help="divide the workload between TOTAL# servers, where each has a different ID# between 1 and TOTAL#")

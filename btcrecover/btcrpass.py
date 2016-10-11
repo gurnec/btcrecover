@@ -2728,7 +2728,6 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         # If --utf8 was specified in the autosave file, it's not too late
         # to change the character mode (we haven't yet called open_or_use())
         if args.utf8: enable_unicode_mode()
-        else:         enable_ansi_mode()
         #
         # We finally know the tokenlist filename; open it here
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
@@ -4937,6 +4936,7 @@ def main():
         return None, unicode(passwords_count) + " password combinations" + plus_skipped
 
     # Measure the performance of the verification function
+    # (for CPU, run for about 0.5s; for GPU, run for one global-worksize chunk)
     if args.performance and args.enable_gpu:  # skip this time-consuming & unnecessary measurement in this case
         est_secs_per_password = 0.01          # set this to something relatively big, it doesn't matter exactly what
     else:
