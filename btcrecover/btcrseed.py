@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -1273,7 +1273,7 @@ def main(argv):
     phase                  = {}  # if only one phase is requested, the args to pass to run_btcrecover()
     extra_args             = []  # additional args to pass to btcrpass.parse_arguments() (in run_btcrecover())
 
-    if argv:
+    if argv or "_ARGCOMPLETE" in os.environ:
         import argparse
         parser = argparse.ArgumentParser()
         parser.add_argument("--wallet",      metavar="FILE",        help="the wallet file")
@@ -1300,6 +1300,14 @@ def main(argv):
         parser.add_argument("--performance", action="store_true",   help="run a continuous performance test (Ctrl-C to exit)")
         parser.add_argument("--btcr-args",   action="store_true",   help=argparse.SUPPRESS)
         parser.add_argument("--version","-v", action="version", version="%(prog)s {} (btcrecover.py {})".format(__version__, btcrpass.__version__))
+
+        # Optional bash tab completion support
+        try:
+            import argcomplete
+            argcomplete.autocomplete(parser)
+        except ImportError:
+            pass
+        assert argv
 
         # Parse the args; unknown args will be passed to btcrpass.parse_arguments() iff --btcrpass-args is specified
         args, extra_args = parser.parse_known_args(argv)

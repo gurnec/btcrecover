@@ -2605,10 +2605,6 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # is changed (due to reading a tokenlist or restore file), we redo parser.parse_args() which
     # changes args, so we only do this early on before most args processing takes place.
 
-    # Optional bash tab completion support
-    try:   import argcomplete
-    except ImportError: argcomplete = None
-
     # Create a parser which can parse any supported option, and run it
     global args
     init_parser_common()
@@ -2622,7 +2618,14 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     parser.add_argument("--restore",      metavar="FILE",      help="restore progress and options from an autosave file (must be the only option on the command line)")
     parser.add_argument("--passwordlist", metavar="FILE", nargs="?", const="-", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
     parser.add_argument("--has-wildcards",action="store_true", help="parse and expand wildcards inside passwordlists (default: wildcards are only parsed inside tokenlists)")
-    if argcomplete: argcomplete.autocomplete(parser)
+    #
+    # Optional bash tab completion support
+    try:
+        import argcomplete
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
+    #
     args = parser.parse_args(effective_argv)
 
     # Do this as early as possible so user doesn't miss any error messages
