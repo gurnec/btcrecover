@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -775,11 +775,17 @@ class WalletBIP39(WalletBIP32):
             if expected_len % 3 != 0:
                 raise ValueError("BIP39 sentence length must be evenly divisible by 3")
 
-        # The pbkdf2 salt as per BIP39 (needed by _derive_seed())
-        self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
-
         # Do most of the work in this function:
-        self._config_mnemonic(mnemonic_guess, lang, expected_len, closematch_cutoff)
+        passphrase = self._config_mnemonic(mnemonic_guess, lang, passphrase, expected_len, closematch_cutoff)
+
+        # The pbkdf2-derived salt, based on the passphrase, as per BIP39 (needed by _derive_seed());
+        # first ensure that this version of Python supports the characters present in the passphrase
+        if sys.maxunicode < 65536:  # if this Python is a "narrow" Unicode build
+            for c in passphrase:
+                c = ord(c)
+                if 0xD800 <= c <= 0xDBFF or 0xDC00 <= c <= 0xDFFF:
+                    raise ValueError("this version of Python doesn't support passphrases with Unicode code points > "+str(sys.maxunicode))
+        self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
 
         # Calculate each word's index in binary (needed by _verify_checksum())
         self._word_to_binary = { word : "{:011b}".format(i) for i,word in enumerate(self._words) }
@@ -787,7 +793,7 @@ class WalletBIP39(WalletBIP32):
         # Chances a checksum is valid, e.g. 1/16 for 12 words, 1/256 for 24 words
         self._checksum_ratio = 2.0**( -( len(mnemonic_ids_guess) + num_inserts - num_deletes )//3 )
     #
-    def _config_mnemonic(self, mnemonic_guess, lang, expected_len, closematch_cutoff):
+    def _config_mnemonic(self, mnemonic_guess, lang, passphrase, expected_len, closematch_cutoff):
 
         # If a mnemonic guess wasn't provided, prompt the user for one
         if not mnemonic_guess:
@@ -891,6 +897,17 @@ class WalletBIP39(WalletBIP32):
         # convert them to BIP39's encoding and save for future reference
         self._words = tuple(map(self._unicode_to_bytes, words))
 
+        if passphrase is True:
+            init_gui()
+            while True:
+                passphrase = tkSimpleDialog.askstring("Passphrase",
+                    "Please enter the passphrase you added when the seed was first created:", show="*")
+                if not passphrase:
+                    sys.exit("canceled")
+                if passphrase == tkSimpleDialog.askstring("Passphrase", "Please re-enter the passphrase:", show="*"):
+                    break
+                tkMessageBox.showerror("Passphrase", "The passphrases did not match, try again.")
+        return passphrase
 
     # Called by WalletBIP32.return_verified_password_or_false() to verify a BIP39 checksum
     def _verify_checksum(self, mnemonic_words):
@@ -975,6 +992,25 @@ class WalletBitcoinj(WalletBIP39):
 @register_selectable_wallet_class('Electrum 2.x ("standard" wallets initially created with 2.x)')
 class WalletElectrum2(WalletBIP39):
 
+    # From Electrum 2.x's mnemonic.py (coalesced)
+    CJK_INTERVALS = (
+        ( 0x1100,  0x11ff),
+        ( 0x2e80,  0x2fdf),
+        ( 0x2ff0,  0x2fff),
+        ( 0x3040,  0x31ff),
+        ( 0x3400,  0x4dbf),
+        ( 0x4e00,  0xa4ff),
+        ( 0xa960,  0xa97f),
+        ( 0xac00,  0xd7ff),
+        ( 0xf900,  0xfaff),
+        ( 0xff00,  0xffef),
+        (0x16f00, 0x16f9f),
+        (0x1b000, 0x1b0ff),
+        (0x20000, 0x2a6df),
+        (0x2a700, 0x2b81f),
+        (0x2f800, 0x2fa1d),
+        (0xe0100, 0xe01ef))
+
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
     @classmethod
     def _load_wordlists(cls):
@@ -1017,21 +1053,47 @@ class WalletElectrum2(WalletBIP39):
         return cls.create_from_params(mpks.values()[0])
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
-    # into a bytestring (of type str) in the method as Electrum 2.x
+    # into a bytestring (of type str) via the same method as Electrum 2.x
     @staticmethod
     def _unicode_to_bytes(word):
         assert isinstance(word, unicode)
         word = unicodedata.normalize("NFKD", word)
-        word = u"".join(c for c in word if not unicodedata.combining(c))  # Electrum 2.x removes combining marks
+        word = filter(lambda c: not unicodedata.combining(c), word)  # Electrum 2.x removes combining marks
         return intern(word.encode("utf_8"))
 
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, expected_len = 13, closematch_cutoff = 0.65):
-        # Calls WalletBIP39's generic version (note the leading _) with a hardcoded mnemonic
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = 13, closematch_cutoff = 0.65):
+        # Calls WalletBIP39's generic version (note the leading _) with the mnemonic
         # length (which for Electrum2 wallets alone is treated only as a maximum length)
         if expected_len > 13:
             raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
-        self._config_mnemonic(mnemonic_guess, lang, expected_len, closematch_cutoff)
-        #
+        passphrase = self._config_mnemonic(mnemonic_guess, lang, passphrase, expected_len, closematch_cutoff)
+
+        # Python 2.x running Electrum 2.x has a Unicode bug where if there are any code points > 65535,
+        # they might be normalized differently between different Python 2 builds (narrow vs. wide Unicode)
+        assert isinstance(passphrase, unicode)
+        if sys.maxunicode < 65536:  # the check for narrow Unicode builds looks for UTF-16 surrogate pairs:
+            maybe_buggy = any(0xD800 <= ord(c) <= 0xDBFF or 0xDC00 <= ord(c) <= 0xDFFF for c in passphrase)
+        else:                       # the check for wide Unicode builds:
+            maybe_buggy = any(ord(c) > 65535 for c in passphrase)
+        if maybe_buggy:
+            print("warning: due to Unicode incompatibilities, it's strongly recommended\n"
+                  "         that you run seedrecover.py on the same computer (or at least\n"
+                  "         the same OS) where you created your wallet", file=sys.stderr)
+
+        # The pbkdf2-derived salt (needed by _derive_seed()); Electrum 2.x is similar to BIP39,
+        # however it differs in the iffy(?) normalization procedure and the prepended string
+        import string
+        passphrase = unicodedata.normalize("NFKD", passphrase)  # problematic w/Python narrow Unicode builds, same as Electrum
+        passphrase = passphrase.lower()  # (?)
+        passphrase = filter(lambda c: not unicodedata.combining(c), passphrase)  # remove combining marks
+        passphrase = u" ".join(passphrase.split())  # replace whitespace sequences with a single ANSI space
+        # remove ANSI whitespace between CJK characters (?)
+        passphrase = u"".join(c for i,c in enumerate(passphrase) if not (
+                c in string.whitespace
+            and any(intvl[0] <= ord(passphrase[i-1]) <= intvl[1] for intvl in self.CJK_INTERVALS)
+            and any(intvl[0] <= ord(passphrase[i+1]) <= intvl[1] for intvl in self.CJK_INTERVALS)))
+        self._derivation_salt = "electrum" + passphrase.encode("utf_8")
+
         # Electrum 2.x doesn't separate mnemonic words with spaces in sentences for any CJK
         # scripts when calculating the checksum or deriving a binary seed (even though this
         # seem inappropriate for some CJK scripts such as Hiragana as used by the ja wordlist)
@@ -1052,7 +1114,7 @@ class WalletElectrum2(WalletBIP39):
     # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
     def _derive_seed(self, mnemonic_words):
         # Note: the words are already in Electrum2's normalized form
-        return btcrpass.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), b"electrum", 2048)
+        return btcrpass.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), self._derivation_salt, 2048)
 
     # Returns a dummy xpub for performance testing purposes
     @staticmethod
@@ -1285,10 +1347,11 @@ def main(argv):
         parser.add_argument("--big-typos",   type=int, metavar="COUNT", help="the max number of big (entirely different word) mistakes to try (default: auto or 0)")
         parser.add_argument("--min-typos",   type=int, metavar="COUNT", help="enforce a min # of mistakes per guess")
         parser.add_argument("--close-match",type=float,metavar="CUTOFF",help="try words which are less/more similar for each mistake (0.0 to 1.0, default: 0.65)")
-        parser.add_argument("--passphrase",  action="store_true",       help="the mnemonic is passphrase-encrypted (BIP39 only)")
-        parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
-        parser.add_argument("--mnemonic-prompt", action="store_true",   help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
+        parser.add_argument("--passphrase",  action="store_true",       help="the mnemonic is augmented with a known passphrase (BIP39 or Electrum 2.x only)")
+        parser.add_argument("--passphrase-prompt", action="store_true", help="prompt for the mnemonic passphrase via the terminal (default: via the GUI)")
+        parser.add_argument("--mnemonic-prompt",   action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
         parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
+        parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
         parser.add_argument("--bip32-path",  metavar="PATH",            help="path (e.g. m/0'/0/) excluding the final index (default: BIP44 account 0)")
         parser.add_argument("--skip",        type=int, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
         parser.add_argument("--threads", type=int, metavar="COUNT", help="number of worker threads (default: number of CPUs, {})".format(btcrpass.cpus))
@@ -1368,23 +1431,6 @@ def main(argv):
         if args.close_match is not None:
             config_mnemonic_params["closematch_cutoff"] = args.close_match
 
-        if args.passphrase:
-            import getpass
-            encoding = sys.stdin.encoding or "ASCII"
-            if "utf" not in encoding.lower():
-                print("terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
-            passphrase = getpass.getpass("Please enter the encryption passphrase: ")
-            if not passphrase:
-                sys.exit("canceled")
-            if passphrase != getpass.getpass("Please re-enter the encryption passphrase: "):
-                sys.exit("the passphrases did not match")
-            if isinstance(passphrase, str):
-                passphrase = passphrase.decode(encoding)  # convert from terminal's encoding to unicode
-            config_mnemonic_params["passphrase"] = passphrase
-
-        if args.language:
-            config_mnemonic_params["lang"] = args.language.lower()
-
         if args.mnemonic_prompt:
             encoding = sys.stdin.encoding or "ASCII"
             if "utf" not in encoding.lower():
@@ -1395,6 +1441,27 @@ def main(argv):
             if isinstance(mnemonic_guess, str):
                 mnemonic_guess = mnemonic_guess.decode(encoding)  # convert from terminal's encoding to unicode
             config_mnemonic_params["mnemonic_guess"] = mnemonic_guess
+
+        if args.passphrase_prompt:
+            import getpass
+            encoding = sys.stdin.encoding or "ASCII"
+            if "utf" not in encoding.lower():
+                print("terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
+            while True:
+                passphrase = getpass.getpass("Please enter the passphrase you added when the seed was first created: ")
+                if not passphrase:
+                    sys.exit("canceled")
+                if passphrase == getpass.getpass("Please re-enter the passphrase: "):
+                    break
+                print("The passphrases did not match, try again.")
+            if isinstance(passphrase, str):
+                passphrase = passphrase.decode(encoding)  # convert from terminal's encoding to unicode
+            config_mnemonic_params["passphrase"] = passphrase
+        elif args.passphrase:
+            config_mnemonic_params["passphrase"] = True  # config_mnemonic() will prompt for one
+
+        if args.language:
+            config_mnemonic_params["lang"] = args.language.lower()
 
         if args.mnemonic_length is not None:
             config_mnemonic_params["expected_len"] = args.mnemonic_length

@@ -88,12 +88,12 @@ class TestRecoveryFromWallet(unittest.TestCase):
 
 class TestRecoveryFromMPK(unittest.TestCase):
 
-    def mpk_tester(self, wallet_type, the_mpk, correct_mnemonic):
+    def mpk_tester(self, wallet_type, the_mpk, correct_mnemonic, **kwds):
 
         wallet = wallet_type.create_from_params(mpk=the_mpk)
 
         # Convert the mnemonic string into a mnemonic_ids_guess
-        wallet.config_mnemonic(correct_mnemonic)
+        wallet.config_mnemonic(correct_mnemonic, **kwds)
         correct_mnemonic = btcrseed.mnemonic_ids_guess
 
         # Creates wrong mnemonic id guesses
@@ -119,6 +119,33 @@ class TestRecoveryFromMPK(unittest.TestCase):
             "xpub661MyMwAqRbcFAyy6MaWCK5uGHhgvMZNaFbKy1TbSrcEm8oCgD3N2AfzPC8ndmdvcQbY8EbU414X4xNrs9dcNgcntShiBFJYJ6HJy7zKnQV",
             u"すんぽう うけつけ ぬいくぎ きどう ごはん たかね いてざ よしゅう なにもの われる たんき さとる あじわう")
 
+    TEST_ELECTRUM2_PASS_XPUB = "xpub661MyMwAqRbcG4s8buUEpDeeBMZeXxnroY3i9jZJNQuDrWQaCyR5Mvk9pmRK5q5WrEKTwSuYwBiSjcp3ZkM2ujhngFQXxvrTyv2uFCryyii"
+    def test_electrum2_pass(self):
+        self.mpk_tester(btcrseed.WalletElectrum2,
+            self.TEST_ELECTRUM2_PASS_XPUB,
+            "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            passphrase=u"btcr test password 测试密码")
+
+    def test_electrum2_pass_normalize(self):
+        p = u" btcr  TEST  ℙáⓢⓢᵂöṝⅆ  测试  密码 "
+        assert p == u" btcr  TEST  \u2119\xe1\u24e2\u24e2\u1d42\xf6\u1e5d\u2146  \u6d4b\u8bd5  \u5bc6\u7801 "
+        self.mpk_tester(btcrseed.WalletElectrum2,
+            self.TEST_ELECTRUM2_PASS_XPUB,
+            "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            passphrase=p)
+
+    def test_electrum2_pass_wide(self):
+        p = u"𝔅tcr 𝔗est 𝔓assword 测试密码"
+        assert p == u"\U0001d505tcr \U0001d517est \U0001d513assword \u6d4b\u8bd5\u5bc6\u7801"
+        self.mpk_tester(btcrseed.WalletElectrum2,
+            # for narrow Unicode builds, check that we reproduce the same Electrum 2.x bugs:
+            "xpub661MyMwAqRbcGYwDPmhGppsmr2NxcoFNAzGy3qRcE9wrtQhF6tCjtitFnizWKHv684AfshexRAiByRFX3VHpugBcAMYpwQezeYroi53KEKM"
+                if sys.maxunicode < 65536 else
+            # for wide Unicode builds, there are no bugs:
+            self.TEST_ELECTRUM2_PASS_XPUB,
+            "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            passphrase=p)
+
     def test_bitcoinj(self):
         # an xpub at path m/0', as Bitcoin Wallet for Android/BlackBerry would export
         self.mpk_tester(btcrseed.WalletBitcoinj,
@@ -136,6 +163,20 @@ class TestRecoveryFromMPK(unittest.TestCase):
         self.mpk_tester(btcrseed.WalletBIP39,
             "xpub6BfYc7HCQuKNxRMfmUhtkJ8HQ5A4t4zTy8cAQWjD7x5SZAdUD2QM2WoymmGfAD84mgbXbxyWiR922dyRtZUK2JPtBr8YLTzcQod3orvGB3k",
             u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき")
+
+    def test_bip44_pass(self):
+        # an xpub at path m/44'/0'/0', as Mycelium for Android would export
+        self.mpk_tester(btcrseed.WalletBIP39,
+            "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",
+            passphrase=u"btcr-test-password")
+
+    def test_bip44_pass_unicode(self):
+        # an xpub at path m/44'/0'/0', as Mycelium for Android would export
+        self.mpk_tester(btcrseed.WalletBIP39,
+            "xpub6CZe1G1A1CaaSepbekLMSk1sBRNA9kHZzEQCedudHAQHHB21FW9fYpQWXBevrLVQfL8JFQVFWEw3aACdr6szksaGsLiHDKyRd1rPJ6ev5ig",
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",
+            passphrase=u"btcr-тест-пароль")
 
 
 class TestRecoveryFromAddress(unittest.TestCase):

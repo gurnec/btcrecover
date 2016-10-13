@@ -2195,7 +2195,8 @@ def check_chars_range(s, error_msg, no_replacement_chars=False):
         # string has no surrogate pairs (all chars fit inside one UTF-16 code unit)
         if sys.maxunicode < 65536:  # 2**16
             for c in s:
-                if '\uD800' <= c <= '\uDBFF' or '\uDC00' <= c <= '\uDFFF':
+                c = ord(c)
+                if 0xD800 <= c <= 0xDBFF or 0xDC00 <= c <= 0xDFFF:
                     error_exit(error_msg, "has character with code point > max ("+unicode(sys.maxunicode)+" / BMP)")
 
 
