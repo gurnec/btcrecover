@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.0"
+__version__          =  "0.15.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -382,6 +382,11 @@ class WalletArmory(object):
 
     def __setstate__(self, state):
         # Restore unpicklable Armory library objects
+        global tstr
+        try:
+            assert tstr == str  # load_armory_library() requires this;
+        except NameError:       # but tstr doesn't exist when using multiprocessing on Windows
+            tstr = str          # so apply this workaround
         load_armory_library()
         #
         state["_address"] = PyBtcAddress().createFromEncryptedKeyData(
