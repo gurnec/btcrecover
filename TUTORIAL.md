@@ -15,7 +15,7 @@ This tutorial is pretty long... you don't have to read the whole thing. Here are
 
  1. Read the [Installation Guide](docs/INSTALL.md) for instructions and download links.
  2. (optional) Run the unit tests by double-clicking on `run-all-tests.py`. If you encounter any failures, please [report them here](https://github.com/gurnec/btcrecover/issues).
- 3. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 5.  If not, and you need help creating passwords from different combinations of smaller pieces you remember, start with step 3. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 4.
+ 3. If you already have a `btcrecover-tokens-auto.txt` file, skip straight to step 6.  If not, and you need help creating passwords from different combinations of smaller pieces you remember, start with step 4. If you you think there's a typo in your password, or if you mostly know what your whole password is and only need to try different variations of it, read step 5.
  4. Read [The Token File](#the-token-file) section (at least the beginning), which describes how *btcrecover* builds up a whole password you don't remember from smaller pieces you do remember. Once you're done, you'll know how to create a `tokens.txt` file you'll need later.
  5. Read the [Typos](#typos) section, which describes how *btcrecover* can make variations to a whole password to create different password guesses. Once you're done, you'll have a list of command-line options which will create the variations you want to test.
      * If you skipped step 4 above, read the simple [Passwordlist](#the-passwordlist) section instead.
@@ -456,7 +456,7 @@ Bitcoin Wallet for Android/BlackBerry has a *spending PIN* feature which can opt
  2. Choose *Back up wallet*.
  3. Type in a password to protect your wallet backup file, and press OK. You'll need to remember this password for later.
  4. Press the Archive button in the lower-right corner.
- 4. Select a method of sharing the wallet backup file with your PC, for example you might choose Gmail or perhaps Drive.
+ 5. Select a method of sharing the wallet backup file with your PC, for example you might choose Gmail or perhaps Drive.
 
 This wallet backup file, once saved to your PC, can be used just like any other wallet file in *btcrecover* with one important exception: when you run *btcrecover*, you **must** add the `--android-pin` option. When you do, *btcrecover* will ask you for your backup password (from step 3), and then it will try to recover the spending PIN.
 
