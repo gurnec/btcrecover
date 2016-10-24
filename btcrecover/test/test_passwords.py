@@ -936,11 +936,20 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("electrum-wallet")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_electrum27(self):
+        self.wallet_tester("electrum27-wallet")
+
+    def test_electrum27_multisig(self):
+        self.wallet_tester("electrum27-multisig-wallet")
+
     def test_electrum2(self):
         self.wallet_tester("electrum2-wallet")
 
     def test_electrum2_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum2-wallet")
+
+    def test_electrum27_upgradedfrom_electrum1(self):
+        self.wallet_tester("electrum1-upgradedto-electrum27-wallet")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):
@@ -1032,8 +1041,8 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_electrum_pp(self):
         self.wallet_tester("electrum-wallet", force_purepython=True)
 
-    def test_electrum2_pp(self):
-        self.wallet_tester("electrum2-wallet", force_purepython=True)
+    def test_electrum27_pp(self):
+        self.wallet_tester("electrum27-wallet", force_purepython=True)
 
     def test_multibit_pp(self):
         self.wallet_tester("multibit-wallet.key", force_purepython=True)

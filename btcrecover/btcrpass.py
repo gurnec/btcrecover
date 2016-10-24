@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.1"
+__version__          =  "0.15.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1527,24 +1527,79 @@ class WalletElectrum2(WalletElectrum1):
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
-        data = wallet_file.read(20).split()
-        return len(data) >= 2 and data[0] == b'{' and data[1] == b'"accounts":'
+        # returns "maybe yes" or "definitely no"
+        return None if wallet_file.read(1) == b"{" else False
 
     # Load an Electrum wallet file (the part of it we need)
     @classmethod
     def load_from_filename(cls, wallet_filename):
         import json
+
         with open(wallet_filename) as wallet_file:
             wallet = json.load(wallet_file)
-        if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
         wallet_type = wallet.get("wallet_type")
-        if not wallet_type:                  raise ValueError("Electrum2 wallet_type not found")
-        if wallet_type == "old":  # if it's a converted Electrum1 wallet, return a WalletElectrum1 object
+        if not wallet_type:
+            raise ValueError("Unrecognized wallet format (Electrum2 wallet_type not found)")
+        if not wallet.get("use_encryption"):
+            raise ValueError("Electrum2 wallet is not encrypted")
+        if wallet_type == "old":  # if it's been converted from 1.x to 2.y (y<7), return a WalletElectrum1 object
             return WalletElectrum1._load_from_dict(wallet)
-        mpks = wallet.get("master_private_keys", ())
-        if len(mpks) == 0:                   raise ValueError("No master private keys found in Electrum2 wallet")
-        xprv_data = base64.b64decode(mpks.values()[0])
-        if len(xprv_data) != 128:            raise ValueError("Unexpected Electrum2 encrypted master private key length")
+        seed_version = wallet.get("seed_version", "(not found)")
+        if wallet.get("seed_version") not in (11, 12, 13):  # all 2.x versions as of Oct 2016
+            raise NotImplementedError("Unsupported Electrum2 seed version " + unicode(seed_version))
+
+        xprv = None
+        while True:  # "loops" exactly once; only here so we've something to break out of
+
+            # Electrum 2.7+ standard wallets have a keystore
+            keystore = wallet.get("keystore")
+            if keystore:
+                keystore_type = keystore.get("type", "(not found)")
+
+                # Wallets originally created by an Electrum 2.x version
+                if keystore_type == "bip32":
+                    xprv = keystore.get("xprv")
+                    if xprv: break
+
+                # Former Electrum 1.x wallet after conversion to Electrum 2.7+ standard-wallet format
+                elif keystore_type == "old":
+                    seed_data = keystore.get("seed")
+                    if seed_data:
+                        # Construct and return a WalletElectrum1 object
+                        seed_data = base64.b64decode(seed_data)
+                        if len(seed_data) != 64:
+                            raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
+                        self = WalletElectrum1(loading=True)
+                        self._iv                  = seed_data[:16]    # only need the 16-byte IV plus
+                        self._part_encrypted_seed = seed_data[16:32]  # the first 16-byte encrypted block of the seed
+                        return self
+
+                else:
+                    print(prog+": warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
+
+            # Electrum 2.7+ multisig or 2fa wallet
+            for i in itertools.count(1):
+                x = wallet.get("x{}/".format(i))
+                if not x: break
+                x_type = x.get("type", "(not found)")
+                if x_type == "bip32":
+                    xprv = x.get("xprv")
+                    if xprv: break
+                else:
+                    print(prog + ": warning: found unsupported key type " + x_type, file=sys.stderr)
+            if xprv: break
+
+            # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
+            mpks = wallet.get("master_private_keys")
+            if mpks:
+                xprv = mpks.values()[0]
+                break
+
+            raise RuntimeError("No master private keys or seeds found in Electrum2 wallet")
+
+        xprv_data = base64.b64decode(xprv)
+        if len(xprv_data) != 128:
+            raise RuntimeError("Unexpected Electrum2 encrypted master private key length")
         self = cls(loading=True)
         self._iv                  = xprv_data[:16]    # only need the 16-byte IV plus
         self._part_encrypted_seed = xprv_data[16:32]  # the first 16-byte encrypted block of a master privkey
