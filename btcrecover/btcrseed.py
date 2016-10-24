@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -1028,29 +1028,65 @@ class WalletElectrum2(WalletBIP39):
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
-        data = wallet_file.read(20).split()
-        return len(data) >= 2 and data[0] == "{" and data[1] == '"accounts":'
+        # returns "maybe yes" or "definitely no"
+        return None if wallet_file.read(1) == b"{" else False
 
     # Load an Electrum2 wallet file (the part of it we need, just the master public key)
     @classmethod
     def load_from_filename(cls, wallet_filename):
         import json
+
         with open(wallet_filename) as wallet_file:
             wallet = json.load(wallet_file)
         wallet_type = wallet.get("wallet_type")
-        if not wallet_type:                  raise ValueError("Electrum2 wallet_type not found")
-        if wallet_type == "old":  # if it's a converted Electrum1 wallet, return a WalletElectrum1 object
+        if not wallet_type:
+            raise ValueError("Unrecognized wallet format (Electrum2 wallet_type not found)")
+        if wallet_type == "old":  # if it's been converted from 1.x to 2.y (y<7), return a WalletElectrum1 object
             return WalletElectrum1._load_from_dict(wallet)
-        seed_version = wallet.get("seed_version")
-        if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum2 seed_version not found)")
-        if seed_version != 11:               raise NotImplementedError("Unsupported Electrum2 seed version " + seed_version)
-        if not wallet.get("use_encryption"): raise ValueError("Electrum2 wallet is not encrypted")
-        if wallet.get("wallet_type") != "standard":
-                                             raise NotImplementedError("Unsupported Electrum2 wallet type: " + wallet.get("wallet_type"))
-        mpks = wallet.get("master_public_keys", ())
-        if len(mpks) == 0:                   raise ValueError("No master public keys found in Electrum2 wallet")
-        if len(mpks) >  1:                   raise ValueError("Multiple master public keys found in Electrum2 wallet")
-        return cls.create_from_params(mpks.values()[0])
+        if not wallet.get("use_encryption"):
+            raise ValueError("Electrum2 wallet is not encrypted")
+        seed_version = wallet.get("seed_version", "(not found)")
+        if wallet.get("seed_version") not in (11, 12, 13):  # all 2.x versions as of Oct 2016
+            raise NotImplementedError("Unsupported Electrum2 seed version " + unicode(seed_version))
+        if wallet_type != "standard":
+            raise NotImplementedError("Unsupported Electrum2 wallet type: " + wallet_type)
+
+        mpk = None
+        while True:  # "loops" exactly once; only here so we've something to break out of
+
+            # Electrum 2.7+ standard wallets have a keystore
+            keystore = wallet.get("keystore")
+            if keystore:
+                keystore_type = keystore.get("type", "(not found)")
+
+                # Wallets originally created by an Electrum 2.x version
+                if keystore_type == "bip32":
+                    mpk = keystore["xpub"]
+                    break
+
+                # Former Electrum 1.x wallet after conversion to Electrum 2.7+ standard-wallet format
+                elif keystore_type == "old":
+                    # Construct and return a WalletElectrum1 object
+                    mpk = base64.b16decode(keystore["mpk"], casefold=True)
+                    if len(mpk) != 64:
+                        raise ValueError("Electrum1 master public key is not 64 bytes long")
+                    self = WalletElectrum1(loading=True)
+                    self._master_pubkey = SecureBinaryData("\x04" + mpk)  # prepend the uncompressed tag
+                    return self
+
+                else:
+                    print(prog+": warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
+
+            # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
+            mpks = wallet.get("master_public_keys")
+            if mpks:
+                mpk = mpks.values()[0]
+                break
+
+            raise RuntimeError("No master public keys found in Electrum2 wallet")
+
+        assert mpk
+        return cls.create_from_params(mpk)
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
     # into a bytestring (of type str) via the same method as Electrum 2.x

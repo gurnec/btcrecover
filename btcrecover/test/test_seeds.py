@@ -48,33 +48,35 @@ class TestRecoveryFromWallet(unittest.TestCase):
     def setUpClass(cls):
         btcrseed.register_autodetecting_wallets()
 
-    # Checks a test wallet against the known password, and ensures
+    # Checks a test wallet against the known mnemonic, and ensures
     # that the library doesn't make any changes to the wallet file
     def wallet_tester(self, wallet_basename, correct_mnemonic):
         assert os.path.basename(wallet_basename) == wallet_basename
         wallet_filename = os.path.join(wallet_dir, wallet_basename)
 
         temp_dir = tempfile.mkdtemp("-test-btcr")
-        temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
-        shutil.copyfile(wallet_filename, temp_wallet_filename)
+        try:
+            temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
+            shutil.copyfile(wallet_filename, temp_wallet_filename)
 
-        wallet = btcrseed.btcrpass.load_wallet(wallet_filename)
+            wallet = btcrseed.btcrpass.load_wallet(temp_wallet_filename)
 
-        # Convert the mnemonic string into a mnemonic_ids_guess
-        wallet.config_mnemonic(correct_mnemonic)
-        correct_mnemonic = btcrseed.mnemonic_ids_guess
+            # Convert the mnemonic string into a mnemonic_ids_guess
+            wallet.config_mnemonic(correct_mnemonic)
+            correct_mnemonic = btcrseed.mnemonic_ids_guess
 
-        # Creates wrong mnemonic id guesses
-        wrong_mnemonic_iter = wallet.performance_iterator()
+            # Creates wrong mnemonic id guesses
+            wrong_mnemonic_iter = wallet.performance_iterator()
 
-        self.assertEqual(wallet.return_verified_password_or_false(
-            (wrong_mnemonic_iter.next(), wrong_mnemonic_iter.next())), (False, 2))
-        self.assertEqual(wallet.return_verified_password_or_false(
-            (wrong_mnemonic_iter.next(), correct_mnemonic, wrong_mnemonic_iter.next())), (correct_mnemonic, 2))
+            self.assertEqual(wallet.return_verified_password_or_false(
+                (wrong_mnemonic_iter.next(), wrong_mnemonic_iter.next())), (False, 2))
+            self.assertEqual(wallet.return_verified_password_or_false(
+                (wrong_mnemonic_iter.next(), correct_mnemonic, wrong_mnemonic_iter.next())), (correct_mnemonic, 2))
 
-        del wallet
-        self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
-        shutil.rmtree(temp_dir)
+            del wallet
+            self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
+        finally:
+            shutil.rmtree(temp_dir)
 
     def test_electrum1(self):
         self.wallet_tester("electrum-wallet", "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
@@ -82,8 +84,14 @@ class TestRecoveryFromWallet(unittest.TestCase):
     def test_electrum2(self):
         self.wallet_tester("electrum2-wallet", "eagle pair eager human cage forget pony fall robot vague later bright acid")
 
+    def test_electrum27(self):
+        self.wallet_tester("electrum27-wallet", "eagle pair eager human cage forget pony fall robot vague later bright acid")
+
     def test_electrum2_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum2-wallet", "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
+
+    def test_electrum27_upgradedfrom_electrum1(self):
+        self.wallet_tester("electrum1-upgradedto-electrum27-wallet", "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
 
 
 class TestRecoveryFromMPK(unittest.TestCase):

@@ -893,35 +893,37 @@ class Test07WalletDecryption(unittest.TestCase):
         wallet_filename = os.path.join(WALLET_DIR, wallet_basename)
 
         temp_dir = tempfile.mkdtemp("-test-btcr")
-        temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
-        shutil.copyfile(wallet_filename, temp_wallet_filename)
+        try:
+            temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
+            shutil.copyfile(wallet_filename, temp_wallet_filename)
 
-        if android_backuppass:
-            wallet = btcrpass.WalletAndroidSpendingPIN.load_from_filename(
-                temp_wallet_filename, tstr(android_backuppass), force_purepython)
-        elif blockchain_mainpass:
-            wallet = btcrpass.WalletBlockchainSecondpass.load_from_filename(
-                temp_wallet_filename, tstr(blockchain_mainpass), force_purepython)
-        elif force_bsddb_purepython:
-            wallet = btcrpass.WalletBitcoinCore.load_from_filename(
-                temp_wallet_filename, force_bsddb_purepython)
-        else:
-            wallet = btcrpass.load_wallet(temp_wallet_filename)
+            if android_backuppass:
+                wallet = btcrpass.WalletAndroidSpendingPIN.load_from_filename(
+                    temp_wallet_filename, tstr(android_backuppass), force_purepython)
+            elif blockchain_mainpass:
+                wallet = btcrpass.WalletBlockchainSecondpass.load_from_filename(
+                    temp_wallet_filename, tstr(blockchain_mainpass), force_purepython)
+            elif force_bsddb_purepython:
+                wallet = btcrpass.WalletBitcoinCore.load_from_filename(
+                    temp_wallet_filename, force_bsddb_purepython)
+            else:
+                wallet = btcrpass.load_wallet(temp_wallet_filename)
 
-        if force_purepython:     btcrpass.load_aes256_library(force_purepython=True)
-        if force_kdf_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
+            if force_purepython:     btcrpass.load_aes256_library(force_purepython=True)
+            if force_kdf_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
 
-        if not correct_pass:
-            correct_pass = "btcr-test-password"
-        correct_pass = tstr(correct_pass)
-        self.assertEqual(wallet.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
-        self.assertEqual(wallet.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4")]), (correct_pass, 2))
+            if not correct_pass:
+                correct_pass = "btcr-test-password"
+            correct_pass = tstr(correct_pass)
+            self.assertEqual(wallet.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+            self.assertEqual(wallet.return_verified_password_or_false(
+                [tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4")]), (correct_pass, 2))
 
-        del wallet
-        self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
-        shutil.rmtree(temp_dir)
+            del wallet
+            self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
+        finally:
+            shutil.rmtree(temp_dir)
 
     def test_armory(self):
         if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")

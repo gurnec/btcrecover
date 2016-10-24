@@ -1540,10 +1540,10 @@ class WalletElectrum2(WalletElectrum1):
         wallet_type = wallet.get("wallet_type")
         if not wallet_type:
             raise ValueError("Unrecognized wallet format (Electrum2 wallet_type not found)")
-        if not wallet.get("use_encryption"):
-            raise ValueError("Electrum2 wallet is not encrypted")
         if wallet_type == "old":  # if it's been converted from 1.x to 2.y (y<7), return a WalletElectrum1 object
             return WalletElectrum1._load_from_dict(wallet)
+        if not wallet.get("use_encryption"):
+            raise ValueError("Electrum2 wallet is not encrypted")
         seed_version = wallet.get("seed_version", "(not found)")
         if wallet.get("seed_version") not in (11, 12, 13):  # all 2.x versions as of Oct 2016
             raise NotImplementedError("Unsupported Electrum2 seed version " + unicode(seed_version))
