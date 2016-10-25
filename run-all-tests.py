@@ -27,60 +27,106 @@
 
 from __future__ import print_function
 
+# Use the green test runner if available
+try:
+    import green.config, green.suite, green.output, collections
+    has_green = True
+
+    # Adapter which uses green, but is similar in signature to unittest.main()
+    def main(test_module, exit = None, buffer = None):
+        import green.loader, green.runner
+        if buffer:
+            green_args.quiet_stdout = True
+        results = green.runner.run(green.loader.loadFromModule(test_module), sys.stdout, green_args)
+        # Return the results in an object with a "result" attribute, same as unittest.main()
+        return collections.namedtuple("Tuple", "result")(results)
+
+# If green isn't available, use the unittest test runner
+except ImportError:
+    from unittest import main
+    has_green = False
+
+
 if __name__ == b'__main__':
 
-    import argparse, sys, atexit, timeit, unittest
+    import argparse, sys, atexit, time, timeit, os
+
     from btcrecover.test import test_passwords, test_seeds
 
-    # Add two new arguments to those already provided by unittest.main()
+    # Add two new arguments to those already provided by main()
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--no-buffer", action="store_true")
     parser.add_argument("--no-pause",  action="store_true")
-    args, unittest_args = parser.parse_known_args()
-    sys.argv[1:] = unittest_args
+    args, unparsed_args = parser.parse_known_args()
+    sys.argv[1:] = unparsed_args
 
     # By default, pause before exiting
     if not args.no_pause:
         atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
 
-    total_tests = total_skipped = total_failures = total_errors = 0
+    # Additional setup normally done by green.cmdline.main()
+    if has_green:
+        green_args = green.config.parseArguments()
+        green_args = green.config.mergeConfig(green_args)
+        if green_args.shouldExit:
+            sys.exit(green_args.exitCode)
+        green.suite.GreenTestSuite.args = green_args
+        if green_args.debug:
+            green.output.debug_level = green_args.debug
+
+    total_tests = total_skipped = total_failures = total_errors = total_passing = 0
     def accumulate_results(r):
-        global total_tests, total_skipped, total_failures, total_errors
+        global total_tests, total_skipped, total_failures, total_errors, total_passing
         total_tests    += r.testsRun
         total_skipped  += len(r.skipped)
         total_failures += len(r.failures)
         total_errors   += len(r.errors)
+        if has_green:
+            total_passing += len(r.passing)
 
     timer = timeit.default_timer
-    start_time = timer()
+    start_time = time.time() if has_green else timer()
 
-    print("** Running ANSI password tests **")
-    test_passwords.tstr = str
-    results = unittest.main(test_passwords, exit=False, buffer= not args.no_buffer).result
+    if not has_green:
+        print("** Testing in ANSI character mode **")
+    os.environ["BTCR_CHAR_MODE"] = "ansi"
+    results = main(test_passwords, exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 
-    print("\n** Running Unicode password tests **")
-    test_passwords.tstr = unicode
-    results = unittest.main(test_passwords, exit=False, buffer= not args.no_buffer).result
+    print()
+    if not has_green:
+        print("** Testing in Unicode character mode **")
+    os.environ["BTCR_CHAR_MODE"] = "unicode"
+    results = main(test_passwords, exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 
-    print("\n** Running seed tests **")
-    results = unittest.main(test_seeds,     exit=False, buffer= not args.no_buffer).result
+    print("\n** Testing seed recovery **")
+    results = main(test_seeds,     exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 
-    elapsed_time = timer() - start_time
+    print("\n\n*** Full Results ***")
+    if has_green:
+        # Print the results in color using green
+        results.startTime  = start_time
+        results.testsRun   = total_tests
+        results.passing    = (None,) * total_passing
+        results.skipped    = (None,) * total_skipped
+        results.failures   = (None,) * total_failures
+        results.errors     = (None,) * total_errors
+        results.all_errors = ()
+        green_args.no_skip_report = True
+        results.stopTestRun()
+    else:
+        print("\nRan {} tests in {:.3f}s\n".format(total_tests, timer() - start_time))
+        print("OK" if total_failures == total_errors == 0 else "FAILED", end="")
 
-    print("\n\n*** Full Results ***\n")
-    print("Ran {} tests in {:.3f}s\n".format(total_tests, elapsed_time))
-    print("OK" if total_failures == total_errors == 0 else "FAILED", end="")
-
-    details = [
-        name + "=" + str(val)
-        for name,val in (("failures", total_failures), ("errors", total_errors), ("skipped", total_skipped))
-            if val
-    ]
-    if details:
-        print(" (" + ", ".join(details) + ")", end="")
-    print("\n")
+        details = [
+            name + "=" + str(val)
+            for name,val in (("failures", total_failures), ("errors", total_errors), ("skipped", total_skipped))
+                if val
+        ]
+        if details:
+            print(" (" + ", ".join(details) + ")", end="")
+        print("\n")
 
     sys.exit(0 if total_failures == total_errors == 0 else 1)

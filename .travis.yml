@@ -1,4 +1,4 @@
 language: python
 python:   "2.7"
 install:  bash .travis.install-dependencies.sh
-script:   /usr/bin/python2.7 run-all-tests.py --no-pause --verbose
+script:   /usr/bin/python2.7 run-all-tests.py --no-pause -vv
