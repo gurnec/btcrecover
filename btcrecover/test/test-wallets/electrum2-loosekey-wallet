@@ -1,0 +1,27 @@
+{
+    "accounts": {
+        "/x": {
+            "imported": {
+                "1J5ApTWD24ZBKzkYgnoN5NacXCP9u4rAkp": [
+                    "039bb38c166e55c595891b78325da2025d013ecd5d9694b05e210b48a01168065c", 
+                    "fQOKaqOdEaR5Qv0tuOgyhyde5MkYgAd8sDZi6rj86KYJlmbJjwupMga3FPUgXdD3FPx4P6wESVURM253BSUQvL8OMYotir0NptnEElninGs="
+                ]
+            }
+        }
+    }, 
+    "accounts_expanded": {}, 
+    "addr_history": {}, 
+    "pruned_txo": {}, 
+    "stored_height": 435878, 
+    "transactions": {}, 
+    "txi": {}, 
+    "txo": {}, 
+    "use_encryption": true, 
+    "wallet_type": "imported", 
+    "winpos-qt": [
+        100, 
+        100, 
+        840, 
+        400
+    ]
+}

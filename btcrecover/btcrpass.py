@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.2"
+__version__          =  "0.15.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1433,18 +1433,8 @@ class WalletMsigna(object):
 
 ############### Electrum ###############
 
-@register_wallet_class
-class WalletElectrum1(object):
-
-    class __metaclass__(type):
-        @property
-        def data_extract_id(cls): return b"el"
-
-    @staticmethod
-    def is_wallet_file(wallet_file):
-        wallet_file.seek(0)
-        # returns "maybe yes" or "definitely no"
-        return None if wallet_file.read(2) == b"{'" else False
+# Comman base class for all Electrum wallets
+class WalletElectrum(object):
 
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
@@ -1458,6 +1448,28 @@ class WalletElectrum1(object):
 
     def passwords_per_seconds(self, seconds):
         return max(int(round(self._passwords_per_second * seconds)), 1)
+
+    # Import Electrum encrypted data extracted by an extract-electrum* script
+    @classmethod
+    def load_from_data_extract(cls, data):
+        assert len(data) == 32
+        self = cls(loading=True)
+        self._iv                  = data[:16]  # the 16-byte IV
+        self._part_encrypted_data = data[16:]  # 16-bytes of encrypted data
+        return self
+
+@register_wallet_class
+class WalletElectrum1(WalletElectrum):
+
+    class __metaclass__(type):
+        @property
+        def data_extract_id(cls): return b"el"
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        # returns "maybe yes" or "definitely no"
+        return None if wallet_file.read(2) == b"{'" else False
 
     # Load an Electrum wallet file (the part of it we need)
     @classmethod
@@ -1480,16 +1492,7 @@ class WalletElectrum1(object):
         if len(seed_data) != 64:             raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
         self = cls(loading=True)
         self._iv                  = seed_data[:16]    # only need the 16-byte IV plus
-        self._part_encrypted_seed = seed_data[16:32]  # the first 16-byte encrypted block of the seed
-        return self
-
-    # Import an Eletrum partial seed that was extracted by extract-electrum-halfseed.py
-    @classmethod
-    def load_from_data_extract(cls, seed_data):
-        assert len(seed_data) == 32
-        self = cls(loading=True)
-        self._iv                  = seed_data[:16]  # the 16-byte IV
-        self._part_encrypted_seed = seed_data[16:]  # the first 16-byte encrypted block of the seed
+        self._part_encrypted_data = seed_data[16:32]  # the first 16-byte encrypted block of the seed
         return self
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
@@ -1499,7 +1502,7 @@ class WalletElectrum1(object):
         # Copy some vars into local for a small speed boost
         l_sha256             = hashlib.sha256
         l_aes256_cbc_decrypt = aes256_cbc_decrypt
-        part_encrypted_seed  = self._part_encrypted_seed
+        part_encrypted_seed  = self._part_encrypted_data
         iv                   = self._iv
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
@@ -1518,9 +1521,9 @@ class WalletElectrum1(object):
         return False, count
 
 @register_wallet_class
-class WalletElectrum2(WalletElectrum1):
+class WalletElectrum2(WalletElectrum):
 
-    class __metaclass__(WalletElectrum1.__metaclass__):
+    class __metaclass__(type):
         @property
         def data_extract_id(cls): return b"e2"
 
@@ -1545,7 +1548,7 @@ class WalletElectrum2(WalletElectrum1):
         if not wallet.get("use_encryption"):
             raise ValueError("Electrum2 wallet is not encrypted")
         seed_version = wallet.get("seed_version", "(not found)")
-        if wallet.get("seed_version") not in (11, 12, 13):  # all 2.x versions as of Oct 2016
+        if wallet.get("seed_version") not in (11, 12, 13) and wallet_type != "imported":  # all 2.x versions as of Oct 2016
             raise NotImplementedError("Unsupported Electrum2 seed version " + unicode(seed_version))
 
         xprv = None
@@ -1571,8 +1574,21 @@ class WalletElectrum2(WalletElectrum1):
                             raise RuntimeError("Electrum1 encrypted seed plus iv is not 64 bytes long")
                         self = WalletElectrum1(loading=True)
                         self._iv                  = seed_data[:16]    # only need the 16-byte IV plus
-                        self._part_encrypted_seed = seed_data[16:32]  # the first 16-byte encrypted block of the seed
+                        self._part_encrypted_data = seed_data[16:32]  # the first 16-byte encrypted block of the seed
                         return self
+
+                # Imported loose private keys
+                elif keystore_type == "imported":
+                    for privkey in keystore["keypairs"].values():
+                        if privkey:
+                            # Construct and return a WalletElectrumLooseKey object
+                            privkey = base64.b64decode(privkey)
+                            if len(privkey) != 80:
+                                raise RuntimeError("Electrum2 private key plus iv is not 80 bytes long")
+                            self = WalletElectrumLooseKey(loading=True)
+                            self._iv                  = privkey[-32:-16]  # only need the 16-byte IV plus
+                            self._part_encrypted_data = privkey[-16:]     # the last 16-byte encrypted block of the key
+                            return self
 
                 else:
                     print(prog+": warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
@@ -1589,11 +1605,26 @@ class WalletElectrum2(WalletElectrum1):
                     print(prog + ": warning: found unsupported key type " + x_type, file=sys.stderr)
             if xprv: break
 
-            # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
-            mpks = wallet.get("master_private_keys")
-            if mpks:
-                xprv = mpks.values()[0]
-                break
+            # Electrum 2.0 - 2.6.4 wallet with imported loose private keys
+            if wallet_type == "imported":
+                for imported in wallet["accounts"]["/x"]["imported"].values():
+                    privkey = imported[1] if len(imported) >= 2 else None
+                    if privkey:
+                        # Construct and return a WalletElectrumLooseKey object
+                        privkey = base64.b64decode(privkey)
+                        if len(privkey) != 80:
+                            raise RuntimeError("Electrum2 private key plus iv is not 80 bytes long")
+                        self = WalletElectrumLooseKey(loading=True)
+                        self._iv                  = privkey[-32:-16]  # only need the 16-byte IV plus
+                        self._part_encrypted_data = privkey[-16:]     # the last 16-byte encrypted block of the key
+                        return self
+
+            # Electrum 2.0 - 2.6.4 wallet (of any other wallet type)
+            else:
+                mpks = wallet.get("master_private_keys")
+                if mpks:
+                    xprv = mpks.values()[0]
+                    break
 
             raise RuntimeError("No master private keys or seeds found in Electrum2 wallet")
 
@@ -1602,7 +1633,7 @@ class WalletElectrum2(WalletElectrum1):
             raise RuntimeError("Unexpected Electrum2 encrypted master private key length")
         self = cls(loading=True)
         self._iv                  = xprv_data[:16]    # only need the 16-byte IV plus
-        self._part_encrypted_seed = xprv_data[16:32]  # the first 16-byte encrypted block of a master privkey
+        self._part_encrypted_data = xprv_data[16:32]  # the first 16-byte encrypted block of a master privkey
         return self                                   # (the member variable name comes from the base class)
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
@@ -1612,7 +1643,7 @@ class WalletElectrum2(WalletElectrum1):
         # Copy some vars into local for a small speed boost
         l_sha256             = hashlib.sha256
         l_aes256_cbc_decrypt = aes256_cbc_decrypt
-        part_encrypted_xprv  = self._part_encrypted_seed
+        part_encrypted_xprv  = self._part_encrypted_data
         iv                   = self._iv
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
@@ -1625,6 +1656,45 @@ class WalletElectrum2(WalletElectrum1):
 
             if xprv.startswith(b"xprv"):  # BIP32 extended private key version bytes
                 for c in xprv[4:]:
+                    # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
+                    if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
+                else:  # if the loop above doesn't break, it's base58
+                    return password if tstr == str else password.decode("utf_8", "replace"), count
+
+        return False, count
+
+@register_wallet_class
+class WalletElectrumLooseKey(WalletElectrum):
+
+    class __metaclass__(type):
+        @property
+        def data_extract_id(cls):    return b"ek"
+
+    @staticmethod
+    def is_wallet_file(wallet_file): return False  # WalletElectrum2.load_from_filename() creates us
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    assert b"1" < b"9" < b"A" < b"Z" < b"a" < b"z"  # the b58 check below assumes ASCII ordering in the interest of speed
+    def return_verified_password_or_false(self, passwords):
+        # Copy some vars into local for a small speed boost
+        l_sha256              = hashlib.sha256
+        l_aes256_cbc_decrypt  = aes256_cbc_decrypt
+        encrypted_privkey_end = self._part_encrypted_data
+        iv                    = self._iv
+
+        # Convert Unicode strings (lazily) to UTF-8 bytestrings
+        if tstr == unicode:
+            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+            key         = l_sha256( l_sha256( password ).digest() ).digest()
+            privkey_end = l_aes256_cbc_decrypt(key, iv, encrypted_privkey_end)
+            padding_len = ord(privkey_end[-1])
+            # Check for valid PKCS7 padding for a 52 or 51 byte "WIF" private key
+            # (4*16-byte-blocks == 64, 64 - 52 or 51 == 12 or 13
+            if (padding_len == 12 or padding_len == 13) and privkey_end.endswith(chr(padding_len) * padding_len):
+                for c in privkey_end[:-padding_len]:
                     # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
                     if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
                 else:  # if the loop above doesn't break, it's base58

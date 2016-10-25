@@ -944,11 +944,17 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_electrum27_multisig(self):
         self.wallet_tester("electrum27-multisig-wallet")
 
+    def test_electrum27_loosekey(self):
+        self.wallet_tester("electrum27-loosekey-wallet")
+
     def test_electrum2(self):
         self.wallet_tester("electrum2-wallet")
 
     def test_electrum2_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum2-wallet")
+
+    def test_electrum2_loosekey(self):
+        self.wallet_tester("electrum2-loosekey-wallet")
 
     def test_electrum27_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum27-wallet")
@@ -1283,6 +1289,9 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_electrum2_unicode(self):
         if tstr != unicode: self.skipTest("Unicode mode only")
         self.key_tester("ZTI6k2tz83Lzs83hyQPRj2g90f7nVYHYM20qLv4NIVIzUNNqVWv8", unicode_pw=True)
+
+    def test_electrum2_loosekey(self):
+        self.key_tester("ZWs6FPx4P6wESVURM253BSUQvL8OMYotir0NptnEElninGsj4CuI")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto" and
                          btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
@@ -1681,6 +1690,7 @@ class QuickTests(unittest.TestSuite) :
                 "test_electrum_unicode",
                 "test_electrum2",
                 "test_electrum2_unicode",
+                "test_electrum2_loosekey",
                 "test_blockchain_v0",
                 "test_blockchain_v0_unicode",
                 "test_blockchain_v2",

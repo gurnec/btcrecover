@@ -54,10 +54,13 @@ if wallet_type == "old":
     desc      = "First half of encrypted Electrum 1.x seed"
 
 else:
-    if wallet.get("seed_version") not in (11, 12, 13):  # all 2.x versions as of Oct 2016
+    if wallet.get("seed_version") not in (11, 12, 13) and wallet_type != "imported":  # all 2.x versions as of Oct 2016
                                      raise NotImplementedError("Unsupported Electrum2 seed version " + str(seed_version))
     xprv = None
-    while True:  # "loops" exactly once; only here so we've something to break out of
+
+    # A try block and an exception that's raised to exit the block once we've found the data to extract
+    class FoundEncryptedData(BaseException): pass
+    try:
 
         # Electrum 2.7+ standard wallets have a keystore
         keystore = wallet.get("keystore")
@@ -67,7 +70,7 @@ else:
             # Wallets originally created by an Electrum 2.x version
             if keystore_type == "bip32":
                 xprv = keystore["xprv"]
-                break
+                raise FoundEncryptedData()
 
             # Former Electrum 1.x wallet after conversion to Electrum 2.7+ standard-wallet format
             elif keystore_type == "old":
@@ -76,7 +79,19 @@ else:
                 wallet_id = "el"
                 data      = data[:32]  # only need the 16-byte IV plus the first 16-byte encrypted block of the seed
                 desc      = "First half of encrypted Electrum 1.x seed"
-                break
+                raise FoundEncryptedData()
+
+            # Imported loose private keys
+            elif keystore_type == "imported":
+                for privkey in keystore["keypairs"].values():
+                    if privkey:
+                        privkey = base64.b64decode(privkey)
+                        if len(privkey) != 80:
+                            raise RuntimeError("Electrum2 private key plus iv is not 80 bytes long")
+                        wallet_id = "ek"
+                        data      = privkey[-32:]  # only need the 16-byte IV plus the last 16-byte encrypted block of the key
+                        desc      = "Last 16 bytes of a private key"
+                        raise FoundEncryptedData()
 
             else:
                 print(prog+": warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
@@ -88,18 +103,34 @@ else:
             x_type = x.get("type", "(not found)")
             if x_type == "bip32":
                 xprv = x.get("xprv")
-                if xprv: break
+                if xprv: raise FoundEncryptedData()
             else:
                 print(prog + ": warning: found unsupported key type " + x_type, file=sys.stderr)
-        if xprv: break
 
-        # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
-        mpks = wallet.get("master_private_keys")
-        if mpks:
-            xprv = mpks.values()[0]
-            break
+        # Electrum 2.0 - 2.6.4 wallet with imported loose private keys
+        if wallet_type == "imported":
+            for imported in wallet["accounts"]["/x"]["imported"].values():
+                privkey = imported[1] if len(imported) >= 2 else None
+                if privkey:
+                    # Construct and return a WalletElectrumLooseKey object
+                    privkey = base64.b64decode(privkey)
+                    if len(privkey) != 80:
+                        raise RuntimeError("Electrum2 private key plus iv is not 80 bytes long")
+                    wallet_id = "ek"
+                    data      = privkey[-32:]  # only need the 16-byte IV plus the last 16-byte encrypted block of the key
+                    desc      = "Last 16 bytes of a private key"
+                    raise FoundEncryptedData()
+
+        # Electrum 2.0 - 2.6.4 wallet (of any other wallet type)
+        else:
+            mpks = wallet.get("master_private_keys")
+            if mpks:
+                xprv = mpks.values()[0]
+                raise FoundEncryptedData()
 
         raise RuntimeError("No master private keys or seeds found in Electrum2 wallet")
+
+    except FoundEncryptedData: pass
 
     if xprv:
         data = base64.b64decode(xprv)
