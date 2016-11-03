@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -1097,11 +1097,21 @@ class WalletElectrum2(WalletBIP39):
         word = filter(lambda c: not unicodedata.combining(c), word)  # Electrum 2.x removes combining marks
         return intern(word.encode("utf_8"))
 
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = 13, closematch_cutoff = 0.65):
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
+        if expected_len is None:
+            init_gui()
+            if tkMessageBox.askyesno("Electrum 2.x version",
+                    "Did you CREATE your wallet with Electrum version 2.7 or later (please choose No if you're unsure)?",
+                    default=tkMessageBox.NO):
+                expected_len = 12
+            else:
+                expected_len = 13
+        else:
+            if expected_len > 13:
+                raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
+
         # Calls WalletBIP39's generic version (note the leading _) with the mnemonic
         # length (which for Electrum2 wallets alone is treated only as a maximum length)
-        if expected_len > 13:
-            raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
         passphrase = self._config_mnemonic(mnemonic_guess, lang, passphrase, expected_len, closematch_cutoff)
 
         # Python 2.x running Electrum 2.x has a Unicode bug where if there are any code points > 65535,

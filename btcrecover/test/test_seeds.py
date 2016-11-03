@@ -50,7 +50,7 @@ class TestRecoveryFromWallet(unittest.TestCase):
 
     # Checks a test wallet against the known mnemonic, and ensures
     # that the library doesn't make any changes to the wallet file
-    def wallet_tester(self, wallet_basename, correct_mnemonic):
+    def wallet_tester(self, wallet_basename, correct_mnemonic, **kwds):
         assert os.path.basename(wallet_basename) == wallet_basename
         wallet_filename = os.path.join(wallet_dir, wallet_basename)
 
@@ -62,7 +62,7 @@ class TestRecoveryFromWallet(unittest.TestCase):
             wallet = btcrseed.btcrpass.load_wallet(temp_wallet_filename)
 
             # Convert the mnemonic string into a mnemonic_ids_guess
-            wallet.config_mnemonic(correct_mnemonic)
+            wallet.config_mnemonic(correct_mnemonic, **kwds)
             correct_mnemonic = btcrseed.mnemonic_ids_guess
 
             # Creates wrong mnemonic id guesses
@@ -82,10 +82,12 @@ class TestRecoveryFromWallet(unittest.TestCase):
         self.wallet_tester("electrum-wallet", "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
 
     def test_electrum2(self):
-        self.wallet_tester("electrum2-wallet", "eagle pair eager human cage forget pony fall robot vague later bright acid")
+        self.wallet_tester("electrum2-wallet", "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            expected_len=13)
 
     def test_electrum27(self):
-        self.wallet_tester("electrum27-wallet", "eagle pair eager human cage forget pony fall robot vague later bright acid")
+        self.wallet_tester("electrum27-wallet", "spot deputy pencil nasty fire boss moral rubber bacon thumb thumb icon",
+            expected_len=12)
 
     def test_electrum2_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum2-wallet", "straight subject wild ask clean possible age hurt squeeze cost stuck softly")
@@ -120,19 +122,27 @@ class TestRecoveryFromMPK(unittest.TestCase):
     def test_electrum2(self):
         self.mpk_tester(btcrseed.WalletElectrum2,
             "xpub661MyMwAqRbcGsUXkGBkytQkYZ6M16bFWwTocQDdPSm6eJ1wUsxG5qty1kTCUq7EztwMscUstHVo1XCJMxWyLn4PP1asLjt4gPt3HkA81qe",
-            "eagle pair eager human cage forget pony fall robot vague later bright acid")
+            "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            expected_len=13)
+
+    def test_electrum27(self):
+        self.mpk_tester(btcrseed.WalletElectrum2,
+            "xpub661MyMwAqRbcGt6qtQ19Ttwvo5Dbf2cQdA2GMf9Xkjth8NqYXXordg3gLK1npATRm9Fr7d7fA5ziCwqEVMmzeRezofp8CEaru8pJ57zV8hN",
+            "spot deputy pencil nasty fire boss moral rubber bacon thumb thumb icon",
+            expected_len=12)
 
     def test_electrum2_ja(self):
         self.mpk_tester(btcrseed.WalletElectrum2,
             "xpub661MyMwAqRbcFAyy6MaWCK5uGHhgvMZNaFbKy1TbSrcEm8oCgD3N2AfzPC8ndmdvcQbY8EbU414X4xNrs9dcNgcntShiBFJYJ6HJy7zKnQV",
-            u"すんぽう うけつけ ぬいくぎ きどう ごはん たかね いてざ よしゅう なにもの われる たんき さとる あじわう")
+            u"すんぽう うけつけ ぬいくぎ きどう ごはん たかね いてざ よしゅう なにもの われる たんき さとる あじわう",
+            expected_len=13)
 
     TEST_ELECTRUM2_PASS_XPUB = "xpub661MyMwAqRbcG4s8buUEpDeeBMZeXxnroY3i9jZJNQuDrWQaCyR5Mvk9pmRK5q5WrEKTwSuYwBiSjcp3ZkM2ujhngFQXxvrTyv2uFCryyii"
     def test_electrum2_pass(self):
         self.mpk_tester(btcrseed.WalletElectrum2,
             self.TEST_ELECTRUM2_PASS_XPUB,
             "eagle pair eager human cage forget pony fall robot vague later bright acid",
-            passphrase=u"btcr test password 测试密码")
+            expected_len=13, passphrase=u"btcr test password 测试密码")
 
     def test_electrum2_pass_normalize(self):
         p = u" btcr  TEST  ℙáⓢⓢᵂöṝⅆ  测试  密码 "
@@ -140,7 +150,7 @@ class TestRecoveryFromMPK(unittest.TestCase):
         self.mpk_tester(btcrseed.WalletElectrum2,
             self.TEST_ELECTRUM2_PASS_XPUB,
             "eagle pair eager human cage forget pony fall robot vague later bright acid",
-            passphrase=p)
+            expected_len=13, passphrase=p)
 
     def test_electrum2_pass_wide(self):
         p = u"𝔅tcr 𝔗est 𝔓assword 测试密码"
@@ -152,7 +162,7 @@ class TestRecoveryFromMPK(unittest.TestCase):
             # for wide Unicode builds, there are no bugs:
             self.TEST_ELECTRUM2_PASS_XPUB,
             "eagle pair eager human cage forget pony fall robot vague later bright acid",
-            passphrase=p)
+            expected_len=13, passphrase=p)
 
     def test_bitcoinj(self):
         # an xpub at path m/0', as Bitcoin Wallet for Android/BlackBerry would export
@@ -189,12 +199,12 @@ class TestRecoveryFromMPK(unittest.TestCase):
 
 class TestRecoveryFromAddress(unittest.TestCase):
 
-    def address_tester(self, wallet_type, the_address, the_address_limit, correct_mnemonic):
+    def address_tester(self, wallet_type, the_address, the_address_limit, correct_mnemonic, **kwds):
 
         wallet = wallet_type.create_from_params(address=the_address, address_limit=the_address_limit)
 
         # Convert the mnemonic string into a mnemonic_ids_guess
-        wallet.config_mnemonic(correct_mnemonic)
+        wallet.config_mnemonic(correct_mnemonic, **kwds)
         correct_mnemonic_ids = btcrseed.mnemonic_ids_guess
 
         # Creates wrong mnemonic id guesses
@@ -207,7 +217,7 @@ class TestRecoveryFromAddress(unittest.TestCase):
 
         # Make sure the address_limit is respected (note the "the_address_limit-1" below)
         wallet = wallet_type.create_from_params(address=the_address, address_limit=the_address_limit-1)
-        wallet.config_mnemonic(correct_mnemonic)
+        wallet.config_mnemonic(correct_mnemonic, **kwds)
         self.assertEqual(wallet.return_verified_password_or_false(
             (correct_mnemonic_ids,)), (False, 1))
 
@@ -217,7 +227,13 @@ class TestRecoveryFromAddress(unittest.TestCase):
 
     def test_electrum2(self):
         self.address_tester(btcrseed.WalletElectrum2, "14dpd9nayyoyCTNki5UUsm1KnAZ1x7o83E", 5,
-            "eagle pair eager human cage forget pony fall robot vague later bright acid")
+            "eagle pair eager human cage forget pony fall robot vague later bright acid",
+            expected_len=13)
+
+    def test_electrum27(self):
+        self.address_tester(btcrseed.WalletElectrum2, "1HQrNUBEsEqwEaZZzMqqLqCHSVCGF7dTVS", 5,
+            "spot deputy pencil nasty fire boss moral rubber bacon thumb thumb icon",
+            expected_len=12)
 
     def test_bitcoinj(self):
         self.address_tester(btcrseed.WalletBitcoinj, "17Czu38CcLwWr8jFZrDJBHWiEDd2QWhPSU", 4,
