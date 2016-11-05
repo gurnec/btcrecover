@@ -155,17 +155,17 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 
 ### Windows GPU acceleration for Bitcoin Classic/XT/Core, Armory, or Litecoin-Qt ###
 
- 1. Download the latest version of PyOpenCL for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed, from here: <http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyopencl>
+ 1. Download the latest version of PyOpenCL for OpenCL 1.2 / Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed, from here: <http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyopencl>. For best compatibility, be sure to select a version for OpenCL 1.2 *and no later* (look for "cl12" in the file name, and also look for "27" to match Python 2.7).
 
     As of this writing, the 32-bit and 64-bit versions are named respectively:
 
-        pyopencl-2015.1-cp27-none-win32.whl
-        pyopencl-2015.1-cp27-none-win_amd64.whl
+        pyopencl-2016.2+cl12-cp27-cp27m-win32.whl
+        pyopencl-2016.2+cl12-cp27-cp27m-win_amd64.whl
 
  2. Open a command prompt window, and type this to install PyOpenCL and its dependencies:
 
         cd %USERPROFILE%\Downloads
-        C:\Python27\Scripts\pip install pyopencl-2015.1+numpy16-cp27-none-win_amd64.whl
+        C:\Python27\Scripts\pip install pyopencl-2016.2+cl12-cp27-cp27m-win_amd64.whl
 
     Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
