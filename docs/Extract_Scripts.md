@@ -6,7 +6,7 @@ Sometimes, it is not desirable to run *btcrecover* directly on the computer whic
  * Configuring *btcrecover* to search for your password correctly can be tricky; you might be interested in finding someone who can configure and run *btcrecover* for you on their computer.
  * You may not trust that *btcrecover* is free from harmful bugs or other malicious behavior. *btcrecover* is open source, and requires no untrustworthy binaries be installed. However it's also a fairly long and complicated Python script, which makes it difficult even for other Python programmers to be certain that it doesn't contain any harmful code (either intentionally malicious or just by accident).
 
-The extract scripts in this directory are relatively short and simple scripts which extract the just enough information from a wallet file to allow *btcrecover* to perform a password search. With the exception of Armory, these scripts never extract enough information to put any of your bitcoin funds at risk, even after the password is found. For Armory, only a single (typically unused) address and private key are extracted, putting only that one address at risk (however please read the [Armory Technical Details](#armory-technical-details) for an important caveat.
+The extract scripts in this directory are relatively short and simple scripts which extract the just enough information from a wallet file to allow *btcrecover* to perform a password search. With the exception of Armory, these scripts never extract enough information to put any of your bitcoin funds at risk, even after the password is found. For Armory, only a single (typically unused) address and private key are extracted, putting only that one address at risk (however please read the [Armory Technical Details](#armory-technical-details) for an important caveat).
 
 For more information regarding *btcrecover*, please see [TUTORIAL.md](../TUTORIAL.md).
 
@@ -27,7 +27,7 @@ If you'd prefer to download just a single extract script, please select the one 
  * MultiBit Classic - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-privkey.py>
  * MultiBit HD - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-multibit-hd-data.py>
 
-If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, please follow the full instructions in the [Installation Guide](INSTALL.md). For any other wallets, just follow the [instructions to install Pythone 2.7 here](INSTALL.md#python-27).
+If you're on Windows, you will also need to install the latest version of Python 2.7. For Armory wallets, please follow the full instructions in the [Installation Guide](INSTALL.md). For any other wallets, just follow the [instructions to install Python 2.7 here](INSTALL.md#python-27).
 
 
 ### Table of Contents ###
