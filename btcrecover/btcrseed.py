@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.4"
+__version__ = "0.5.5"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -1075,7 +1075,7 @@ class WalletElectrum2(WalletBIP39):
                     return self
 
                 else:
-                    print(prog+": warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
+                    print("warning: found unsupported keystore type " + keystore_type, file=sys.stderr)
 
             # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
             mpks = wallet.get("master_public_keys")
@@ -1099,14 +1099,16 @@ class WalletElectrum2(WalletBIP39):
 
     def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
         if expected_len is None:
+            expected_len_specified = False
             init_gui()
             if tkMessageBox.askyesno("Electrum 2.x version",
-                    "Did you CREATE your wallet with Electrum version 2.7 or later (please choose No if you're unsure)?",
+                    "Did you CREATE your wallet with Electrum version 2.7 (released Oct 2 2016) or later?\n\nPlease choose No if you're unsure.",
                     default=tkMessageBox.NO):
                 expected_len = 12
             else:
                 expected_len = 13
         else:
+            expected_len_specified = True
             if expected_len > 13:
                 raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
 
@@ -1125,6 +1127,10 @@ class WalletElectrum2(WalletBIP39):
             print("warning: due to Unicode incompatibilities, it's strongly recommended\n"
                   "         that you run seedrecover.py on the same computer (or at least\n"
                   "         the same OS) where you created your wallet", file=sys.stderr)
+
+        if expected_len_specified and num_inserts:
+            print("notice: for Electrum 2.x, --mnemonic-length is the max length tried, but not necessarily the min",
+                  file=sys.stderr)
 
         # The pbkdf2-derived salt (needed by _derive_seed()); Electrum 2.x is similar to BIP39,
         # however it differs in the iffy(?) normalization procedure and the prepended string
