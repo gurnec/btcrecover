@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.3"
+__version__          =  "0.15.4"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1086,11 +1086,11 @@ class WalletBitcoinj(object):
         def data_extract_id(cls): return b"bj"
 
     def passwords_per_seconds(self, seconds):
-        passwords_per_second  = self._passwords_per_second
-        if hasattr(self, "_encryption_parameters"):
-            passwords_per_second /= self._encryption_parameters.n / 16384  # scaled by default N
-            passwords_per_second /= self._encryption_parameters.r / 8      # scaled by default r
-            passwords_per_second /= self._encryption_parameters.p / 1      # scaled by default p
+        passwords_per_second = self._passwords_per_second
+        if hasattr(self, "_scrypt_n"):
+            passwords_per_second /= self._scrypt_n / 16384  # scaled by default N
+            passwords_per_second /= self._scrypt_r / 8      # scaled by default r
+            passwords_per_second /= self._scrypt_p / 1      # scaled by default p
         return max(int(round(passwords_per_second * seconds)), 1)
 
     @staticmethod
@@ -1149,8 +1149,11 @@ class WalletBitcoinj(object):
                 if encrypted_len == 48:
                     # only need the final 2 encrypted blocks (half of it padding) plus the scrypt parameters
                     self = cls(loading=True)
-                    self._part_encrypted_key    = key.encrypted_data.encrypted_private_key[-32:]
-                    self._encryption_parameters = pb_wallet.encryption_parameters
+                    self._part_encrypted_key = key.encrypted_data.encrypted_private_key[-32:]
+                    self._scrypt_salt = pb_wallet.encryption_parameters.salt
+                    self._scrypt_n    = pb_wallet.encryption_parameters.n
+                    self._scrypt_r    = pb_wallet.encryption_parameters.r
+                    self._scrypt_p    = pb_wallet.encryption_parameters.p
                     return self
                 print(prog+": warning: ignoring encrypted key of unexpected length ("+unicode(encrypted_len)+")", file=sys.stderr)
 
@@ -1162,21 +1165,22 @@ class WalletBitcoinj(object):
         self = cls(loading=True)
         # The final 2 encrypted blocks
         self._part_encrypted_key = privkey_data[:32]
-        # Create namedtuple with the same attributes as the protobuf message object from wallet_pb2
-        self._encryption_parameters = EncryptionParams._make(struct.unpack(b"< 8s I H H", privkey_data[32:]))
+        # The scrypt parameters
+        self._scrypt_salt = privkey_data[32:40]
+        (self._scrypt_n, self._scrypt_r, self._scrypt_p) = struct.unpack(b"< I H H", privkey_data[40:])
         return self
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
         # Copy a few globals into local for a small speed boost
-        l_scrypt              = pylibscrypt.scrypt
-        l_aes256_cbc_decrypt  = aes256_cbc_decrypt
-        part_encrypted_key    = self._part_encrypted_key
-        scrypt_salt           = self._encryption_parameters.salt
-        scrypt_n              = self._encryption_parameters.n
-        scrypt_r              = self._encryption_parameters.r
-        scrypt_p              = self._encryption_parameters.p
+        l_scrypt             = pylibscrypt.scrypt
+        l_aes256_cbc_decrypt = aes256_cbc_decrypt
+        part_encrypted_key   = self._part_encrypted_key
+        scrypt_salt          = self._scrypt_salt
+        scrypt_n             = self._scrypt_n
+        scrypt_r             = self._scrypt_r
+        scrypt_p             = self._scrypt_p
 
         # Convert strings (lazily) to UTF-16BE bytestrings
         passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
@@ -2091,8 +2095,11 @@ class WalletBither(object):
                 error_exit("unexpected encrypted key length in Bither wallet (expected 48, found {})"
                            .format(len(encrypted_key)))
             # only need the last 2 encrypted blocks (half of which is padding) plus the salt (don't need the iv)
-            bitcoinj_wallet._part_encrypted_key    = encrypted_key[-32:]
-            bitcoinj_wallet._encryption_parameters = EncryptionParams(salt, 16384, 8, 1)  # hardcoded except the salt
+            bitcoinj_wallet._part_encrypted_key = encrypted_key[-32:]
+            bitcoinj_wallet._scrypt_salt = salt
+            bitcoinj_wallet._scrypt_n    = 16384  # Bither hardcodes the rest
+            bitcoinj_wallet._scrypt_r    = 8
+            bitcoinj_wallet._scrypt_p    = 1
             return bitcoinj_wallet
 
         # Constuct and return a WalletBither object
@@ -2117,8 +2124,11 @@ class WalletBither(object):
         bitcoinj_wallet = WalletBitcoinj(loading=True)
         # The final 2 encrypted blocks
         bitcoinj_wallet._part_encrypted_key = privkey_data[:32]
-        # The 8-byte salt and default scrypt parameters
-        bitcoinj_wallet._encryption_parameters = EncryptionParams(privkey_data[32:], 16384, 8, 1)  # hardcoded except the salt
+        # The 8-byte salt and hardcoded scrypt parameters
+        bitcoinj_wallet._scrypt_salt = privkey_data[32:]
+        bitcoinj_wallet._scrypt_n    = 16384
+        bitcoinj_wallet._scrypt_r    = 8
+        bitcoinj_wallet._scrypt_p    = 1
         return bitcoinj_wallet
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password

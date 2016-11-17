@@ -43,7 +43,7 @@ warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing 
 warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
 
 from btcrecover import btcrpass
-import os, unittest, cPickle, tempfile, shutil, filecmp, sys
+import os, unittest, cPickle, tempfile, shutil, multiprocessing, filecmp, sys
 
 class NonClosingBase(object):
     pass
@@ -882,6 +882,15 @@ def can_load_scrypt():
     return pylibscrypt and pylibscrypt._done  # True iff a binary implementation was found
 
 
+# Wrapper for btcrpass.init_worker() which clears btcrpass.loaded_wallet to simulate the way
+# multiprocessing works on Windows (even on other OSs) and permits pure python library testing
+def init_worker(wallet, char_mode, force_purepython, force_kdf_purepython):
+    btcrpass.loaded_wallet = None
+    btcrpass.init_worker(wallet, char_mode)
+    if force_purepython:     btcrpass.load_aes256_library(force_purepython=True)
+    if force_kdf_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
+
+
 class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
@@ -915,10 +924,21 @@ class Test07WalletDecryption(unittest.TestCase):
             if not correct_pass:
                 correct_pass = "btcr-test-password"
             correct_pass = tstr(correct_pass)
+
+            # Perform the tests in the current process
             self.assertEqual(wallet.return_verified_password_or_false(
-                [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+                (tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"))), (False, 2))
             self.assertEqual(wallet.return_verified_password_or_false(
-                [tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4")]), (correct_pass, 2))
+                (tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4"))), (correct_pass, 2))
+
+            # Perform the tests in a child process to ensure the wallet can be pickled and all libraries reloaded
+            pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, force_kdf_purepython))
+            password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
+                ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
+                  ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
+            self.assertEqual(password_found_iterator.next(), (False, 2))
+            self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
+            pool.terminate()
 
             del wallet
             self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
@@ -1109,14 +1129,24 @@ class Test08BIP39Passwords(unittest.TestCase):
 
     def bip39_tester(self, force_purepython = False, unicode_pw = False, *args, **kwargs):
 
-        btcrpass.loaded_wallet = btcrpass.WalletBIP39(*args, **kwargs)
+        wallet = btcrpass.WalletBIP39(*args, **kwargs)
         if force_purepython: btcrpass.load_pbkdf2_library(force_purepython=True)
 
-        correct_pw = tstr("btcr-test-password") if not unicode_pw else "btcr-тест-пароль"
-        self.assertEqual(btcrpass.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
-        self.assertEqual(btcrpass.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-3"), correct_pw, tstr("btcr-wrong-password-4")]), (correct_pw, 2))
+        # Perform the tests in the current process
+        correct_pass = tstr("btcr-test-password") if not unicode_pw else "btcr-тест-пароль"
+        self.assertEqual(wallet.return_verified_password_or_false(
+            (tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"))), (False, 2))
+        self.assertEqual(wallet.return_verified_password_or_false(
+            (tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4"))), (correct_pass, 2))
+
+        # Perform the tests in a child process to ensure the wallet can be pickled and all libraries reloaded
+        pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, False))
+        password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
+            ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
+              ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
+        self.assertEqual(password_found_iterator.next(), (False, 2))
+        self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
+        pool.terminate()
 
     @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires Python 2.7.8+")
@@ -1175,9 +1205,9 @@ class Test08KeyDecryption(unittest.TestCase):
 
         correct_pw = tstr("btcr-test-password") if not unicode_pw else "btcr-тест-пароль"
         self.assertEqual(btcrpass.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
+            (tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"))), (False, 2))
         self.assertEqual(btcrpass.return_verified_password_or_false(
-            [tstr("btcr-wrong-password-3"), correct_pw, tstr("btcr-wrong-password-4")]), (correct_pw, 2))
+            (tstr("btcr-wrong-password-3"), correct_pw, tstr("btcr-wrong-password-4"))), (correct_pw, 2))
 
     def test_armory(self):
         if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
