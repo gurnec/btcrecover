@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.5"
+__version__ = "0.5.6"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -1023,7 +1023,8 @@ class WalletElectrum2(WalletBIP39):
         # Just calls WalletBIP39.__init__() with a hardcoded path
         if path: raise ValueError("can't specify a BIP32 path with Electrum 2.x wallets")
         super(WalletElectrum2, self).__init__("m/0/", loading)
-        self._checksum_ratio = 1.0 / 256.0  # 1 in 256 checksums are valid on average
+        self._checksum_ratio   = 1.0 / 256.0  # 1 in 256 checksums are valid on average
+        self._needs_passphrase = None
 
     @staticmethod
     def is_wallet_file(wallet_file):
@@ -1051,7 +1052,7 @@ class WalletElectrum2(WalletBIP39):
         if wallet_type != "standard":
             raise NotImplementedError("Unsupported Electrum2 wallet type: " + wallet_type)
 
-        mpk = None
+        mpk = needs_passphrase = None
         while True:  # "loops" exactly once; only here so we've something to break out of
 
             # Electrum 2.7+ standard wallets have a keystore
@@ -1062,6 +1063,8 @@ class WalletElectrum2(WalletBIP39):
                 # Wallets originally created by an Electrum 2.x version
                 if keystore_type == "bip32":
                     mpk = keystore["xpub"]
+                    if keystore.get("passphrase"):
+                        needs_passphrase = True
                     break
 
                 # Former Electrum 1.x wallet after conversion to Electrum 2.7+ standard-wallet format
@@ -1086,7 +1089,9 @@ class WalletElectrum2(WalletBIP39):
             raise RuntimeError("No master public keys found in Electrum2 wallet")
 
         assert mpk
-        return cls.create_from_params(mpk)
+        wallet = cls.create_from_params(mpk)
+        wallet._needs_passphrase = needs_passphrase
+        return wallet
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
     # into a bytestring (of type str) via the same method as Electrum 2.x
@@ -1100,18 +1105,31 @@ class WalletElectrum2(WalletBIP39):
     def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
         if expected_len is None:
             expected_len_specified = False
-            init_gui()
-            if tkMessageBox.askyesno("Electrum 2.x version",
-                    "Did you CREATE your wallet with Electrum version 2.7 (released Oct 2 2016) or later?\n\nPlease choose No if you're unsure.",
-                    default=tkMessageBox.NO):
+            if self._needs_passphrase:
                 expected_len = 12
+                print("notice: presence of a mnemonic passphrase implies a 12-word long Electrum 2.7+ mnemonic",
+                      file=sys.stderr)
             else:
-                expected_len = 13
+                init_gui()
+                if tkMessageBox.askyesno("Electrum 2.x version",
+                        "Did you CREATE your wallet with Electrum version 2.7 (released Oct 2 2016) or later?"
+                        "\n\nPlease choose No if you're unsure.",
+                        default=tkMessageBox.NO):
+                    expected_len = 12
+                else:
+                    expected_len = 13
         else:
             expected_len_specified = True
             if expected_len > 13:
                 raise ValueError("maximum mnemonic length for Electrum2 is 13 words")
 
+        if self._needs_passphrase and not passphrase:
+            passphrase = True  # tells self._config_mnemonic() to prompt for a passphrase below
+            init_gui()
+            tkMessageBox.showwarning("Passphrase",
+                'This Electrum seed was extended with "custom words" (a seed passphrase) when it '
+                "was first created. You will need to enter it to continue.\n\nNote that this seed "
+                "passphrase is NOT the same as the wallet password that's entered to spend funds.")
         # Calls WalletBIP39's generic version (note the leading _) with the mnemonic
         # length (which for Electrum2 wallets alone is treated only as a maximum length)
         passphrase = self._config_mnemonic(mnemonic_guess, lang, passphrase, expected_len, closematch_cutoff)

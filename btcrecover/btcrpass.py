@@ -206,7 +206,8 @@ def load_wallet(wallet_filename):
         except ValueError as e:
             uncertain_errors.append(wallet_type.__name__ + ": " + unicode(e))
 
-    error_exit("unrecognized wallet format; heuristic parser(s) reported:\n   ", "\n    ".join(uncertain_errors))
+    error_exit("unrecognized wallet format" +
+        ("; heuristic parser(s) reported:\n    " + "\n    ".join(uncertain_errors) if uncertain_errors else "") )
 
 # Loads a wallet object into the loaded_wallet global from a filename
 def load_global_wallet(wallet_filename):
