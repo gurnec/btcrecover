@@ -254,7 +254,7 @@ class WalletElectrum1(object):
     def load_from_filename(cls, wallet_filename):
         from ast import literal_eval
         with open(wallet_filename) as wallet_file:
-            wallet = literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+            wallet = literal_eval(wallet_file.read(btcrpass.MAX_WALLET_FILE_SIZE))  # up to 64M, typical size is a few k
         return cls._load_from_dict(wallet)
 
     @classmethod
@@ -961,7 +961,7 @@ class WalletBitcoinj(WalletBIP39):
         from . import wallet_pb2
         pb_wallet = wallet_pb2.Wallet()
         with open(wallet_filename, "rb") as wallet_file:
-            pb_wallet.ParseFromString(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+            pb_wallet.ParseFromString(wallet_file.read(btcrpass.MAX_WALLET_FILE_SIZE))  # up to 64M, typical size is a few k
         if pb_wallet.encryption_type == wallet_pb2.Wallet.UNENCRYPTED:
             raise ValueError("this bitcoinj wallet is not encrypted")
 

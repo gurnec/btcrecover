@@ -39,7 +39,7 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
 
 wallet_filename = sys.argv[1]
 
-wallet = ast.literal_eval(open(wallet_filename, "rb").read(1048576))  # up to 1M, typical size is a few k
+wallet = ast.literal_eval(open(wallet_filename, "rb").read(64 * 2**20))  # up to 64M, typical size is a few k
 
 seed_version = wallet.get("seed_version")
 if seed_version is None: raise ValueError("Unrecognized wallet format (Electrum seed_version not found)")

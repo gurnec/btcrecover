@@ -35,7 +35,7 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
     sys.exit(2)
 
 wallet_filename = sys.argv[1]
-data = open(wallet_filename, "rb").read(1048576)  # up to 1M, typical size is a few k
+data = open(wallet_filename, "rb").read(64 * 2**20)  # up to 64M, typical size is a few k
 
 # The number of pbkdf2 iterations, or 0 for v0.0 wallet files which don't specify this
 iter_count = 0

@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.4"
+__version__          =  "0.15.5"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -182,6 +182,9 @@ def clear_registered_wallets():
     wallet_types       = []
     wallet_types_by_id = {}
 
+
+# The max wallet file size in bytes (prevents trying to load huge files which clearly aren't wallets)
+MAX_WALLET_FILE_SIZE = 64 * 2**20  # 64 MiB
 
 # Loads a wallet object and returns it (possibly for external libraries to use)
 def load_wallet(wallet_filename):
@@ -1129,7 +1132,7 @@ class WalletBitcoinj(object):
     @classmethod
     def load_from_filename(cls, wallet_filename):
         with open(wallet_filename, "rb") as wallet_file:
-            filedata = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+            filedata = wallet_file.read(MAX_WALLET_FILE_SIZE)  # up to 64M, typical size is a few k
         return cls._load_from_filedata(filedata)
 
     @classmethod
@@ -1284,7 +1287,7 @@ class WalletAndroidSpendingPIN(WalletBitcoinj):
                 return WalletBitcoinj.load_from_filename(wallet_filename)
 
             wallet_file.seek(0)
-            data = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+            data = wallet_file.read(MAX_WALLET_FILE_SIZE)  # up to 64M, typical size is a few k
 
         data = data.replace(b"\r", b"").replace(b"\n", b"")
         data = base64.b64decode(data)
@@ -1482,7 +1485,7 @@ class WalletElectrum1(WalletElectrum):
         from ast import literal_eval
         with open(wallet_filename) as wallet_file:
             try:
-                wallet = literal_eval(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+                wallet = literal_eval(wallet_file.read(MAX_WALLET_FILE_SIZE))  # up to 64M, typical size is a few k
             except SyntaxError as e:  # translate any SyntaxError into a
                 raise ValueError(e)   # ValueError as expected by load_wallet()
         return cls._load_from_dict(wallet)
@@ -1745,7 +1748,7 @@ class WalletBlockchain(object):
     @classmethod
     def load_from_filename(cls, wallet_filename):
         with open(wallet_filename) as wallet_file:
-            data, iter_count = cls._parse_encrypted_blockchain_wallet(wallet_file.read(1048576))  # up to 1M, typical size is a few k
+            data, iter_count = cls._parse_encrypted_blockchain_wallet(wallet_file.read(MAX_WALLET_FILE_SIZE))  # up to 64M, typical size is a few k
         self = cls(iter_count, loading=True)
         self._salt_and_iv     = data[:16]    # only need the salt_and_iv plus
         self._encrypted_block = data[16:32]  # the first 16-byte encrypted block
@@ -1871,7 +1874,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
         from uuid import UUID
 
         with open(wallet_filename) as wallet_file:
-            data = wallet_file.read(1048576)  # up to 1M, typical size is a few k
+            data = wallet_file.read(MAX_WALLET_FILE_SIZE)  # up to 64M, typical size is a few k
 
         try:
             # Assuming the wallet is encrypted, get the encrypted data
