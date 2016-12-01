@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.5"
+__version__          =  "0.15.6"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -3526,7 +3526,7 @@ def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_perm
             # Remove the trailing newline, then split the line exactly
             # once on the specified delimiter (default: whitespace)
             split_line = line.rstrip(tstr("\r\n")).split(args.delimiter, 1)
-            if len(split_line) == 0: continue  # ignore empty lines
+            if split_line in ([], [tstr('')]): continue  # ignore empty lines
             if len(split_line) == 1:
                 error_exit(feature_name, "file '"+map_file.name+"' has an empty replacement list on line", line_num)
             if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
@@ -3716,7 +3716,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
         new_list.extend( line.rstrip(tstr("\r\n")).split(args.delimiter) )
 
         # Ignore empty lines
-        if len(new_list) == 1: continue
+        if new_list in ([None], [None, tstr('')]): continue
 
         # If a "+" is present at the beginning followed by at least one token,
         # then exactly one of the token(s) is required. This is noted in the structure

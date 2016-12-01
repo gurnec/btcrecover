@@ -609,12 +609,12 @@ class Test05CommandLine(GeneratorTester):
         self.do_generator_test(["one", "two"], ["two"], "--regex-never o.e", True)
 
     def test_delimiter_tokenlist(self):
-        self.do_generator_test([" one ** two **** "], [" one ", " two ", "", " "], "--delimiter **")
+        self.do_generator_test(["", " one ** two **** "], [" one ", " two ", "", " "], "--delimiter **")
 
     def test_delimiter_typosmap(self):
         self.do_generator_test(["axb"], ["axb", "Axb", " xb", "axA", "ax ", "AxA", "Ax ", " xA", " x " ],
             "--delimiter ** --typos-map __funccall --typos 2 -d",
-            True, typos_map=StringIONonClosing(tstr(" ab **A \n x **x")))
+            True, typos_map=StringIONonClosing(tstr(" ab **A \n\n x **x")))
 
     # Try to test the myriad of --skip related boundary conditions in password_generator_factory()
     def test_skip(self):
