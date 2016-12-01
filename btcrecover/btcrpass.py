@@ -273,6 +273,7 @@ def est_entropy_bits(data):
 
 # Prompt user for a password (possibly containing Unicode characters)
 def prompt_unicode_password(prompt, error_msg):
+    assert isinstance(prompt, str), "getpass() doesn't support Unicode on all platforms"
     from getpass import getpass
     encoding = sys.stdin.encoding or 'ASCII'
     if 'utf' not in encoding.lower():
@@ -1302,7 +1303,7 @@ class WalletAndroidSpendingPIN(WalletBitcoinj):
 
         if not password:
             password = prompt_unicode_password(
-                "Please enter the password for the Bitcoin Wallet for Android/BlackBerry backup: ",
+                b"Please enter the password for the Bitcoin Wallet for Android/BlackBerry backup: ",
                 "encrypted Bitcoin Wallet for Android/BlackBerry backups must be decrypted before searching for the PIN")
         # Convert Unicode string to a UTF-16 bytestring, truncating each code unit to 8 bits
         password = password.encode("utf_16_le", "ignore")[::2]
@@ -1891,7 +1892,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
             # If there were no problems getting the encrypted data, decrypt it
             if not password:
                 password = prompt_unicode_password(
-                    "Please enter the Blockchain wallet's main password: ",
+                    b"Please enter the Blockchain wallet's main password: ",
                     "encrypted Blockchain files must be decrypted before searching for the second password")
             password = password.encode("utf_8")
             data, salt_and_iv = data[16:], data[:16]
