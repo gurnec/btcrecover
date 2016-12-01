@@ -305,13 +305,13 @@ def add_armory_library_path():
             sys.path.extend((armory_path, armory_path + r"\library.zip"))
     elif sys.platform.startswith("linux"):
         sys.path.append("/usr/lib/armory")
-    elif sys.platform == "darwin":  # untested
+    elif sys.platform == "darwin":
         sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
     is_armory_path_added = True
 
 is_armory_loaded = False
 def load_armory_library(permit_unicode = False):
-    if tstr == unicode and not permit_unicode:
+    if not permit_unicode and tstr == unicode:
         error_exit("armory wallets do not support unicode; please remove the --utf8 option")
     global is_armory_loaded
     if is_armory_loaded: return

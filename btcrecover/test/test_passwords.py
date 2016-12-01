@@ -850,7 +850,7 @@ class Test06AutosaveRestore(unittest.TestCase):
 
 is_armory_loadable = None
 def can_load_armory(permit_unicode = False):
-    if tstr == unicode and not permit_unicode:
+    if not permit_unicode and tstr == unicode:
         return False
     global is_armory_loadable
     # Don't call the load function more than once

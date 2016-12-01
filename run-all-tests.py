@@ -51,7 +51,11 @@ if __name__ == b'__main__':
 
     import argparse, sys, atexit, time, timeit, os
 
-    from btcrecover.test import test_passwords, test_seeds
+    from btcrecover.test import test_passwords
+
+    is_armory_loadable = test_passwords.can_load_armory(permit_unicode=True)
+    if is_armory_loadable:
+        from btcrecover.test import test_seeds
 
     # Add two new arguments to those already provided by main()
     parser = argparse.ArgumentParser(add_help=False)
@@ -100,9 +104,12 @@ if __name__ == b'__main__':
     results = main(test_passwords, exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 
-    print("\n** Testing seed recovery **")
-    results = main(test_seeds,     exit=False, buffer= not args.no_buffer).result
-    accumulate_results(results)
+    if is_armory_loadable:
+        print("\n** Testing seed recovery **")
+        results = main(test_seeds, exit=False, buffer= not args.no_buffer).result
+        accumulate_results(results)
+    else:
+        print("\nwarning: skipping seed recovery tests (can't find prerequisite Armory)")
 
     print("\n\n*** Full Results ***")
     if has_green:
