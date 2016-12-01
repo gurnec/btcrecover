@@ -99,12 +99,14 @@ class GeneratorTester(unittest.TestCase):
     # chunksize == the password generator chunksize
     # expected_skipped == the expected # of skipped passwords, if any
     # extra_kwds == additional StringIO objects to act as file stand-ins
-    def do_generator_test(self, tokenlist, expected_passwords, extra_cmd_line = "", test_passwordlist = False,
+    def do_generator_test(self, tokenlist, expected_passwords, extra_cmd_line = None, test_passwordlist = False,
                           chunksize = sys.maxint, expected_skipped = None, **extra_kwds):
         assert isinstance(tokenlist, list)
         assert isinstance(expected_passwords, list)
         tokenlist_str = tstr("\n".join(tokenlist))
-        args          = (tstr(" __funccall --listpass "+extra_cmd_line+utf8_opt)).split()
+        args = tstr("__funccall --listpass" + utf8_opt).split()
+        if extra_cmd_line:
+            args += tstr(extra_cmd_line).split(tstr(" "))
 
         btcrpass.parse_arguments([tstr("--tokenlist")] + args, tokenlist=StringIO(tokenlist_str), **extra_kwds)
         tok_it, skipped = btcrpass.password_generator_factory(chunksize)
@@ -414,30 +416,31 @@ class Test03WildCards(GeneratorTester):
     def test_backreference_bounds(self):
         self.do_generator_test(["%[ab]%1,3;3b"], ["a", "aa", "b", "bb"], "--has-wildcards -d", True)
 
+    # Use a --delimiter of TAB below in case the LEET_MAP_FILE path contains any spaces
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map(self):
         self.do_generator_test(["%[bc]%;"+LEET_MAP_FILE+";b"],
-            ["b8", "b6", "c("], "--has-wildcards -d", True)
+            ["b8", "b6", "c("], "--has-wildcards -d --delimiter \t", True)
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map_missing(self):
         self.do_generator_test(["%[cd]%;"+LEET_MAP_FILE+";b"],
-            ["c(", "dd"], "--has-wildcards -d", True)
+            ["c(", "dd"], "--has-wildcards -d --delimiter \t", True)
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map_length(self):
         self.do_generator_test(["%[bc]%2,3;"+LEET_MAP_FILE+";b"],
-            ["b88", "b888", "b66", "b666", "c((", "c((("], "--has-wildcards -d", True)
+            ["b88", "b888", "b66", "b666", "c((", "c((("], "--has-wildcards -d --delimiter \t", True)
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map_pos(self):
         self.do_generator_test(["%[bc]X%;"+LEET_MAP_FILE+";2b"],
-            ["bX8", "bX6", "cX("], "--has-wildcards -d", True)
+            ["bX8", "bX6", "cX("], "--has-wildcards -d --delimiter \t", True)
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map_pos_length(self):
         self.do_generator_test(["%[bc]X%2,3;"+LEET_MAP_FILE+";2b"],
-            ["bX8%", "bX8%8", "bX6%", "bX6%6", "cX(%", "cX(%("], "--has-wildcards -d", True)
+            ["bX8%", "bX8%8", "bX6%", "bX6%6", "cX(%", "cX(%("], "--has-wildcards -d --delimiter \t", True)
     @unittest.skipUnless(os.path.isfile(LEET_MAP_FILE), "requires leet-map.txt file")
     def test_backreference_map_bounds(self):
         self.do_generator_test(["%[bc]%1,3;"+LEET_MAP_FILE+";3b"],
-            ["b", "b8", "b6", "c", "c("], "--has-wildcards -d", True)
+            ["b", "b8", "b6", "c", "c("], "--has-wildcards -d --delimiter \t", True)
 
 
 class Test04Typos(GeneratorTester):
