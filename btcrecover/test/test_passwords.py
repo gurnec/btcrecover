@@ -911,6 +911,7 @@ class Test07WalletDecryption(unittest.TestCase):
         wallet_filename = os.path.join(WALLET_DIR, wallet_filename)
 
         temp_dir = tempfile.mkdtemp("-test-btcr")
+        pool     = None
         try:
             temp_wallet_filename = os.path.join(temp_dir, os.path.basename(wallet_filename))
             shutil.copyfile(wallet_filename, temp_wallet_filename)
@@ -947,12 +948,15 @@ class Test07WalletDecryption(unittest.TestCase):
                   ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
             self.assertEqual(password_found_iterator.next(), (False, 2))
             self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
-            pool.terminate()
+            self.assertRaises(StopIteration, password_found_iterator.next)
+            pool.close()
+            pool = None
 
             del wallet
             self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
         finally:
             shutil.rmtree(temp_dir)
+            if pool: pool.terminate()
 
     def test_armory(self):
         if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
@@ -1154,13 +1158,19 @@ class Test08BIP39Passwords(unittest.TestCase):
             (tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4"))), (correct_pass, 2))
 
         # Perform the tests in a child process to ensure the wallet can be pickled and all libraries reloaded
-        pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, False))
-        password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
-            ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
-              ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
-        self.assertEqual(password_found_iterator.next(), (False, 2))
-        self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
-        pool.terminate()
+        pool = None
+        try:
+            pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, False))
+            password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
+                ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
+                  ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
+            self.assertEqual(password_found_iterator.next(), (False, 2))
+            self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
+            self.assertRaises(StopIteration, password_found_iterator.next)
+            pool.close()
+            pool = None
+        finally:
+            if pool: pool.terminate()
 
     @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires Python 2.7.8+")

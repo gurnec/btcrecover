@@ -5242,6 +5242,7 @@ def main():
     # Create an iterator which actually checks the (remaining) passwords produced by the password_iterator
     # by executing the return_verified_password_or_false worker function in possibly multiple threads
     if spawned_threads == 0:
+        pool = None
         password_found_iterator = itertools.imap(return_verified_password_or_false, password_iterator)
         set_process_priority_idle()  # this, the only thread, should be nice
     else:
@@ -5285,6 +5286,9 @@ def main():
             if l_savestate and passwords_tried % est_passwords_per_5min == 0:
                 do_autosave(args.skip + passwords_tried)
         else:  # if the for loop exits normally (without breaking)
+            if pool:
+                pool.close()
+                pool = None
             if progress:
                 if args.no_eta:
                     progress.maxval = passwords_tried
@@ -5313,5 +5317,5 @@ def main():
         do_autosave(args.skip + passwords_tried)
         autosave_file.close()
 
-    if spawned_threads > 0: pool.terminate()
+    if pool: pool.terminate()
     return (password_found, "Password search exhausted" if password_found is False else None)
