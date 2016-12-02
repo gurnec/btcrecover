@@ -45,18 +45,20 @@ warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing 
 from btcrecover import btcrpass
 import os, unittest, cPickle, tempfile, shutil, multiprocessing, filecmp, sys
 
+
 class NonClosingBase(object):
     pass
 
 # Enables either ANSI or Unicode mode for all tests based on either
 # the value of tstr or the value of the BTCR_CHAR_MODE env. variable
+tstr = None
 def setUpModule():
     global tstr, tchr, utf8_opt, BytesIO, StringIO, BytesIONonClosing, StringIONonClosing
-    try:
-        if tstr not in (str, unicode):
-            assert False
-    except NameError:
+
+    if tstr is None:
         tstr = unicode if os.getenv("BTCR_CHAR_MODE", "").lower() == "unicode" else str
+    else:
+        assert tstr in (str, unicode)
 
     if tstr == str:
         import StringIO, cStringIO
@@ -85,6 +87,11 @@ def setUpModule():
         tchr = unichr
         utf8_opt = " --utf8"
         print("** Testing in Unicode character mode **")
+
+def tearDownModule():
+    global tstr
+    tstr = None
+
 
 WALLET_DIR = os.path.join(os.path.dirname(__file__), "test-wallets")
 TYPOS_DIR  = os.path.join(os.path.dirname(__file__), "..", "..", "typos")
@@ -1726,6 +1733,7 @@ class QuickTests(unittest.TestSuite) :
                 "test_androidknc_unicode",
                 "test_multibithd",
                 "test_multibithd_unicode",
+                "test_multibithd_v0_5_0",
                 "test_bitcoinj",
                 "test_bitcoinj_unicode",
                 "test_bither",
@@ -1753,6 +1761,7 @@ class QuickTests(unittest.TestSuite) :
                 "test_androidknc_unicode_pp",
                 "test_multibithd_pp",
                 "test_multibithd_unicode_pp",
+                "test_multibithd_v0_5_0_pp",
                 "test_bitcoinj_pp",
                 "test_bitcoinj_unicode_pp",
                 "test_bither_pp",
@@ -1785,7 +1794,6 @@ if __name__ == b'__main__':
     args, unittest_args = parser.parse_known_args()
     sys.argv[1:] = unittest_args
 
-    global tstr
     tstr = unicode if args.utf8 else str
 
     unittest.main(buffer = not args.no_buffer)
