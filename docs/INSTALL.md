@@ -95,7 +95,7 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
         C:\Python27\Scripts\pip install pylibscrypt
 
- 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.10-msvc.zip>
+ 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.11-msvc.zip>
 
  3. Find the correct `libsodium.dll` file from the extracted files, it will be located at one of these two paths:
 
@@ -106,7 +106,7 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
  4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory.
 
- 5. Download and install the “Microsoft Visual C++ 2015 Redistributable Update 3” from Microsoft here: <https://www.microsoft.com/en-us/download/details.aspx?id=52982>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
+ 5. Download and install the “Microsoft Visual C++ 2015 Redistributable Update 3” from Microsoft here: <https://www.microsoft.com/en-us/download/details.aspx?id=53840>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
 
 ##### Linux #####
 

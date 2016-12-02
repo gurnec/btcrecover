@@ -239,7 +239,7 @@ Without access to the rest of your wallet file, it is extremely unlikely that th
 
 The *extract-electrum2-partmpk.py* script is intentionally short and should be easy to read for any Python programmer. An Electrum 2.x encrypted master private key (mpk) is 128 bytes long. It contains a 16-byte AES initialization vector, followed by 112 bytes of encrypted mpk data, with the last byte being padding (so 111 bytes of actual mpk data). Of these 111 bytes, roughly 18 comprise a header, the next 44 the chaincode, and the remaining 47 a private key. The script extracts the 16-byte initialization vector and just the first 16 bytes of mpk data, all of it non-sensitive header information.
 
-Once decrypted, these 16 characters always begin with the string "xprv", and the remainder are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is what's inspected, it has found the correct password.
+Once decrypted, these 16 characters always begin with the string "xprv", and the remainder are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is what's expected, it has found the correct password.
 
 Without access to the rest of your wallet file, it is impossible the decrypted header information could ever lead to a loss of funds.
 
@@ -333,9 +333,9 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 
 #### MultiBit HD Technical Details ####
 
-The *extract-multibit-hd-data* script is intentionally short and should be easy to read for any Python programmer. A MultiBit HD wallet file is entirely encrypted. The extract script simply reads the first 16 bytes from the wallet file.
+The *extract-multibit-hd-data* script is intentionally short and should be easy to read for any Python programmer. A MultiBit HD wallet file is entirely encrypted. The extract script simply reads the first 32 bytes from the wallet file.
 
-Once decrypted, these 16 bytes always begin with the header bytes of a bitcoinj wallet file, specifically with the byte string "\x0a?org.bitcoin." (where the ? can be any byte). It tries decrypting the bytes with each password, and once the result is what's inspected, it has found the correct password.
+These 32 bytes optionally (starting with MultiBit HD v0.5.0) start with a 16-byte AES initialization vector followed by the header bytes of a bitcoinj wallet file, specifically the byte string "\x0a?org.bitcoin." once decrypted (where the ? can be any byte). It tries decrypting the bytes with each password, and once the result is what's expected, it has found the correct password.
 
 Without access to the rest of your wallet file, it is impossible the decrypted header information could ever lead to a loss of funds.
 

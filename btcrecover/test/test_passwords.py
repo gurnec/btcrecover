@@ -898,15 +898,14 @@ class Test07WalletDecryption(unittest.TestCase):
 
     # Checks a test wallet against the known password, and ensures
     # that the library doesn't make any changes to the wallet file
-    def wallet_tester(self, wallet_basename,
+    def wallet_tester(self, wallet_filename,
                       force_purepython = False, force_kdf_purepython = False, force_bsddb_purepython = False,
                       correct_pass = None, blockchain_mainpass = None, android_backuppass = None):
-        assert os.path.basename(wallet_basename) == wallet_basename
-        wallet_filename = os.path.join(WALLET_DIR, wallet_basename)
+        wallet_filename = os.path.join(WALLET_DIR, wallet_filename)
 
         temp_dir = tempfile.mkdtemp("-test-btcr")
         try:
-            temp_wallet_filename = os.path.join(temp_dir, wallet_basename)
+            temp_wallet_filename = os.path.join(temp_dir, os.path.basename(wallet_filename))
             shutil.copyfile(wallet_filename, temp_wallet_filename)
 
             if android_backuppass:
@@ -990,6 +989,11 @@ class Test07WalletDecryption(unittest.TestCase):
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
         self.wallet_tester("mbhd.wallet.aes")
+
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_v0_5_0(self):
+        self.wallet_tester(os.path.join("multibithd-v0.5.0", "mbhd.wallet.aes"))
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
@@ -1264,13 +1268,18 @@ class Test08KeyDecryption(unittest.TestCase):
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
-        self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=")
+        self.key_tester("bTU6LbH/+ROEa0cQ0inH7V3thcYVi5WL/4uGfU9/JQgsPZ6Y3zps")
     #
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_unicode(self):
         if tstr != unicode: self.skipTest("Unicode mode only")
-        self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", unicode_pw=True)
+        self.key_tester("bTU6M7wXqwXQWo4o22eN50PNnsYVi5WL/4uGfU9/JQgsPZ42BGtS", unicode_pw=True)
+    #
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_v0_5_0(self):
+        self.key_tester("bTU6Uh0pDwAKoBrKkMbf2ARxmyftdKB5dsqDUWTsD1fVrnsM2EYW")
 
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")
@@ -1395,12 +1404,16 @@ class Test08KeyDecryption(unittest.TestCase):
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_pp(self):
-        self.key_tester("bTI6LbH/+ROEa0cQ0inH7V3thbdFJV4=", force_purepython=True)
+        self.key_tester("bTU6LbH/+ROEa0cQ0inH7V3thcYVi5WL/4uGfU9/JQgsPZ6Y3zps", force_purepython=True)
     #
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_multibithd_unicode_pp(self):
         if tstr != unicode: self.skipTest("Unicode mode only")
-        self.key_tester("bTI6M7wXqwXQWo4o22eN50PNnlkc/Qs=", force_purepython=True, unicode_pw=True)
+        self.key_tester("bTU6M7wXqwXQWo4o22eN50PNnsYVi5WL/4uGfU9/JQgsPZ42BGtS", force_purepython=True, unicode_pw=True)
+    #
+    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    def test_multibithd_v0_5_0_pp(self):
+        self.key_tester("bTU6Uh0pDwAKoBrKkMbf2ARxmyftdKB5dsqDUWTsD1fVrnsM2EYW", force_purepython=True)
 
     @unittest.skipUnless(can_load_protobuf(), "requires protobuf")
     @unittest.skipUnless(can_load_scrypt(),   "requires a binary implementation of pylibscrypt")

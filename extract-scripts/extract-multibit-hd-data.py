@@ -36,12 +36,16 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
 
 wallet_filename = sys.argv[1]
 
-with open(wallet_filename) as wallet_file:
-    encrypted_data = wallet_file.read(16)
+with open(wallet_filename, "rb") as wallet_file:
+    encrypted_data = wallet_file.read(32)
 
-print("MultiBit HD first 16 bytes of encrypted wallet and crc in base64:", file=sys.stderr)
+if len(encrypted_data) < 32:
+    raise ValueError("MultiBit HD wallet files must be at least 32 bytes long")
 
-bytes = b"m2:" + encrypted_data
+print("MultiBit HD first 32 bytes of encrypted wallet and crc in base64:", file=sys.stderr)
+
+assert len(encrypted_data) == 32
+bytes = b"m5:" + encrypted_data
 crc_bytes = struct.pack("<I", zlib.crc32(bytes) & 0xffffffff)
 
 print(base64.b64encode(bytes + crc_bytes))
