@@ -44,7 +44,7 @@ else:
 # Refuse to overwrite an existing file
 assert not os.path.exists(filename), filename + " already exists, won't overwrite"
 
-print("Please enter your wallet's ID (e.g. 9bb4c672-563e-4806-9012-a3e8f86a0eca)")
+print("Please enter your wallet's ID (e.g. e9e79fc7-038a-4640-85ba-627317362193)")
 wallet_id = raw_input("> ")
 
 # Create the cookie-saving web browser object
