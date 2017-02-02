@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-# download-blockchain-wallet.py -- Blockchain wallet file downloader
-# Copyright (C) 2016 Christopher Gurnee
+# download-blockchain-wallet.py -- Blockchain.info wallet file downloader
+# Copyright (C) 2016, 2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -26,14 +26,17 @@
 #                      Thank You!
 
 from __future__ import print_function
-import sys, os.path, urllib2, json
+import sys, os.path, atexit, uuid, urllib2, json, time
 
 # The base URL
-URL = "https://blockchain.info/wallet"
+BASE_URL = "https://blockchain.info/"
+# The api_code (as of Feb 2 2017)
+API_CODE = "1770d5d9-bcea-4d28-ad21-6cbd5be018a8"
 
 prog = os.path.basename(sys.argv[0])
 
 if len(sys.argv) < 2:
+    atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
     filename = "wallet.aes.json"
 elif len(sys.argv) == 2 and not sys.argv[1].startswith("-"):
     filename = sys.argv[1]
@@ -45,29 +48,60 @@ else:
 assert not os.path.exists(filename), filename + " already exists, won't overwrite"
 
 print("Please enter your wallet's ID (e.g. 9bb4c672-563e-4806-9012-a3e8f86a0eca)")
-wallet_id = raw_input("> ")
+wallet_id = str(uuid.UUID(raw_input("> ")))
 
-# Create the cookie-saving web browser object
-browser = urllib2.build_opener(urllib2.HTTPCookieProcessor())
 
-# Keep trying to download the wallet until we pass
-# the IP address / email verification step (if any)
-wallet_data = 0
-while wallet_data == 0:
+# Performs a web request, adding the api_code and (if available) auth_token
+auth_token = None
+def do_request(query, body = None):
+    if body is None:
+        assert "?" in query
+        query += "&api_code=" + API_CODE
+    req = urllib2.Request(BASE_URL + query)
+    if body is not None:
+        req.add_data((body+"&" if body else "") + "api_code=" + API_CODE)
+    if auth_token:
+        req.add_header("authorization", "Bearer " + auth_token)
+    return urllib2.urlopen(req)
+#
+# Performs a do_request(), decoding the result as json
+def do_request_json(query, body = None):
+    return json.load(do_request(query, body))
+
+
+# Get an auth_token
+auth_token = do_request_json("sessions", "")["token"]  # a POST request
+
+# Try to download the wallet
+try:
+    wallet_data = do_request_json(
+        "wallet/{}?format=json".format(wallet_id)
+    ).get("payload")
+
+# If IP address / email verification is required
+except urllib2.HTTPError as e:
+    error_msg = e.read()
     try:
-        wallet_data = json.load(
-            browser.open(URL + "/{}?format=json".format(wallet_id))
-        ).get("payload")
+        error_msg = json.loads(error_msg)["initial_error"]
+    except: pass
+    print(error_msg)
 
-    except urllib2.HTTPError as e:
-        error_msg = e.read()
-        try:
-            error_msg = json.loads(error_msg)["initial_error"]
-        except: pass
-        raw_input(error_msg + "\n\nPress enter to try again...")
+    # Wait for the user to complete the requested authorization
+    time.sleep(5)
+    print("Waiting for authorization (press Ctrl-C to give up)...")
+    while True:
+        poll_data = do_request_json("wallet/poll-for-session-guid?format=json")
+        if "guid" in poll_data:
+            break
+        time.sleep(5)
+    print()
 
-# If the loop above exits (there's no HTTP error),
-# but there was no payload data, then 2FA is enabled
+    # Try again to download the wallet (this shouldn't fail)
+    wallet_data = do_request_json(
+        "wallet/{}?format=json".format(wallet_id)
+    ).get("payload")
+
+# If there was no payload data, then 2FA is enabled
 while not wallet_data:
 
     print("This wallet has two-factor authentication enabled, please enter your 2FA code")
@@ -75,8 +109,8 @@ while not wallet_data:
 
     try:
         # Send the 2FA to the server and download the wallet
-        wallet_data = browser.open(
-            URL, "method=get-wallet&guid={}&payload={}&length={}"
+        wallet_data = do_request("wallet",
+            "method=get-wallet&guid={}&payload={}&length={}"
             .format(wallet_id, two_factor, len(two_factor))
         ).read()
 
