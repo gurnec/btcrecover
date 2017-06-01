@@ -2235,6 +2235,19 @@ class WalletBIP39(object):
         return False, count
 
 
+############### NULL ###############
+# A fake wallet which has no correct password;
+# used for testing password generation performance
+
+class WalletNull(object):
+
+    def passwords_per_seconds(self, seconds):
+        return max(int(round(500000 * seconds)), 1)
+
+    def return_verified_password_or_false(self, passwords):
+        return False, len(passwords)
+
+
 # Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
 # using either PyCrypto if it's available or a pure python library. The created functions each take
 # three bytestring arguments: key, iv, ciphertext. ciphertext must be a multiple of 16 bytes, and any
@@ -3179,6 +3192,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             loaded_wallet = WalletAndroidSpendingPIN.load_from_filename(args.wallet)
         elif args.blockchain_secondpass:
             loaded_wallet = WalletBlockchainSecondpass.load_from_filename(args.wallet)
+        elif args.wallet == "__null":
+            loaded_wallet = WalletNull()
         else:
             load_global_wallet(args.wallet)
             if type(loaded_wallet) is WalletBitcoinj:
@@ -3186,8 +3201,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             if isinstance(loaded_wallet, WalletMultiBit) and not args.android_pin:
                 print(prog+": notice: use --android-pin to recover the spending PIN of\n"
                            "    a Bitcoin Wallet for Android/BlackBerry backup (instead of the backup password)")
-            if args.msigna_keychain and not isinstance(loaded_wallet, WalletMsigna):
-                print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
+        if args.msigna_keychain and not isinstance(loaded_wallet, WalletMsigna):
+            print(prog+": warning: ignoring --msigna-keychain (wallet file is not an mSIGNA vault)")
 
 
     # Prompt for data extracted by one of the extract-* scripts
