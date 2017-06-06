@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.7"
+__version__          =  "0.15.8"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -304,7 +304,7 @@ def add_armory_library_path():
             armory_path     = progfiles_path + r"\Armory"
             sys.path.extend((armory_path, armory_path + r"\library.zip"))
     elif sys.platform.startswith("linux"):
-        sys.path.append("/usr/lib/armory")
+        sys.path.extend(("/usr/local/lib/armory", "/usr/lib/armory"))
     elif sys.platform == "darwin":
         sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
     is_armory_path_added = True
@@ -1813,8 +1813,9 @@ class WalletBlockchain(object):
         if not iter_count:  # if this is a v0.0 wallet
             # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
             # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
+            # (decreased test below to 7.3 after being shown a wallet with just under 7.4 entropy bits)
             entropy_bits = est_entropy_bits(data)
-            if entropy_bits < 7.4:
+            if entropy_bits < 7.3:
                 raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
 
         return data, iter_count  # iter_count == 0 for v0 wallets

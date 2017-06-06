@@ -479,7 +479,7 @@ Once you have this information, run *btcrecover* normally, except that *instead*
 
 When you run this, you will be prompted for your master public key (or your address), and your seed.
 
-### GPU acceleration for Bitcoin Classic/XT/Core, Armory, and Litecoin-Qt wallets###
+### GPU acceleration for Bitcoin Classic/XT/Core, Armory, and Litecoin-Qt wallets ###
 
 *btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Classic/XT/Core or Litecoin-Qt wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
 
