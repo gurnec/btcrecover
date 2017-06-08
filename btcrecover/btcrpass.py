@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.8"
+__version__          =  "0.15.9"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -53,7 +53,7 @@ def enable_unicode_mode():
     tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
     tchr              = unichr
 #
-def enable_ansi_mode():
+def enable_ascii_mode():
     global io, tstr, tstr_from_stdin, tchr, __version__, __ordering_version__
     io              = None
     tstr            = str
@@ -2803,7 +2803,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # Set the character mode early-- it's used by a large portion of the
     # rest of this module (starting with the first call to open_or_use())
     if args.utf8: enable_unicode_mode()
-    else:         enable_ansi_mode()
+    else:         enable_ascii_mode()
 
     # If a simple passwordlist or base_iterator is being provided, re-parse the command line with fewer options
     # (--help is handled directly by argparse in this case)
@@ -4689,6 +4689,13 @@ def simple_typos_generator(password_base):
     for typos_count in l_xrange(1, max_typos + 1):
         typos_sofar += typos_count
 
+        # Pre-calculate all possible permutations of the chosen simple_typos_choices
+        # (possibly limited to individual maximums specified by max_simple_typos)
+        if l_max_simple_typos:
+            simple_typo_permutations = tuple(l_product_max_elements(l_enabled_simple_typos, typos_count, l_max_simple_typos))
+        else:  # use the faster itertools version if possible
+            simple_typo_permutations = tuple(l_itertools_product(l_enabled_simple_typos, repeat=typos_count))
+
         # Select the indexes of exactly typos_count characters from the password_base
         # that will be the target of the typos (out of all possible combinations thereof)
         for typo_indexes in itertools.combinations(l_xrange(password_base_len), typos_count):
@@ -4696,15 +4703,9 @@ def simple_typos_generator(password_base):
             # one-past-the-end of password_base. This is used in the inner loop.
             typo_indexes_ = typo_indexes + (password_base_len,)
 
-            # Select and configure a generator which will generate all the possible permutations of
-            # the available simple_typos_choices (possibly limited to individual maximums specified
-            # by max_simple_typos) being applied to the typo targets selected above
-            if max_simple_typos:
-                typos_product_generator = l_product_max_elements(l_enabled_simple_typos, typos_count, l_max_simple_typos)
-            else:  # use the faster itertools version if possible
-                typos_product_generator = l_itertools_product(l_enabled_simple_typos, repeat=typos_count)
-            #
-            for typo_generators_per_target in typos_product_generator:
+            # Apply each possible permutation of simple typo generators to
+            # the typo targets selected above (using the pre-calculated list)
+            for typo_generators_per_target in simple_typo_permutations:
 
                 # For each of the selected typo target(s), call the generator(s) selected above
                 # to get the replacement(s) of said to-be-replaced typo target(s). Each item in
@@ -4857,7 +4858,7 @@ def init_worker(wallet, char_mode):
     if not loaded_wallet:
         loaded_wallet = wallet
         if char_mode == str:
-            enable_ansi_mode()
+            enable_ascii_mode()
         elif char_mode == unicode:
             enable_unicode_mode()
         else:

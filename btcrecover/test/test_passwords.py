@@ -68,7 +68,7 @@ def setUpModule():
             def close(self): pass
         class StringIONonClosing(BytesIO, NonClosingBase):
             def close(self): pass
-        btcrpass.enable_ansi_mode()
+        btcrpass.enable_ascii_mode()
         tstr = str
         tchr = chr
         utf8_opt = ""
