@@ -129,6 +129,20 @@ You can't leave out the comma (that's what makes it a middle anchor instead of a
     ^,^Anywhere_in_the_middle_or_end        Anywhere_in_the_middle_or_end$
     ^,^Anywhere_in_the_middle_or_beginning ^Anywhere_in_the_middle_or_beginning
 
+#### Relative Anchors ####
+
+Relative anchors restrict the position of tokens relative to one another. They are only affected by other tokens which also have relative anchors. They look like positional anchors, except they have a single `r` preceding the relative number value:
+
+    ^r1^Earlier
+    ^r2^Middlish_A
+    ^r2^Middlish_B
+    ^r3^Later
+    Anywhere
+
+In this example above, if two or more relative-anchored tokens appear together in a single password guess, they appear in their specified order. `Earlier Anywhere Later` and `Anywhere Middlish_A Later` would be tried, however `Later Earlier` would not. Note that `Middlish_A` and `Middlish_B` can appear in the same guess, and they can appear with either being first since they have a matching relative value, e.g. `Middlish_B Middlish_A Later` would be tried.
+
+You cannot specify a single token with both a positional and relative anchor at the same time.
+
 ### Token Counts ###
 
 There are a number of command-line options that affect the combinations tried. The `--max-tokens` option limits the number of tokens that are added together and tried. With `--max-tokens` set to 2, `Hotel_californiaCairo`, made from two tokens, would be tried from the earlier example, but `Hotel_californiaCairoBeetlejuice` would be skipped because it’s made from three tokens. You can still use *btcrecover* even if you have a large number of tokens, as long as `--max-tokens` is set to something reasonable. If you’d like to re-run *btcrecover* with a larger number of `--max-tokens` if at first it didn’t succeed, you can also specify `--min-tokens` to avoid trying combinations you’ve already tried.
@@ -521,7 +535,7 @@ Please see the separate [Limitations and Caveats](docs/Limitations_and_Caveats.m
 
 btcrecover -- Bitcoin wallet password and seed recovery tool
 
-Copyright (C) 2014-2016 Christopher Gurnee
+Copyright (C) 2014-2017 Christopher Gurnee
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
 
