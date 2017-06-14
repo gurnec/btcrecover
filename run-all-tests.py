@@ -92,8 +92,8 @@ if __name__ == b'__main__':
     start_time = time.time() if has_green else timer()
 
     if not has_green:
-        print("** Testing in ANSI character mode **")
-    os.environ["BTCR_CHAR_MODE"] = "ansi"
+        print("** Testing in ASCII character mode **")
+    os.environ["BTCR_CHAR_MODE"] = "ascii"
     results = main(test_passwords, exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 

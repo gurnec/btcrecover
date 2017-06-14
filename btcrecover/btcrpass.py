@@ -1,5 +1,5 @@
 # btcrpass.py -- btcrecover main library
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.9"
+__version__          =  "0.15.10"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1015,14 +1015,14 @@ class WalletMultiBit(object):
     def load_from_filename(cls, privkey_filename):
         with open(privkey_filename) as privkey_file:
             # Multibit privkey files contain base64 text split into multiple lines;
-            # we need the first 32 bytes after decoding, which translates to 44 before.
-            data = b"".join(privkey_file.read(50).split())  # join multiple lines into one
-        if len(data) < 44: raise EOFError("Expected at least 44 bytes of text in the MultiBit private key file")
-        data = base64.b64decode(data[:44])
+            # we need the first 48 bytes after decoding, which translates to 64 before.
+            data = b"".join(privkey_file.read(70).split())  # join multiple lines into one
+        if len(data) < 64: raise EOFError("Expected at least 64 bytes of text in the MultiBit private key file")
+        data = base64.b64decode(data[:64])
         assert data.startswith(b"Salted__"), "WalletBitcoinCore.load_from_filename: file starts with base64 'Salted__'"
-        if len(data) < 32:  raise EOFError("Expected at least 32 bytes of decoded data in the MultiBit private key file")
+        if len(data) < 48:  raise EOFError("Expected at least 48 bytes of decoded data in the MultiBit private key file")
         self = cls(loading=True)
-        self._encrypted_block = data[16:32]  # a single 16-byte AES block
+        self._encrypted_block = data[16:48]  # the first two 16-byte AES blocks
         self._salt            = data[8:16]
         return self
 
@@ -1056,22 +1056,44 @@ class WalletMultiBit(object):
             key1   = l_md5(salted).digest()
             key2   = l_md5(key1 + salted).digest()
             iv     = l_md5(key2 + salted).digest()
-            b58_privkey = l_aes256_cbc_decrypt(key1 + key2, iv, encrypted_block)
+            b58_privkey = l_aes256_cbc_decrypt(key1 + key2, iv, encrypted_block[:16])
 
             # (all this may be fragile, e.g. what if comments or whitespace precede what's expected in future versions?)
             if b58_privkey[0] in b"LK5Q\x0a#":
+                #
                 # Does it look like a base58 private key (MultiBit, MultiDoge, or oldest-format Android key backup)?
-                # (there's a 1 in 300 billion chance this hits but the password is wrong)
                 if b58_privkey[0] in b"LK5Q":  # private keys always start with L, K, or 5, or for MultiDoge Q
                     for c in b58_privkey[1:]:
-                        # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z]
-                        if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl": break  # not base58
-                    else:  # if the loop above doesn't break, it's base58
-                        return orig_passwords[count-1], count
-                # Does it look like a bitcoinj protobuf (newest Bitcoin for Android backup) or a KnC for Android key backup?
-                # (there's a 1 in 2 trillion chance this hits but the password is wrong)
-                elif b58_privkey[2:6] == b"org." and b58_privkey[0] == b"\x0a" and ord(b58_privkey[1]) < 128 or \
-                     b58_privkey == b"# KEEP YOUR PRIV":
+                        # If it's outside of the base58 set [1-9A-HJ-NP-Za-km-z], break
+                        if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl":
+                            break
+                    # If the loop above doesn't break, it's base58-looking so far
+                    else:
+                        # If another AES block is available, decrypt and check it as well to avoid false positives
+                        if len(encrypted_block) >= 32:
+                            b58_privkey = l_aes256_cbc_decrypt(key1 + key2, encrypted_block[:16], encrypted_block[16:32])
+                            for c in b58_privkey:
+                                if c > b"z" or c < b"1" or b"9" < c < b"A" or b"Z" < c < b"a" or c in b"IOl":
+                                    break  # not base58
+                            # If the loop above doesn't break, it's base58; we've found it
+                            else:
+                                return orig_passwords[count-1], count
+                        else:
+                            # (when no second block is available, there's a 1 in 300 billion false positive rate here)
+                            return orig_passwords[count - 1], count
+                #
+                # Does it look like a bitcoinj protobuf (newest Bitcoin for Android backup)
+                elif b58_privkey[2:6] == b"org." and b58_privkey[0] == b"\x0a" and ord(b58_privkey[1]) < 128:
+                    for c in b58_privkey[6:14]:
+                        # If it doesn't look like a lower alpha domain name of len >= 8 (e.g. 'bitcoin.'), break
+                        if c > b"z" or (c < b"a" and c != "."):
+                            break
+                    # If the loop above doesn't break, it looks like a domain name; we've found it
+                    else:
+                        return orig_passwords[count - 1], count
+                #
+                #  Does it look like a KnC for Android key backup?
+                elif b58_privkey == b"# KEEP YOUR PRIV":
                     return orig_passwords[count-1], count
 
         return False, count
