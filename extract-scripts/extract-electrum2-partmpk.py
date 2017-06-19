@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # extract-electrum2-partmpk.py -- Electrum 2.x partial mpk extractor
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -37,7 +37,18 @@ if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
 wallet_filename = sys.argv[1]
 
 with open(wallet_filename) as wallet_file:
-    wallet = json.load(wallet_file)
+    try:
+        wallet = json.load(wallet_file)
+    except ValueError as e:
+        wallet_file.seek(0)
+        try:
+            data = base64.b64decode(wallet_file.read(8))
+        except TypeError:
+            raise e
+        if data[:4] == "BIE1":  # Electrum 2.8+ magic
+            raise NotImplementedError("Electrum 2.8+ fully encrypted wallets are supported by btcrecover, but not via data extracts")
+        else:
+            raise e
 
 wallet_type = wallet.get("wallet_type")
 if not wallet_type:                  raise ValueError("Electrum wallet_type not found")

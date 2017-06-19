@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # test_passwords.py -- unit tests for btcrecover.py
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -991,6 +991,13 @@ class Test07WalletDecryption(unittest.TestCase):
 
     def test_electrum27_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum27-wallet")
+
+    @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
+    def test_electrum28(self):
+        self.wallet_tester("electrum28-wallet")
+
+    def test_electrum28_pp(self):
+        self.wallet_tester("electrum28-wallet", force_purepython=True)
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_multibit(self):

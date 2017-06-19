@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.10"
+__version__          =  "0.15.11"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -993,9 +993,9 @@ class WalletMultiBit(object):
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
-        try:              is_multibitpk = base64.b64decode(wallet_file.read(20).lstrip()[:12]).startswith(b"Salted__")
-        except TypeError: is_multibitpk = False
-        return is_multibitpk
+        try:   data = base64.b64decode(wallet_file.read(20).lstrip()[:12])
+        except TypeError: return False
+        return data.startswith(b"Salted__")
 
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
@@ -1743,6 +1743,111 @@ class WalletElectrumLooseKey(WalletElectrum):
         return False, count
 
 
+@register_wallet_class
+class WalletElectrum28(object):
+
+    def passwords_per_seconds(self, seconds):
+        return max(int(round(self._passwords_per_second * seconds)), 1)
+
+    @staticmethod
+    def is_wallet_file(wallet_file):
+        wallet_file.seek(0)
+        try:   data = base64.b64decode(wallet_file.read(8))
+        except TypeError: return False
+        return data[:4] == b"BIE1"  # Electrum 2.8+ magic
+
+    def __init__(self, loading = False):
+        assert loading, 'use load_from_* to create a ' + self.__class__.__name__
+        global btcrseed, hmac
+        from . import btcrseed  # imports Armory library plus some other needed utility functions
+        import hmac
+        pbkdf2_library_name    = load_pbkdf2_library().__name__
+        self._aes_library_name = load_aes256_library().__name__
+        self._crypto_ecdsa     = btcrseed.CryptoECDSA()
+        self._passwords_per_second = 500 if pbkdf2_library_name == "hashlib" else 130
+
+    def __getstate__(self):
+        # Delete unpicklable Armory library object
+        state = self.__dict__.copy()
+        del state["_crypto_ecdsa"]
+        return state
+
+    def __setstate__(self, state):
+        # (re-)load the required libraries after being unpickled
+        global btcrseed, hmac
+        from . import btcrseed  # imports Armory library plus some other needed utility functions
+        import hmac
+        load_pbkdf2_library()
+        load_aes256_library()
+        self.__dict__ = state
+        self._crypto_ecdsa = btcrseed.CryptoECDSA()
+
+    # Load an Electrum 2.8 encrypted wallet file
+    @classmethod
+    def load_from_filename(cls, wallet_filename):
+        with open(wallet_filename) as wallet_file:
+            data = wallet_file.read(MAX_WALLET_FILE_SIZE)  # up to 64M, typical size is a few k
+        if len(data) >= MAX_WALLET_FILE_SIZE:
+            raise ValueError("Encrypted Electrum wallet file is too big")
+        MIN_LEN = 37 + 32 + 32  # header + ciphertext + trailer
+        if len(data) < MIN_LEN * 4 / 3:
+            raise EOFError("Expected at least {} bytes of text in the Electrum wallet file".format(int(math.ceil(MIN_LEN * 4 / 3))))
+        data = base64.b64decode(data)
+        if len(data) < MIN_LEN:
+            raise EOFError("Expected at least {} bytes of decoded data in the Electrum wallet file".format(MIN_LEN))
+        assert data[:4] == b"BIE1", "wallet file has Electrum 2.8+ magic"
+
+        self = cls(loading=True)
+        ephemeral_pubkey  = data[4:37]
+        self._ciphertext  = data[37:-32]
+        self._mac         = data[-32:]
+        self._all_but_mac = data[:-32]
+        ephemeral_pubkey = self._crypto_ecdsa.UncompressPoint(btcrseed.SecureBinaryData(ephemeral_pubkey)).toBinStr()
+        assert len(ephemeral_pubkey) == 65
+        assert self._crypto_ecdsa.VerifyPublicKeyValid(btcrseed.SecureBinaryData(ephemeral_pubkey))
+        self._ephemeral_pubkey_x = ephemeral_pubkey[1:33]
+        self._ephemeral_pubkey_y = ephemeral_pubkey[33:]
+        return self
+
+    # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
+    # is correct return it, else return False for item 0; return a count of passwords checked for item 1
+    def return_verified_password_or_false(self, passwords):
+
+        # Convert Unicode strings (lazily) to UTF-8 bytestrings
+        if tstr == unicode:
+            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+
+        for count, password in enumerate(passwords, 1):
+
+            # Derive the ECIES shared public key, and from it, the AES and HMAC keys
+            static_privkey = pbkdf2_hmac(b"sha512", password, b"", 1024, 64)
+            # ( this next step isn't technically necessary, but it results in a nice speed improvement: )
+            static_privkey = btcrseed.int_to_bytes( btcrseed.bytes_to_int(static_privkey) % btcrseed.GENERATOR_ORDER )
+            shared_pubkey  = self._crypto_ecdsa.ECMultiplyPoint(static_privkey, self._ephemeral_pubkey_x, self._ephemeral_pubkey_y)
+            shared_pubkey  = btcrseed.compress_pubkey(b"\x04" + shared_pubkey)
+            keys           = hashlib.sha512(shared_pubkey).digest()
+
+            # Only run these initial checks if we have a fast AES library
+            if self._aes_library_name != 'aespython':
+                # Check for the expected zlib and deflate headers in the first 16-byte decrypted block
+                plaintext_block = aes256_cbc_decrypt(keys[16:32], keys[:16], self._ciphertext[:16])  # key, iv, ciphertext
+                if not (plaintext_block.startswith(b"\x78\x9c") and ord(plaintext_block[2]) & 0x7 == 0x5):
+                    continue
+
+                # Check for valid PKCS7 padding in the last 16-byte decrypted block
+                plaintext_block = aes256_cbc_decrypt(keys[16:32], self._ciphertext[-32:-16], self._ciphertext[-16:])  # key, iv, ciphertext
+                padding_len = ord(plaintext_block[-1])
+                if not (1 <= padding_len <= 16 and plaintext_block.endswith(chr(padding_len) * padding_len)):
+                    continue
+
+            # Check the MAC of the cypertext
+            computed_mac = hmac.new(keys[32:], self._all_but_mac, hashlib.sha256).digest()
+            if computed_mac == self._mac:
+                return password if tstr == str else password.decode("utf_8", "replace"), count
+
+        return False, count
+
+
 ############### Blockchain ###############
 
 @register_wallet_class
@@ -2038,7 +2143,7 @@ class WalletBlockchainSecondpass(WalletBlockchain):
 @register_wallet_class
 class WalletBither(object):
 
-    class __metaclass__(WalletBitcoinj.__metaclass__):
+    class __metaclass__(type):
         @property
         def data_extract_id(cls): return b"bt"
 

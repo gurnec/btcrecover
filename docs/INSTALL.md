@@ -16,6 +16,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Electrum 2.8+ fully encrypted wallets - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCrypto](#pycrypto)
  * BIP-39 passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation)
  * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
  * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
