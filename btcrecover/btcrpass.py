@@ -748,8 +748,12 @@ class WalletBitcoinCore(object):
         # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
         self = cls(loading=True)
         encrypted_master_key, self._salt, method, self._iter_count = struct.unpack_from(b"< 49p 9p I I", mkey)
+        
         if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + unicode(method))
-
+        
+        # print The number of SHA-512 rounds (method 0)
+        print("SHA-512 Rounds: ", self._iter_count) if method == 0 else None
+        
         # only need the final 2 encrypted blocks (half of it padding) plus the salt and iter_count saved above
         self._part_encrypted_master_key = encrypted_master_key[-32:]
         return self
