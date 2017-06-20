@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.11"
+__version__          =  "0.15.12"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -5348,13 +5348,14 @@ def main():
 
     if have_progress:
         if args.no_eta:
-            progress = progressbar.ProgressBar(maxval=progressbar.UnknownLength, widgets=[
+            progress = progressbar.ProgressBar(maxval=progressbar.UnknownLength, poll=0.1, widgets=[
                 progressbar.AnimatedMarker(),
                 progressbar.FormatLabel(b" %(value)d  elapsed: %(elapsed)s  rate: "),
                 progressbar.FileTransferSpeed(unit=b"P")
             ])
+            progress.update_interval = sys.maxint  # work around performance bug in ProgressBar
         else:
-            progress = progressbar.ProgressBar(maxval=passwords_count, widgets=[
+            progress = progressbar.ProgressBar(maxval=passwords_count, poll=0.1, widgets=[
                 progressbar.SimpleProgress(), b" ",
                 progressbar.Bar(left=b"[", fill=b"-", right=b"]"),
                 progressbar.FormatLabel(b" %(elapsed)s, "),
