@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.16.0"
+__version__          =  "0.16.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -438,6 +438,9 @@ class WalletArmory(object):
         self._kdf = KdfRomix(bytes_reqd, iter_count, SecureBinaryData(privkey_data[76:]))  # kdf args and seed
         return self
 
+    def difficulty_info(self):
+        return "{:g} MiB, {} iterations + ECC".format(round(self._kdf.getMemoryReqtBytes() / 1024**2, 2), self._kdf.getNumIterations())
+
     # Defer to either the cpu or OpenCL implementation
     def return_verified_password_or_false(self, passwords):
         return self._return_verified_password_or_false_opencl(passwords) if hasattr(self, "_cl_devices") \
@@ -503,15 +506,15 @@ class WalletArmory(object):
             print(    "  ROMix V-table length:  {:,}".format(v_len))
             print(    "  outer iteration count: {:,}".format(self._kdf.getNumIterations()))
             print(    "  with --mem-factor {},".format(save_every if save_every>1 else "1 (the default)"))
-            print(    "    memory per global worker: {:,} KB\n".format(int(round(mem_per_worker / 1024))))
+            print(    "    memory per global worker: {:,} KiB\n".format(int(round(mem_per_worker / 1024))))
             #
             for i, device in enumerate(devices):
                 print("Details for", device.name.strip())
-                print("  global memory size:     {:,} MB".format(int(round(device.global_mem_size / float(1024**2)))))
+                print("  global memory size:     {:,} MiB".format(int(round(device.global_mem_size / float(1024**2)))))
                 print("  with --mem-factor {},".format(save_every if save_every>1 else "1 (the default)"))
                 print("    est. max --global-ws: {}".format((int(device.global_mem_size // mem_per_worker) // 32 * 32)))
                 print("    with --global-ws {},".format(global_ws[i] if global_ws[i]!=4096 else "4096 (the default)"))
-                print("      est. memory usage:  {:,} MB\n".format(int(round(global_ws[i] * mem_per_worker / float(1024**2)))))
+                print("      est. memory usage:  {:,} MiB\n".format(int(round(global_ws[i] * mem_per_worker / float(1024**2)))))
             sys.exit(0)
 
         # Create one command queue, one I/O buffer, and four "V" buffers per device
@@ -748,12 +751,8 @@ class WalletBitcoinCore(object):
         # (it will loudly fail if this isn't the case; if smarter it could gracefully succeed):
         self = cls(loading=True)
         encrypted_master_key, self._salt, method, self._iter_count = struct.unpack_from(b"< 49p 9p I I", mkey)
-        
         if method != 0: raise NotImplementedError("Unsupported Bitcoin Core key derivation method " + unicode(method))
-        
-        # print The number of SHA-512 rounds (method 0)
-        print("SHA-512 Rounds: ", self._iter_count) if method == 0 else None
-        
+
         # only need the final 2 encrypted blocks (half of it padding) plus the salt and iter_count saved above
         self._part_encrypted_master_key = encrypted_master_key[-32:]
         return self
@@ -765,6 +764,9 @@ class WalletBitcoinCore(object):
         self = cls(loading=True)
         self._part_encrypted_master_key, self._salt, self._iter_count = struct.unpack(b"< 32s 8s I", mkey_data)
         return self
+
+    def difficulty_info(self):
+        return "{:,} SHA-512 iterations".format(self._iter_count)
 
     # Defer to either the cpu or OpenCL implementation
     def return_verified_password_or_false(self, passwords):
@@ -1039,6 +1041,9 @@ class WalletMultiBit(object):
         self._salt            = privkey_data[:8]
         return self
 
+    def difficulty_info(self):
+        return "3 MD5 iterations"
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     assert b"1" < b"9" < b"A" < b"Z" < b"a" < b"z"  # the b58 check below assumes ASCII ordering in the interest of speed
@@ -1201,6 +1206,9 @@ class WalletBitcoinj(object):
         (self._scrypt_n, self._scrypt_r, self._scrypt_p) = struct.unpack(b"< I H H", privkey_data[40:])
         return self
 
+    def difficulty_info(self):
+        return "scrypt N, r, p = {}, {}, {}".format(self._scrypt_n, self._scrypt_r, self._scrypt_p)
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
@@ -1276,6 +1284,9 @@ class WalletMultiBitHD(WalletBitcoinj):
         self._encrypted_block_iv   = file_data[16:]  # the first 16-byte encrypted block (v0.5.0+)
         self._encrypted_block_noiv = file_data[:16]  # the first 16-byte encrypted block w/hardcoded IV (< v0.5.0)
         return self
+
+    def difficulty_info(self):
+        return "scrypt N, r, p = 16384, 8, 1"
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -1440,6 +1451,9 @@ class WalletMsigna(object):
         self._salt                   = privkey_data[32:]
         return self
 
+    def difficulty_info(self):
+        return "2 SHA-256 iterations"
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
@@ -1501,6 +1515,9 @@ class WalletElectrum(object):
         self._iv                  = data[:16]  # the 16-byte IV
         self._part_encrypted_data = data[16:]  # 16-bytes of encrypted data
         return self
+
+    def difficulty_info(self):
+        return "2 SHA-256 iterations"
 
 @register_wallet_class
 class WalletElectrum1(WalletElectrum):
@@ -1813,6 +1830,9 @@ class WalletElectrum28(object):
         self._ephemeral_pubkey_y = ephemeral_pubkey[33:]
         return self
 
+    def difficulty_info(self):
+        return "1024 PBKDF2-SHA512 iterations + ECC"
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
@@ -1961,6 +1981,9 @@ class WalletBlockchain(object):
         self._salt_and_iv     = salt_and_iv
         return self
 
+    def difficulty_info(self):
+        return "{:,} PBKDF2-SHA1 iterations".format(self._iter_count or 10)
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
@@ -2100,6 +2123,9 @@ class WalletBlockchainSecondpass(WalletBlockchain):
         self._salt          = str(UUID(bytes=uuid_salt))
         self._password_hash = password_hash
         return self
+
+    def difficulty_info(self):
+        return ("{:,}".format(self._iter_count) if self._iter_count else "1-10") + " SHA-256 iterations"
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -2277,6 +2303,9 @@ class WalletBither(object):
         bitcoinj_wallet._scrypt_p    = 1
         return bitcoinj_wallet
 
+    def difficulty_info(self):
+        return "scrypt N, r, p = 16384, 8, 1 + ECC"
+
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
@@ -2350,6 +2379,9 @@ class WalletBIP39(object):
 
     def passwords_per_seconds(self, seconds):
         return self.btcrseed_wallet.passwords_per_seconds(seconds)
+
+    def difficulty_info(self):
+        return "2048 PBKDF2-SHA512 iterations + ECC"
 
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
@@ -5280,6 +5312,10 @@ def main():
             if isinstance(e, KeyboardInterrupt): sys.exit(0)
             raise
         return None, unicode(passwords_count) + " password combinations" + plus_skipped
+
+    try:
+        print("Wallet difficulty:", loaded_wallet.difficulty_info())
+    except AttributeError: pass
 
     # Measure the performance of the verification function
     # (for CPU, run for about 0.5s; for GPU, run for one global-worksize chunk)
