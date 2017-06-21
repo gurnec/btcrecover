@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.15.12"
+__version__          =  "0.16.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -46,7 +46,7 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickl
 
 # One of these two is typically called relatively early by parse_arguments()
 def enable_unicode_mode():
-    global io, tstr, tstr_from_stdin, tchr, __version__, __ordering_version__
+    global io, tstr, tstr_from_stdin, tchr
     import locale, io
     tstr              = unicode
     preferredencoding = locale.getpreferredencoding()
@@ -54,7 +54,7 @@ def enable_unicode_mode():
     tchr              = unichr
 #
 def enable_ascii_mode():
-    global io, tstr, tstr_from_stdin, tchr, __version__, __ordering_version__
+    global io, tstr, tstr_from_stdin, tchr
     io              = None
     tstr            = str
     tstr_from_stdin = str
@@ -3761,10 +3761,15 @@ def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_perm
 # After creation, AnchoredToken must not be changed: it creates and caches the return
 # values for __str__ and __hash__ for speed on the assumption they don't change
 class AnchoredToken(object):
+    # The possible values for the .type attribute:
+    POSITIONAL = 1  # has a .pos attribute
+    RELATIVE   = 2  # same as ^
+    MIDDLE     = 3  # has .begin and .end attributes
+
     def __init__(self, token, line_num = "?"):
         if token.startswith("^"):
-            # If it is a syntactically correct positional or middle anchor
-            match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<pos>\d+))(?:\^|\$)", token)
+            # If it is a syntactically correct positional, relative, or middle anchor
+            match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<rel>[rR])?(?P<pos>\d+))(?:\^|\$)", token)
             if match:
                 # If it's a middle (ranged) anchor
                 if match.group("middle"):
@@ -3788,52 +3793,63 @@ class AnchoredToken(object):
                         error_exit("anchor range of token on line", line_num, "is invalid (begin > end)")
                     if begin < 2:
                         error_exit("anchor range of token on line", line_num, "must begin with 2 or greater")
+                    self.type  = AnchoredToken.MIDDLE
                     self.begin = begin - 1
                     self.end   = end   - 1 if end != sys.maxint else end
                 #
-                # Else it's a positional anchor
-                else:
+                # If it's a positional or relative anchor
+                elif match.group("pos"):
                     pos = int(match.group("pos"))
                     cached_str = tstr("^")  # begin building the cached __str__
-                    if pos < 1:
-                        error_exit("anchor position of token on line", line_num, "must be 1 or greater")
-                    if pos > 1:
-                        cached_str += tstr(pos) + tstr("^")
-                    self.begin = pos - 1
-                    self.end   = None
+                    if match.group("rel"):
+                        cached_str += tstr("r") + tstr(pos) + tstr("^")
+                        self.type = AnchoredToken.RELATIVE
+                        self.pos  = pos
+                    else:
+                        if pos < 1:
+                            error_exit("anchor position of token on line", line_num, "must be 1 or greater")
+                        if pos > 1:
+                            cached_str += tstr(pos) + tstr("^")
+                        self.type = AnchoredToken.POSITIONAL
+                        self.pos  = pos - 1
                 #
-                self.text = token[match.end():]  # same for both middle and positional anchors
+                else:
+                    assert False, "AnchoredToken.__init__: determined anchor type"
+
+                self.text = token[match.end():]  # same for positional, relative, and middle anchors
             #
             # Else it's a begin anchor
             else:
                 if len(token) > 1 and token[1] in "0123456789,":
-                    print(prog+": warning: token on line", line_num, "looks like it might be a positional anchor, " +
+                    print(prog+": warning: token on line", line_num, "looks like it might be a positional or middle anchor, " +
+                          "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
+                if len(token) > 2 and token[1].lower() == "r" and token[2] in "0123456789":
+                    print(prog+": warning: token on line", line_num, "looks like it might be a relative anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                 cached_str = tstr("^")  # begin building the cached __str__
-                self.begin = 0
-                self.end   = None
+                self.type  = AnchoredToken.POSITIONAL
+                self.pos   = 0
                 self.text  = token[1:]
             #
             if self.text.endswith("$"):
                 error_exit("token on line", line_num, "is anchored with both ^ at the beginning and $ at the end")
             #
-            self.cached_str = cached_str + self.text  # finish building the cached __str__
+            cached_str += self.text  # finish building the cached __str__
         #
         # Parse end anchor if present
         elif token.endswith("$"):
-            self.begin = "$"
-            self.end   = None
+            cached_str = token
+            self.type  = AnchoredToken.POSITIONAL
+            self.pos   = b"$"
             self.text  = token[:-1]
-            self.cached_str = self.text + tstr("$")
         #
         else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
         #
+        self.cached_str  = intern(cached_str) if type(cached_str) is str else cached_str
         self.cached_hash = hash(self.cached_str)
         if self.text == "":
             print(prog+": warning: token on line", line_num, "contains only an anchor (and zero password characters)", file=sys.stderr)
 
-    def is_positional(self): return self.end is     None
-    def is_middle(self):     return self.end is not None
     # For sets
     def __hash__(self):      return self.cached_hash
     def __eq__(self, other): return     isinstance(other, AnchoredToken) and self.cached_str == other.cached_str
@@ -3846,14 +3862,13 @@ class AnchoredToken(object):
 
 def parse_tokenlist(tokenlist_file, first_line_num = 1):
     global token_lists
-    global has_any_duplicate_tokens, has_any_wildcards, has_any_anchors, has_any_mid_anchors
+    global has_any_duplicate_tokens, has_any_wildcards, has_any_anchors
 
     if args.no_dupchecks < 3:
         has_any_duplicate_tokens = False
         token_set_for_dupchecks  = set()
     has_any_wildcards   = False
     has_any_anchors     = False
-    has_any_mid_anchors = False
     token_lists         = []
 
     for line_num, line in enumerate(tokenlist_file, first_line_num):
@@ -3910,7 +3925,6 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
                 token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
                 new_list[i] = token
                 has_any_anchors = True
-                if token.is_middle(): has_any_mid_anchors = True
 
             # Keep track of the existence of any duplicate tokens for future optimization
             if args.no_dupchecks < 3 and not has_any_duplicate_tokens:
@@ -4225,38 +4239,45 @@ def tokenlist_base_password_generator():
             tokens_combination = filter(lambda t: t is not None, tokens_combination)
             if not l_args_min_tokens <= l_len(tokens_combination) <= l_args_max_tokens: continue
 
-        # There are two types of anchors, positional and middle/range. Positional anchors
+        # There are three types of anchors: positional, middle/range, & relative. Positionals
         # only have a single possible position; middle anchors have a range, but are never
-        # tried at the beginning or end. Below, build a tokens_combination_nopos list from
+        # tried at the beginning or end; relative anchors appear in a certain order with
+        # respect to each other. Below, build a tokens_combination_nopos list from
         # tokens_combination with all positional anchors removed. They will be inserted
         # back into the correct position later. Also search for invalid anchors of any
         # type: a positional anchor placed past the end of the current combination (based
         # on its length) or a middle anchor whose begin position is past *or at* the end.
-        positional_anchors = None  # (will contain strings, not AnchoredToken's)
+        positional_anchors  = None  # (will contain strings, not AnchoredToken's)
+        has_any_mid_anchors = False
+        rel_anchors_count   = 0
         if l_has_any_anchors:
             tokens_combination_len   = l_len(tokens_combination)
-            tokens_combination_nopos = []
+            tokens_combination_nopos = []  # all tokens except positional ones
             invalid_anchors          = False
             for token in tokens_combination:
                 if l_type(token) == AnchoredToken:
-                    pos = token.begin
-                    if token.is_positional():       # a single-position anchor
-                        if pos == "$":
+                    if token.type == AnchoredToken.POSITIONAL:  # a single-position anchor
+                        pos = token.pos
+                        if pos == b"$":
                             pos = tokens_combination_len - 1
                         elif pos >= tokens_combination_len:
                             invalid_anchors = True  # anchored past the end
                             break
                         if not positional_anchors:  # initialize it to a list of None's
                             positional_anchors = [None for i in xrange(tokens_combination_len)]
-                        if positional_anchors[pos] is not None:
+                        elif positional_anchors[pos] is not None:
                             invalid_anchors = True  # two tokens anchored to the same place
                             break
                         positional_anchors[pos] = token.text    # save valid single-position anchor
-                    else:                           # else it's a middle anchor
-                        if pos+1 >= tokens_combination_len:
+                    elif token.type == AnchoredToken.MIDDLE:    # a middle/range anchor
+                        if token.begin+1 >= tokens_combination_len:
                             invalid_anchors = True  # anchored past *or at* the end
                             break
                         tokens_combination_nopos.append(token)  # add this token (a middle anchor)
+                        has_any_mid_anchors = True
+                    else:                                       # else it must be a relative anchor,
+                        tokens_combination_nopos.append(token)  # add it
+                        rel_anchors_count += 1
                 else:                                           # else it's not an anchored token,
                     tokens_combination_nopos.append(token)      # add this token (just a string)
             if invalid_anchors: continue
@@ -4270,7 +4291,7 @@ def tokenlist_base_password_generator():
         # lot of passwords all of which end up being duplicates. We check the current
         # combination (of all tokens), sorted because different orderings of token
         # combinations are equivalent at this point. This check can be disabled with two
-        # (or more) --no-dupcheck options (one disables only the other duplicate check).
+        # (or more) --no-dupcheck options (one disables only the full duplicate check).
         # TODO:
         #   Be smarter in deciding when to enable this? (currently on if has_any_duplicate_tokens)
         #   Instead of dup checking, write a smarter product (seems hard)?
@@ -4283,6 +4304,25 @@ def tokenlist_base_password_generator():
         # are not passed to the permutations_function.
         for ordered_token_guess in permutations_function(tokens_combination_nopos):
 
+            # If multiple relative anchors are in a guess, they must appear in the correct
+            # relative order. If any are out of place, we continue on to the next guess.
+            # Otherwise, we remove the anchor information leaving only the string behind.
+            if rel_anchors_count:
+                invalid_anchors   = False
+                last_relative_pos = 0
+                for i, token in enumerate(ordered_token_guess):
+                    if l_type(token) == AnchoredToken and token.type == AnchoredToken.RELATIVE:
+                        if token.pos < last_relative_pos:
+                            invalid_anchors = True
+                            break
+                        if l_type(ordered_token_guess) != l_list:
+                            ordered_token_guess = l_list(ordered_token_guess)
+                        ordered_token_guess[i] = token.text  # now it's just a string
+                        if rel_anchors_count == 1:  # with only one, it's always valid
+                            break
+                        last_relative_pos = token.pos
+                if invalid_anchors: continue
+
             # Insert the positional anchors we removed above back into the guess
             if positional_anchors:
                 ordered_token_guess = l_list(ordered_token_guess)
@@ -4290,7 +4330,7 @@ def tokenlist_base_password_generator():
                     if token is not None:
                         ordered_token_guess.insert(i, token)  # (token here is just a string)
 
-            # The second type of anchor has a range of possible positions for the anchored
+            # The last type of anchor has a range of possible positions for the anchored
             # token. If any anchored token is outside of its permissible range, we continue
             # on to the next guess. Otherwise, we remove the anchor information leaving
             # only the string behind.
@@ -4301,7 +4341,7 @@ def tokenlist_base_password_generator():
                 invalid_anchors = False
                 for i, token in enumerate(ordered_token_guess[1:-1], 1):
                     if l_type(token) == AnchoredToken:
-                        assert token.is_middle(), "only middle/range anchors left"
+                        assert token.type == AnchoredToken.MIDDLE, "only middle/range anchors left"
                         if token.begin <= i <= token.end:
                             if l_type(ordered_token_guess) != l_list:
                                 ordered_token_guess = l_list(ordered_token_guess)

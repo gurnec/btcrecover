@@ -322,6 +322,15 @@ class Test02Anchors(GeneratorTester):
     def test_tokens_duplicate(self):
         self.do_generator_test(["one", "one", "^,$two"], ["one", "oneone", "onetwoone"], "-d")
 
+    def test_relative_one(self):
+        self.do_generator_test(["^r0^one", "two"], ["one", "two", "twoone", "onetwo"])
+
+    def test_relative_two(self):
+        self.do_generator_test(["^r0^one", "^r1^two"], ["one", "two", "onetwo"])
+
+    def test_relative_same(self):
+        self.do_generator_test(["^r1^one", "^r1^two"], ["one", "two", "twoone", "onetwo"])
+
 
 LEET_MAP_FILE = os.path.join(TYPOS_DIR, "leet-map.txt")
 class Test03WildCards(GeneratorTester):
