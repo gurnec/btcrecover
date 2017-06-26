@@ -37,7 +37,7 @@ Note that for Armory wallets, you must have Armory 0.92.x or later installed on 
 
 ***After*** installing the requirements for your wallet from above, if you'd like you may *optionally* install pywin32 which allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU, and slightly improves autosave safety.
 
-Download and run the latest version of the pywin32 installer for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed. Currently this is `pywin32-220.win32-py2.7.exe` for the 32-bit version or `pywin32-220.win-amd64-py2.7.exe` for the 64-bit version available in the `Build 220` folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
+Download and run the latest version of the pywin32 installer for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed. Currently this is `pywin32-221.win32-py2.7.exe` for the 32-bit version or `pywin32-221.win-amd64-py2.7.exe` for the 64-bit version available in the `Build 221` folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
 
 ----------
 
@@ -96,18 +96,21 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
         C:\Python27\Scripts\pip install pylibscrypt
 
- 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.11-msvc.zip>
+ 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.12-msvc.zip>
 
  3. Find the correct `libsodium.dll` file from the extracted files, it will be located at one of these two paths:
 
-        Win32\Release\v140\dynamic\libsodium.dll
-        x64\Release\v140\dynamic\libsodium.dll
+        Win32\Release\v141\dynamic\libsodium.dll
+        x64\Release\v141\dynamic\libsodium.dll
 
-    Choose either the 32-bit version (the first one above) or the 64-bit version (the second) to match the version of Python that you've installed. Note that the 64-bit version is recommended if it's supported by your computer (it is approximately 35% faster than the 32-bit version).
+    Choose either the 32-bit version (the first one above) or the 64-bit version (the second), it **must** match the version of Python that you've installed. Note that the 64-bit version is recommended if it's supported by your computer (it is approximately 35% faster than the 32-bit version, so install the 64-bit versions of both libsodium *and* Python for best performance).
 
  4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory.
 
- 5. Download and install the “Microsoft Visual C++ 2015 Redistributable Update 3” from Microsoft here: <https://www.microsoft.com/en-us/download/details.aspx?id=53840>. As above, you will need to choose either the 32-bit version or the 64-bit version to match the version of Python that you've installed.
+ 5. Download and install one of the two update packages below from Microsoft, either the 32-bit version or the 64-bit version (the second) to match the version of Python that you've installed.
+ 
+    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **32-bit**](https://go.microsoft.com/fwlink/?LinkId=746572)
+    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **64-bit**](https://go.microsoft.com/fwlink/?LinkId=746571)
 
 ##### Linux #####
 
@@ -160,13 +163,13 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 
     As of this writing, the 32-bit and 64-bit versions are named respectively:
 
-        pyopencl-2016.2+cl12-cp27-cp27m-win32.whl
-        pyopencl-2016.2+cl12-cp27-cp27m-win_amd64.whl
+        pyopencl-2017.1.1+cl12-cp27-cp27m-win32.whl
+        pyopencl-2017.1.1+cl12-cp27-cp27m-win_amd64.whl
 
  2. Open a command prompt window, and type this to install PyOpenCL and its dependencies:
 
         cd %USERPROFILE%\Downloads
-        C:\Python27\Scripts\pip install pyopencl-2016.2+cl12-cp27-cp27m-win_amd64.whl
+        C:\Python27\Scripts\pip install pyopencl-2017.1.1+cl12-cp27-cp27m-win_amd64.whl
 
     Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
