@@ -37,7 +37,11 @@ try:
         import green.loader, green.runner
         if buffer:
             green_args.quiet_stdout = True
-        results = green.runner.run(green.loader.loadFromModule(test_module), sys.stdout, green_args)
+        try:
+            suite = green.loader.GreenTestLoader().loadTestsFromModule(test_module)  # new API (v2.9+)
+        except AttributeError:
+            suite = green.loader.loadFromModule(test_module)                         # legacy API
+        results = green.runner.run(suite, sys.stdout, green_args)
         # Return the results in an object with a "result" attribute, same as unittest.main()
         return collections.namedtuple("Tuple", "result")(results)
 
