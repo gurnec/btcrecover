@@ -1,5 +1,5 @@
 # btcrseed.py -- btcrecover mnemonic sentence library
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 from . import btcrpass
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
@@ -845,7 +845,9 @@ class WalletBIP39(WalletBIP32):
 
         # Build the mnemonic_ids_guess and pre-calculate similar mnemonic words
         global mnemonic_ids_guess, close_mnemonic_ids
-        mnemonic_ids_guess = ()
+        self._initial_words_valid = True  # start off by assuming they're all valid
+        mnemonic_ids_guess        = ()    # the best initial guess (w/no invalid words)
+        #
         # close_mnemonic_ids is a dict; each dict key is a mnemonic_id (a string), and
         # each dict value is a tuple containing length 1 tuples, and finally each of the
         # length 1 tuples contains a single mnemonic_id which is similar to the dict's key;
@@ -857,19 +859,22 @@ class WalletBIP39(WalletBIP32):
                 if close_words[0] != word:
                     print(u"'{}' was in your guess, but it's not a valid seed word;\n"
                           u"    trying '{}' instead.".format(word, close_words[0]))
+                    self._initial_words_valid = False
                 mnemonic_ids_guess += self._unicode_to_bytes(close_words[0]),  # *now* convert to BIP39's format
                 close_mnemonic_ids[mnemonic_ids_guess[-1]] = \
                     tuple( (self._unicode_to_bytes(w),) for w in close_words[1:] )
             else:
                 if __name__ == b"__main__":
                     print(u"'{}' was in your guess, but there is no similar seed word;\n"
-                           "    trying all possible seed words here instead.".format(word))
+                          u"    trying all possible seed words here instead.".format(word))
                 else:
                     print(u"'{}' was in your seed, but there is no similar seed word.".format(word))
+                self._initial_words_valid = False
                 mnemonic_ids_guess += None,
 
         guess_len = len(mnemonic_ids_guess)
-        if not expected_len:
+        if not expected_len:  # (this is always explicitly specified for Electrum 2 seeds)
+            assert not isinstance(self, WalletElectrum2), "WalletBIP39._config_mnemonic: expected_len is specified for WalletElectrum2 objects"
             if guess_len < 12:
                 expected_len = 12
             elif guess_len > 24:
@@ -1430,6 +1435,7 @@ def main(argv):
         parser.add_argument("--no-eta",      action="store_true",   help="disable calculating the estimated time to completion")
         parser.add_argument("--no-dupchecks",action="store_true",   help="disable duplicate guess checking to save memory")
         parser.add_argument("--no-progress", action="store_true",   help="disable the progress bar")
+        parser.add_argument("--no-pause",    action="store_true",   help="never pause before exiting (default: auto)")
         parser.add_argument("--performance", action="store_true",   help="run a continuous performance test (Ctrl-C to exit)")
         parser.add_argument("--btcr-args",   action="store_true",   help=argparse.SUPPRESS)
         parser.add_argument("--version","-v", action="version", version="%(prog)s {} (btcrecover.py {})".format(__version__, btcrpass.__version__))
@@ -1621,6 +1627,15 @@ def main(argv):
         raise
     except ValueError as e:
         sys.exit(e)
+
+    # Seeds for some wallet types have a checksum which is unlikely to be correct
+    # for the initial provided seed guess; if it is correct, let the user know
+    try:
+        if (  loaded_wallet._initial_words_valid
+          and loaded_wallet.verify_mnemonic_syntax(mnemonic_ids_guess)
+          and loaded_wallet._verify_checksum(mnemonic_ids_guess) ):
+            print(u"Initial seed guess has a valid checksum ({:.2g}% chance).".format(loaded_wallet._checksum_ratio * 100.0))
+    except AttributeError: pass
 
     # Now that most of the GUI code is done, undo any Windows shell extension workarounds from init_gui()
     if sys.platform == "win32" and tk_root:
