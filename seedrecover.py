@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # seedrecover.py -- Bitcoin mnemonic sentence recovery tool
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This program is free software: you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -28,7 +28,7 @@
 from __future__ import print_function
 
 from btcrecover import btcrseed
-import sys
+import sys, multiprocessing
 
 if __name__ == "__main__":
 
@@ -46,7 +46,16 @@ if __name__ == "__main__":
         if btcrseed.tk_root:      # if the GUI is being used
             btcrseed.show_mnemonic_gui(mnemonic_sentence)
 
-    elif mnemonic_sentence is None:
-        sys.exit(1)  # An error occurred or Ctrl-C was pressed inside btcrseed.main()
+        retval = 0
 
-    # else "Seed not found" has already been printed to the console in btcrseed.main()
+    elif mnemonic_sentence is None:
+        retval = 1  # An error occurred or Ctrl-C was pressed inside btcrseed.main()
+
+    else:
+        retval = 0  # "Seed not found" has already been printed to the console in btcrseed.main()
+
+    # Wait for any remaining child processes to exit cleanly (to avoid error messages from gc)
+    for process in multiprocessing.active_children():
+        process.join(1.0)
+
+    sys.exit(retval)

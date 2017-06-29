@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # btcrecover.py -- Bitcoin wallet password recovery tool
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This program is free software: you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -28,7 +28,7 @@
 from __future__ import print_function
 
 from btcrecover import btcrpass
-import sys
+import sys, multiprocessing
 
 if __name__ == "__main__":
 
@@ -39,9 +39,17 @@ if __name__ == "__main__":
         btcrpass.safe_print("Password found: '" + password_found + "'")
         if any(ord(c) < 32 or ord(c) > 126 for c in password_found):
             print("HTML encoded:   '" + password_found.encode("ascii", "xmlcharrefreplace") + "'")
+        retval = 0
 
     elif not_found_msg:
         print(not_found_msg, file=sys.stderr if btcrpass.args.listpass else sys.stdout)
+        retval = 0
 
     else:
-        sys.exit(1)  # An error occurred or Ctrl-C was pressed
+        retval = 1  # An error occurred or Ctrl-C was pressed
+
+    # Wait for any remaining child processes to exit cleanly (to avoid error messages from gc)
+    for process in multiprocessing.active_children():
+        process.join(1.0)
+
+    sys.exit(retval)

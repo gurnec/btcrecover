@@ -1161,8 +1161,8 @@ class WalletElectrum2(WalletBIP39):
         passphrase = unicodedata.normalize("NFKD", passphrase)  # problematic w/Python narrow Unicode builds, same as Electrum
         passphrase = passphrase.lower()  # (?)
         passphrase = filter(lambda c: not unicodedata.combining(c), passphrase)  # remove combining marks
-        passphrase = u" ".join(passphrase.split())  # replace whitespace sequences with a single ANSI space
-        # remove ANSI whitespace between CJK characters (?)
+        passphrase = u" ".join(passphrase.split())  # replace whitespace sequences with a single ASCII space
+        # remove ASCII whitespace between CJK characters (?)
         passphrase = u"".join(c for i,c in enumerate(passphrase) if not (
                 c in string.whitespace
             and any(intvl[0] <= ord(passphrase[i-1]) <= intvl[1] for intvl in self.CJK_INTERVALS)

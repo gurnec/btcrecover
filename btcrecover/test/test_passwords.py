@@ -43,13 +43,13 @@ warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing 
 warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
 
 from btcrecover import btcrpass
-import os, unittest, cPickle, tempfile, shutil, multiprocessing, filecmp, sys
+import os, unittest, cPickle, tempfile, shutil, multiprocessing, gc, filecmp, sys
 
 
 class NonClosingBase(object):
     pass
 
-# Enables either ANSI or Unicode mode for all tests based on either
+# Enables either ASCII or Unicode mode for all tests based on either
 # the value of tstr or the value of the BTCR_CHAR_MODE env. variable
 tstr = None
 def setUpModule():
@@ -72,7 +72,7 @@ def setUpModule():
         tstr = str
         tchr = chr
         utf8_opt = ""
-        print("** Testing in ANSI character mode **")
+        print("** Testing in ASCII character mode **")
 
     else:
         import io
@@ -918,9 +918,8 @@ class Test07WalletDecryption(unittest.TestCase):
                       force_purepython = False, force_kdf_purepython = False, force_bsddb_purepython = False,
                       correct_pass = None, blockchain_mainpass = None, android_backuppass = None):
         wallet_filename = os.path.join(WALLET_DIR, wallet_filename)
-
-        temp_dir = tempfile.mkdtemp("-test-btcr")
-        pool     = None
+        temp_dir        = tempfile.mkdtemp("-test-btcr")
+        parent_process  = True  # bug workaround, see finally block below for details
         try:
             temp_wallet_filename = os.path.join(temp_dir, os.path.basename(wallet_filename))
             shutil.copyfile(wallet_filename, temp_wallet_filename)
@@ -951,7 +950,9 @@ class Test07WalletDecryption(unittest.TestCase):
                 (tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4"))), (correct_pass, 2))
 
             # Perform the tests in a child process to ensure the wallet can be pickled and all libraries reloaded
+            parent_process = False
             pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, force_kdf_purepython))
+            parent_process = True
             password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
                 ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
                   ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
@@ -959,13 +960,16 @@ class Test07WalletDecryption(unittest.TestCase):
             self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
             self.assertRaises(StopIteration, password_found_iterator.next)
             pool.close()
-            pool = None
+            pool.join()
 
             del wallet
+            gc.collect()
             self.assertTrue(filecmp.cmp(wallet_filename, temp_wallet_filename, False))  # False == always compare file contents
         finally:
-            shutil.rmtree(temp_dir)
-            if pool: pool.terminate()
+            # There's a bug which only occurs when combining unittest, multiprocessing, and "real"
+            # forking (Linux/BSD/WSL); only remove the temp dir if we're sure this is the parent process
+            if parent_process:
+                shutil.rmtree(temp_dir)
 
     def test_armory(self):
         if not can_load_armory(): self.skipTest("requires Armory and ASCII mode")
@@ -1003,9 +1007,11 @@ class Test07WalletDecryption(unittest.TestCase):
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum28(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("electrum28-wallet")
 
     def test_electrum28_pp(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("electrum28-wallet", force_purepython=True)
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
@@ -1174,19 +1180,15 @@ class Test08BIP39Passwords(unittest.TestCase):
             (tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4"))), (correct_pass, 2))
 
         # Perform the tests in a child process to ensure the wallet can be pickled and all libraries reloaded
-        pool = None
-        try:
-            pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, False))
-            password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
-                ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
-                  ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
-            self.assertEqual(password_found_iterator.next(), (False, 2))
-            self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
-            self.assertRaises(StopIteration, password_found_iterator.next)
-            pool.close()
-            pool = None
-        finally:
-            if pool: pool.terminate()
+        pool = multiprocessing.Pool(1, init_worker, (wallet, tstr, force_purepython, False))
+        password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
+            ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
+              ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
+        self.assertEqual(password_found_iterator.next(), (False, 2))
+        self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
+        self.assertRaises(StopIteration, password_found_iterator.next)
+        pool.close()
+        pool.join()
 
     @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires Python 2.7.8+")
@@ -1696,6 +1698,8 @@ class Test09EndToEnd(unittest.TestCase):
                                  data_extract         = self.E2E_DATA_EXTRACT,
                                  autosave             = autosave_file)
         self.assertEqual("btcr-test-password", btcrpass.main()[0])
+        for process in multiprocessing.active_children():
+            process.join()  # wait for any remaining child processes to exit cleanly
 
         # Verify the exact password number where it was found to ensure password ordering hasn't changed
         autosave_file.seek(SAVESLOT_SIZE)
@@ -1721,6 +1725,8 @@ class Test09EndToEnd(unittest.TestCase):
                                  data_extract         = self.E2E_DATA_EXTRACT,
                                  autosave             = autosave_file)
         self.assertIn("Password search exhausted", btcrpass.main()[1])
+        for process in multiprocessing.active_children():
+            process.join()  # wait for any remaining child processes to exit cleanly
 
         # Verify the password number where the search started
         autosave_file.seek(0)

@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.16.1"
+__version__          =  "0.16.2"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -5462,7 +5462,7 @@ def main():
 
     # Try to release as much memory as possible (before forking if multiple workers are being used)
     # (the initial counting process can be memory intensive)
-    gc.collect(2)
+    gc.collect()
 
     # Create an iterator which actually checks the (remaining) passwords produced by the password_iterator
     # by executing the return_verified_password_or_false worker function in possibly multiple threads
@@ -5500,6 +5500,7 @@ def main():
     try:
         for password_found, passwords_tried_last in password_found_iterator:
             if password_found:
+                if pool: pool.close()
                 passwords_tried += passwords_tried_last - 1  # just before the found password
                 if progress:
                     progress.next_update = 0  # force a screen update
@@ -5511,15 +5512,14 @@ def main():
             if l_savestate and passwords_tried % est_passwords_per_5min == 0:
                 do_autosave(args.skip + passwords_tried)
         else:  # if the for loop exits normally (without breaking)
-            if pool:
-                pool.close()
-                pool = None
+            if pool: pool.close()
             if progress:
                 if args.no_eta:
                     progress.maxval = passwords_tried
                 else:
                     progress.widgets.pop()  # remove the ETA
                 progress.finish()
+            if pool: pool.join()
 
     # Gracefully handle any exceptions, printing the count completed so far so that it can be
     # skipped if the user restarts the same run. If the exception was expected (Ctrl-C or some
@@ -5528,6 +5528,7 @@ def main():
     except BaseException as e:
         handled = handle_oom() if isinstance(e, MemoryError) and passwords_tried > 0 else False
         if not handled: print()  # move to the next line if handle_oom() hasn't already done so
+        if pool: pool.close()
 
         print("Interrupted after finishing password #", args.skip + passwords_tried, file=sys.stderr)
         if sys.stdout.isatty() ^ sys.stderr.isatty():  # if they're different, print to both to be safe
@@ -5542,5 +5543,4 @@ def main():
         do_autosave(args.skip + passwords_tried)
         autosave_file.close()
 
-    if pool: pool.terminate()
     return (password_found, "Password search exhausted" if password_found is False else None)
