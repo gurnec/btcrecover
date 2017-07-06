@@ -1095,7 +1095,7 @@ class WalletMultiBit(object):
                 elif b58_privkey[2:6] == b"org." and b58_privkey[0] == b"\x0a" and ord(b58_privkey[1]) < 128:
                     for c in b58_privkey[6:14]:
                         # If it doesn't look like a lower alpha domain name of len >= 8 (e.g. 'bitcoin.'), break
-                        if c > b"z" or (c < b"a" and c != "."):
+                        if c > b"z" or (c < b"a" and c != b"."):
                             break
                     # If the loop above doesn't break, it looks like a domain name; we've found it
                     else:

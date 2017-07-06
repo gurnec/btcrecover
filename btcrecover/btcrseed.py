@@ -724,7 +724,7 @@ class WalletBIP32(object):
 
 ############### BIP39 ###############
 
-@register_selectable_wallet_class("Generic BIP39/BIP44 (Mycelium, TREZOR, Bither, Blockchain.info)")
+@register_selectable_wallet_class("Generic BIP39/BIP44 (Mycelium, TREZOR, Ledger, Bither, Blockchain.info)")
 class WalletBIP39(WalletBIP32):
 
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )

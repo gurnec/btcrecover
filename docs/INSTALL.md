@@ -6,13 +6,14 @@ Just download the latest version from <https://github.com/gurnec/btcrecover/arch
 
 Locate your wallet type in the list below, and follow the instructions in the sections indicated for your wallet.
 
-Note that for Armory wallets, you must have Armory 0.92.x or later installed on the computer where you run *btcrecover*.
+**Note** that for Armory wallets, you must have Armory 0.92.x or later installed on the computer where you run *btcrecover*.
 
  * Armory 0.91.x or earlier - unsupported, please upgrade Armory first
  * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit** (x86)
  * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
- * Armory 0.92+ on Linux or OS X - no additional requirements
- * Bitcoin Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
+ * Armory 0.92+ on Linux - no additional requirements
+ * Armory 0.92+ on OS X - please read both OS X sections [here](Seedrecover_Quick_Start_Guide.md#os-x)
+ * Bitcoin Unlimited/Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
@@ -52,7 +53,7 @@ Visit the Python download page here: <https://www.python.org/downloads/windows/>
 
 Most distributions include Python 2.7 pre-installed.
 
-Note that for Blockchain.info wallets, Python version 2.7.8 or greater is recommended, and will run approximately 5 times faster than earlier versions. You can determine which version of Python you have installed by running `python --version` in a terminal. If your version is earlier than 2.7.8, you may want to check if your distribution has a “backports” repository with a more up-to-date version.
+Note that for Blockchain.info wallets, Python version 2.7.8 or greater is recommended, and will run approximately 5 times faster than earlier versions. You can determine which version of Python you have installed by running `python --version` in a terminal. If your version is earlier than 2.7.8, you may want to check if your distribution has a “backports” repository with a more up-to-date version, or for OS X you could try using [Homebrew](https://brew.sh/) to install a more recent version.
 
 Some OS X versions (and some Linux distributions) do not include the bsddb (Berkeley DB) Python module. This is usually not a problem, however if you encounter a `master key #1 not found` error, it might be resolved by installing the bsddb module (or a version of Python which includes it). For notes on how to do this in OS X, please see [this issue on GitHub](https://github.com/gurnec/btcrecover/issues/21).
 
@@ -78,11 +79,11 @@ then try this instead:
 
 ##### OS X #####
 
-On OS X, installing PyCrypto is unfortunately a bit more difficult:
+ 1. Open a terminal window (open the Launchpad and search for "terminal"). Type this and then choose `Install` to install the command line developer tools:
 
- 1. Download and install the “Command Line Tools for Xcode” for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
+        xcode-select --install
 
- 2. Open a Terminal window, and install Python pip and then PyCrypto:
+ 2. Type this to install Python pip and PyCrypto:
 
         curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install pycrypto
@@ -129,14 +130,19 @@ On OS X, installing PyCrypto is unfortunately a bit more difficult:
 
 ##### OS X #####
 
-On OS X, installing scrypt is unfortunately a bit more difficult:
+ 1. Open a terminal window (open the Launchpad and search for "terminal"). Type this and then choose `Install` to install the command line developer tools:
 
- 1. Download and install the “Command Line Tools for Xcode” for your version of OS X from Apple here: <https://developer.apple.com/downloads/>. This site requires that you register as an Apple Developer using your Apple ID.
+        xcode-select --install
 
- 2. Open a Terminal window, and install Python pip and then scrypt:
+ 2. Type this to install pylibscrypt and libscrypt:
 
         curl https://bootstrap.pypa.io/get-pip.py | sudo python
-        sudo pip install pylibscrypt scrypt
+        sudo pip install pylibscrypt
+
+        curl -Lo libscrypt.zip https://github.com/technion/libscrypt/archive/master.zip
+        unzip libscrypt.zip
+        cd libscrypt-master
+        make CFLAGS_EXTRA= LDFLAGS= LDFLAGS_EXTRA= && sudo make install-osx
 
 
 ### Google Protocol Buffers ###
@@ -154,10 +160,21 @@ Open a terminal window, and type this to install Google Protocol Buffers:
     sudo apt-get install python-pip
     sudo pip install protobuf
 
+##### OS X #####
+
+ 1. Open a terminal window (open the Launchpad and search for "terminal"). Type this and then choose `Install` to install the command line developer tools:
+
+        xcode-select --install
+
+ 2. Type this to install Google Protocol Buffers:
+
+        curl https://bootstrap.pypa.io/get-pip.py | sudo python
+        sudo pip install protobuf
+
 ----------
 
 
-### Windows GPU acceleration for Bitcoin Classic/XT/Core, Armory, or Litecoin-Qt ###
+### Windows GPU acceleration for Bitcoin Unlimited/Classic/XT/Core, Armory, or Litecoin-Qt ###
 
  1. Download the latest version of PyOpenCL for OpenCL 1.2 / Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed, from here: <http://www.lfd.uci.edu/~gohlke/pythonlibs/#pyopencl>. For best compatibility, be sure to select a version for OpenCL 1.2 *and no later* (look for "cl12" in the file name, and also look for "27" to match Python 2.7).
 
@@ -173,4 +190,4 @@ Open a terminal window, and type this to install Google Protocol Buffers:
 
     Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
-[PyCrypto](#pycrypto) is also recommended for Bitcoin Classic/XT/Core or Litecoin-Qt wallets for a 2x speed improvement.
+[PyCrypto](#pycrypto) is also recommended for Bitcoin Unlimited/Classic/XT/Core or Litecoin-Qt wallets for a 2x speed improvement.
