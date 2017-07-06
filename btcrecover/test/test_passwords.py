@@ -43,7 +43,7 @@ warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing 
 warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
 
 from btcrecover import btcrpass
-import os, unittest, cPickle, tempfile, shutil, multiprocessing, gc, filecmp, sys
+import os, unittest, cPickle, tempfile, shutil, multiprocessing, gc, filecmp, sys, hashlib
 
 
 class NonClosingBase(object):
@@ -1216,6 +1216,10 @@ class Test08BIP39Passwords(unittest.TestCase):
         )
 
     def test_bip39_address(self):
+        try:
+            hashlib.new(b"ripemd160")
+        except ValueError:
+            self.skipTest("requires that hashlib implements RIPEMD-160")
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             address=       "1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn",

@@ -37,7 +37,7 @@ warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashli
 warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
 
 from .. import btcrseed
-import unittest, os, tempfile, shutil, filecmp, sys
+import unittest, os, tempfile, shutil, filecmp, sys, hashlib
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 
@@ -198,6 +198,13 @@ class TestRecoveryFromMPK(unittest.TestCase):
 
 
 class TestRecoveryFromAddress(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            hashlib.new(b"ripemd160")
+        except ValueError:
+            raise unittest.SkipTest("requires that hashlib implements RIPEMD-160")
 
     def address_tester(self, wallet_type, the_address, the_address_limit, correct_mnemonic, **kwds):
 
