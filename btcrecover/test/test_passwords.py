@@ -37,10 +37,8 @@ warnings.filterwarnings("ignore", r"Non-empty compiler output encountered\. Set 
 # except these from Armory:
 warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
 warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
-# except this from Google protobuf
-warnings.filterwarnings("ignore", r"Not importing directory '.*google': missing __init__.py", ImportWarning)
-# except this from PyWin32
-warnings.filterwarnings("ignore", r"Not importing directory '.*gen_py': missing __init__.py", ImportWarning)
+# except this from Google protobuf, PyWin32, and due to pkg_resources (via PyOpenCL) many others (see #62):
+warnings.filterwarnings("ignore", r"Not importing directory '.*': missing __init__.py", ImportWarning)
 
 from btcrecover import btcrpass
 import os, unittest, cPickle, tempfile, shutil, multiprocessing, gc, filecmp, sys, hashlib
