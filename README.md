@@ -5,20 +5,20 @@
 ## Features ##
 
  * Bitcoin wallet password recovery support for:
-     * [Armory](https://github.com/goatpig/BitcoinArmory)
+     * [Armory](https://btcarmory.com/)
      * [Bitcoin Unlimited](https://www.bitcoinunlimited.info/)/[Classic](https://bitcoinclassic.com/)/[XT](https://bitcoinxt.software/)/[Core](https://bitcoincore.org/)
-     * [MultiBit Classic](https://multibit.org/) and [MultiBit HD](https://beta.multibit.org/)
+     * [MultiBit HD](https://multibit.org/) and [MultiBit Classic](https://multibit.org/help/v0.5/help_contents.html)
      * [Electrum](https://electrum.org/) (1.x and 2.x)
-     * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://mac.hivewallet.com/)
+     * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://github.com/hivewallet/hive-mac/wiki/FAQ)
      * BIP-39 passphrases (e.g. [TREZOR](https://www.bitcointrezor.com/) & [Ledger](https://www.ledgerwallet.com/) passphrases)
      * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain.info](https://blockchain.info/wallet)
      * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Unlimited/Classic/XT/Core wallets
      * [Bitcoin Wallet for Android/BlackBerry](https://play.google.com/store/apps/details?id=de.schildbach.wallet) spending PINs and encrypted backups
-     * [KnC Wallet for Android](https://kncwallet.com/) encrypted backups
+     * [KnC Wallet for Android](https://github.com/kncgroup/bitcoin-wallet) encrypted backups
      * [Bither](https://bither.net/)
  * Altcoin password support for most wallets derived from one of those above, including:
-     * [Litecoin-Qt](https://litecoin.org/)
+     * [Litecoin Core](https://litecoin.org/)
      * [Electrum-LTC](https://electrum-ltc.org/)
      * [Litecoin Wallet for Android](https://litecoin.org/) encrypted backups
      * [Dogecoin Core](http://dogecoin.com/)
@@ -27,12 +27,12 @@
  * Bitcoin seed recovery support for:
      * [Electrum](https://electrum.org/) (1.x and 2.x, plus wallet file loading support)
      * BIP-32/39 compliant wallets ([bitcoinj](https://bitcoinj.github.io/)), including:
-         * [MultiBit HD](https://beta.multibit.org/)
+         * [MultiBit HD](https://multibit.org/)
          * [Bitcoin Wallet for Android/BlackBerry](https://play.google.com/store/apps/details?id=de.schildbach.wallet) (with seeds previously extracted by [decrypt\_bitcoinj\_seeds](https://github.com/gurnec/decrypt_bitcoinj_seed))
-         * [Hive for Android](https://play.google.com/store/apps/details?id=com.hivewallet.hive.cordova), [for iOS](https://itunes.apple.com/us/app/hive-wallet/id906990301), and [Hive Web](https://web.hivewallet.com/)
-         * [breadwallet for iOS](https://itunes.apple.com/us/app/breadwallet-bitcoin-wallet/id885251393)
+         * [Hive for Android](https://play.google.com/store/apps/details?id=com.hivewallet.hive.cordova), [for iOS](https://github.com/hivewallet/hive-ios), and [Hive Web](https://hivewallet.com/)
+         * [breadwallet for iOS](https://breadwallet.com/)
      * BIP-32/39/44 compliant wallets, including:
-         * [Mycelium for Android](https://play.google.com/store/apps/details?id=com.mycelium.wallet)
+         * [Mycelium for Android](https://wallet.mycelium.com/)
          * [TREZOR](https://www.bitcointrezor.com/)
          * [Ledger](https://www.ledgerwallet.com/)
          * [Bither](https://bither.net/)
