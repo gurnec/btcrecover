@@ -97,7 +97,7 @@ then try this instead:
 
         C:\Python27\Scripts\pip install pylibscrypt
 
- 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.12-msvc.zip>
+ 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.13-msvc.zip>
 
  3. Find the correct `libsodium.dll` file from the extracted files, it will be located at one of these two paths:
 
