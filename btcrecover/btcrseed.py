@@ -1034,8 +1034,15 @@ class WalletElectrum2(WalletBIP39):
     @staticmethod
     def is_wallet_file(wallet_file):
         wallet_file.seek(0)
-        # returns "maybe yes" or "definitely no"
-        return None if wallet_file.read(1) == b"{" else False
+        data = wallet_file.read(8)
+        if data[0] == b"{":
+            return None  # "maybe yes"
+        try:   data = base64.b64decode(data)
+        except TypeError: return False  # "definitely no"
+        if data.startswith(b"BIE1"):
+            sys.exit("error: Electrum 2.8+ fully-encrypted wallet files cannot be read,\n"
+                     "try to recover from your master extended public key or an address instead")
+        return False  # "definitely no"
 
     # Load an Electrum2 wallet file (the part of it we need, just the master public key)
     @classmethod
