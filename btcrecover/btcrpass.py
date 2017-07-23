@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.16.3"
+__version__          =  "0.17.0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2346,7 +2346,8 @@ class WalletBither(object):
 # @register_wallet_class - not a "registed" wallet since there are no wallet files nor extracts
 class WalletBIP39(object):
 
-    def __init__(self, mpk = None, address = None, address_limit = None, mnemonic = None, lang = None, path = None, is_performance = False):
+    def __init__(self, mpk = None, addresses = None, address_limit = None, addressdb_filename = None,
+                 mnemonic = None, lang = None, path = None, is_performance = False):
         global normalize, hmac
         from unicodedata import normalize
         import hmac
@@ -2355,7 +2356,14 @@ class WalletBIP39(object):
         # Create a btcrseed.WalletBIP39 object which will do most of the work;
         # this also interactively prompts the user if not enough command-line options were included
         from . import btcrseed
-        self.btcrseed_wallet = btcrseed.WalletBIP39.create_from_params(mpk, address, address_limit, path, is_performance)
+        if addressdb_filename:
+            from .addressset import AddressSet
+            print("Loading address database ...")
+            hash160s = AddressSet.fromfile(open(addressdb_filename, "rb"))
+        else:
+            hash160s = None
+        self.btcrseed_wallet = btcrseed.WalletBIP39.create_from_params(
+            mpk, addresses, address_limit, hash160s, path, is_performance)
         if is_performance and not mnemonic:
             mnemonic = "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         self.btcrseed_wallet.config_mnemonic(mnemonic, lang)
@@ -2812,6 +2820,8 @@ def enable_pause():
             pause_registered = False
 
 
+ADDRESSDB_DEF_FILENAME = "addresses.db"  # copied from btrseed
+
 # can raise an exception on some platforms
 try:                  cpus = multiprocessing.cpu_count()
 except StandardError: cpus = 1
@@ -2861,8 +2871,9 @@ def init_parser_common():
         bip39_group = parser_common.add_argument_group("BIP-39 passwords")
         bip39_group.add_argument("--bip39",      action="store_true",   help="search for a BIP-39 password instead of from a wallet")
         bip39_group.add_argument("--mpk",        metavar="XPUB",        help="the master public key")
-        bip39_group.add_argument("--addr",       metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
-        bip39_group.add_argument("--addr-limit", metavar="COUNT",       help="if using an address, the gap limit")
+        bip39_group.add_argument("--addrs",      metavar="BASE58-ADDR", nargs="+", help="if not using an mpk, address(es) in the wallet")
+        bip39_group.add_argument("--addressdb",  metavar="FILE", nargs="?", help="if not using addrs, use a full address database (default: %(const)s)", const=ADDRESSDB_DEF_FILENAME)
+        bip39_group.add_argument("--addr-limit", type=int, metavar="COUNT", help="if using addrs or addressdb, the generation limit")
         bip39_group.add_argument("--language",   metavar="LANG-CODE",   help="the wordlist language to use (see wordlists/README.md, default: auto)")
         bip39_group.add_argument("--bip32-path", metavar="PATH",        help="path (e.g. m/0'/0/) excluding the final index (default: BIP-44 account 0)")
         bip39_group.add_argument("--mnemonic-prompt", action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
@@ -3414,7 +3425,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         else:
             mnemonic = None
 
-        loaded_wallet = WalletBIP39(args.mpk, args.addr, args.addr_limit, mnemonic, args.language, args.bip32_path, args.performance)
+        loaded_wallet = WalletBIP39(args.mpk, args.addrs, args.addr_limit, args.addressdb,
+                                    mnemonic, args.language, args.bip32_path, args.performance)
 
 
     # Parse and syntax check all of the GPU related options

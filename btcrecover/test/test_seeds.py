@@ -37,7 +37,8 @@ warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashli
 warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
 
 from .. import btcrseed
-import unittest, os, tempfile, shutil, filecmp, sys, hashlib
+from ..addressset import AddressSet
+import unittest, os, tempfile, shutil, filecmp, sys, hashlib, random, io, mmap, pickle
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 
@@ -208,7 +209,7 @@ class TestRecoveryFromAddress(unittest.TestCase):
 
     def address_tester(self, wallet_type, the_address, the_address_limit, correct_mnemonic, **kwds):
 
-        wallet = wallet_type.create_from_params(address=the_address, address_limit=the_address_limit)
+        wallet = wallet_type.create_from_params(addresses=[the_address], address_limit=the_address_limit)
 
         # Convert the mnemonic string into a mnemonic_ids_guess
         wallet.config_mnemonic(correct_mnemonic, **kwds)
@@ -223,7 +224,7 @@ class TestRecoveryFromAddress(unittest.TestCase):
             (wrong_mnemonic_iter.next(), correct_mnemonic_ids, wrong_mnemonic_iter.next())), (correct_mnemonic_ids, 2))
 
         # Make sure the address_limit is respected (note the "the_address_limit-1" below)
-        wallet = wallet_type.create_from_params(address=the_address, address_limit=the_address_limit-1)
+        wallet = wallet_type.create_from_params(addresses=[the_address], address_limit=the_address_limit-1)
         wallet.config_mnemonic(correct_mnemonic, **kwds)
         self.assertEqual(wallet.return_verified_password_or_false(
             (correct_mnemonic_ids,)), (False, 1))
@@ -248,6 +249,153 @@ class TestRecoveryFromAddress(unittest.TestCase):
 
     def test_bip44(self):
         self.address_tester(btcrseed.WalletBIP39, "1AiAYaVJ7SCkDeNqgFz7UDecycgzb6LoT3", 2,
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop")
+
+
+class TestAddressSet(unittest.TestCase):
+    HASH_BYTES     = 1
+    TABLE_LEN      = 2 ** (8*HASH_BYTES)
+    BYTES_PER_ADDR = AddressSet(1)._bytes_per_addr
+
+    def test_add(self):
+        aset = AddressSet(self.TABLE_LEN)
+        addr = "".join(chr(b) for b in xrange(20))
+        self.assertNotIn(addr, aset)
+        aset.add(addr)
+        self.assertIn   (addr, aset)
+        self.assertEqual(len(aset), 1)
+
+    def collision_tester(self, aset, addr1, addr2):
+        # the last byte is the "hash", and only the next 8 rightmost bytes are stored
+        aset.add(addr1)
+        self.assertIn   (addr1, aset)
+        self.assertNotIn(addr2, aset)
+        self.assertEqual(len(aset), 1)
+        aset.add(addr2)
+        self.assertIn   (addr1, aset)
+        self.assertIn   (addr2, aset)
+        self.assertEqual(len(aset), 2)
+        return aset
+    #
+    def test_collision(self):
+        aset  = AddressSet(self.TABLE_LEN)
+        addr1 = "".join(chr(b) for b in xrange(20))
+        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR), "\0")
+        self.collision_tester(aset, addr1, addr2)
+    #
+    def test_collision_fail(self):
+        aset  = AddressSet(self.TABLE_LEN)
+        addr1 = "".join(chr(b) for b in xrange(20))
+        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR - 1), "\0")
+        self.assertRaises(unittest.TestCase.failureException, self.collision_tester, aset, addr1, addr2)
+        self.assertEqual(len(aset), 1)
+
+    def test_null(self):
+        aset = AddressSet(self.TABLE_LEN)
+        addr = 20 * "\0"
+        aset.add(addr)
+        self.assertNotIn(addr, aset)
+        self.assertEqual(len(aset), 0)
+
+    # very unlikely to fail; if it does, there's probably a significant problem
+    def test_false_positives(self):
+        aset = AddressSet(131072, bytes_per_addr=5)  # reduce bytes_per_addr to increase failure probability
+        rand_byte_count = aset._hash_bytes + aset._bytes_per_addr
+        nonrand_prefix  = (20 - rand_byte_count) * "\0"
+        for i in xrange(aset._max_len):
+            aset.add(nonrand_prefix + "".join(chr(random.randrange(256)) for i in xrange(rand_byte_count)))
+        for i in xrange(524288):
+            self.assertNotIn(
+                nonrand_prefix + "".join(chr(random.randrange(256)) for i in xrange(rand_byte_count)),
+                aset)
+
+    def test_file(self):
+        aset = AddressSet(self.TABLE_LEN)
+        addr = "".join(chr(b) for b in xrange(20))
+        aset.add(addr)
+        dbfile = tempfile.TemporaryFile()
+        aset.tofile(dbfile)
+        dbfile.seek(0)
+        aset = AddressSet.fromfile(dbfile)
+        self.assertTrue(dbfile.closed)  # should be closed by AddressSet in read-only mode
+        self.assertIn(addr, aset)
+        self.assertEqual(len(aset), 1)
+
+    def test_file_update(self):
+        aset   = AddressSet(self.TABLE_LEN)
+        dbfile = tempfile.NamedTemporaryFile(delete=False)
+        try:
+            aset.tofile(dbfile)
+            dbfile.seek(0)
+            aset = AddressSet.fromfile(dbfile, mmap_access=mmap.ACCESS_WRITE)
+            addr = "".join(chr(b) for b in xrange(20))
+            aset.add(addr)
+            aset.close()
+            self.assertTrue(dbfile.closed)
+            dbfile = open(dbfile.name, "rb")
+            aset = AddressSet.fromfile(dbfile)
+            self.assertIn(addr, aset)
+            self.assertEqual(len(aset), 1)
+        finally:
+            if aset is not None:
+                aset.close()
+            dbfile.close()
+            os.remove(dbfile.name)
+
+    def test_pickle_mmap(self):
+        aset = AddressSet(self.TABLE_LEN)
+        addr = "".join(chr(b) for b in xrange(20))
+        aset.add(addr)
+        dbfile = tempfile.NamedTemporaryFile(delete=False)
+        try:
+            aset.tofile(dbfile)
+            dbfile.seek(0)
+            aset = AddressSet.fromfile(dbfile)  # now it's an mmap
+            pickled = pickle.dumps(aset, protocol=pickle.HIGHEST_PROTOCOL)
+            aset.close()  # also closes the file
+            aset = pickle.loads(pickled)
+            self.assertIn(addr, aset)
+            self.assertEqual(len(aset), 1)
+        finally:
+            if aset is not None:
+                aset.close()
+            dbfile.close()
+            os.remove(dbfile.name)
+
+
+class TestRecoveryFromAddressDB(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.isfile(btcrseed.ADDRESSDB_DEF_FILENAME):
+            raise unittest.SkipTest("requires '"+btcrseed.ADDRESSDB_DEF_FILENAME+"' file in the current directory")
+
+    def addressdb_tester(self, wallet_type, the_address_limit, correct_mnemonic, **kwds):
+
+        addressdb = AddressSet.fromfile(open(btcrseed.ADDRESSDB_DEF_FILENAME, "rb"), preload=False)
+        wallet = wallet_type.create_from_params(hash160s=addressdb, address_limit=the_address_limit)
+
+        # Convert the mnemonic string into a mnemonic_ids_guess
+        wallet.config_mnemonic(correct_mnemonic, **kwds)
+        correct_mnemonic_ids = btcrseed.mnemonic_ids_guess
+
+        # Creates wrong mnemonic id guesses
+        wrong_mnemonic_iter = wallet.performance_iterator()
+
+        self.assertEqual(wallet.return_verified_password_or_false(
+            (wrong_mnemonic_iter.next(), wrong_mnemonic_iter.next())), (False, 2))
+        self.assertEqual(wallet.return_verified_password_or_false(
+            (wrong_mnemonic_iter.next(), correct_mnemonic_ids, wrong_mnemonic_iter.next())), (correct_mnemonic_ids, 2))
+
+        # Make sure the address_limit is respected (note the "the_address_limit-1" below)
+        wallet = wallet_type.create_from_params(hash160s=addressdb, address_limit=the_address_limit-1)
+        wallet.config_mnemonic(correct_mnemonic, **kwds)
+        self.assertEqual(wallet.return_verified_password_or_false(
+            (correct_mnemonic_ids,)), (False, 1))
+
+    def test_bip44(self):
+        # 1D5noXUg7za4W3zjhgCmn1cFewqRrXSM9B is in block 476446
+        self.addressdb_tester(btcrseed.WalletBIP39, 5,
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
 

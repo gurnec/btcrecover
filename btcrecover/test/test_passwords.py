@@ -1220,7 +1220,7 @@ class Test08BIP39Passwords(unittest.TestCase):
             self.skipTest("requires that hashlib implements RIPEMD-160")
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
-            address=       "1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn",
+            addresses=     ["1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn"],
             address_limit= 5,
             mnemonic=      "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         )

@@ -28,11 +28,12 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.5.7"
+__version__ = "0.6.0"
 
 from . import btcrpass
+from .addressset import AddressSet
 import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
-       unicodedata, collections, struct, glob, atexit, re
+       unicodedata, collections, struct, glob, atexit, re, random
 
 btcrpass.add_armory_library_path()
 from CppBlockUtils import CryptoECDSA, SecureBinaryData
@@ -40,6 +41,8 @@ from CppBlockUtils import CryptoECDSA, SecureBinaryData
 
 # Order of the base point generator, from SEC 2
 GENERATOR_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141L
+
+ADDRESSDB_DEF_FILENAME = "addresses.db"
 
 
 ################################### Utility Functions ###################################
@@ -269,10 +272,10 @@ class WalletElectrum1(object):
         self._master_pubkey = SecureBinaryData("\x04" + master_pubkey)  # prepend the uncompressed tag
         return self
 
-    # Creates a wallet instance from either an mpk or an address and address_limit.
-    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    # Creates a wallet instance from either an mpk, an addresses container and address_limit,
+    # or a hash160s container. If none of these were supplied, prompts the user for each.
     @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None, is_performance = False):
+    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, is_performance = False):
         self = cls(loading=True)
 
         # Process the mpk (master public key) argument
@@ -285,27 +288,40 @@ class WalletElectrum1(object):
             except TypeError as e:
                 raise ValueError(e)  # consistently raise ValueError for any bad inputs
 
-        # Process the address argument
-        if address:
+        # Process the hash160s argument
+        if hash160s:
             if mpk:
-                print("warning: address is ignored when an mpk is provided", file=sys.stderr)
+                print("warning: addressdb is ignored when an mpk is provided", file=sys.stderr)
+                hash160s = None
             else:
-                self._known_hash160, version_byte = base58check_to_hash160(address)
-                if ord(version_byte) != 0:
-                    raise ValueError("the address must be a P2PKH address")
+                self._known_hash160s = hash160s
+
+        # Process the addresses argument
+        if addresses:
+            if mpk or hash160s:
+                print("warning: addresses are ignored when an mpk or addressdb is provided", file=sys.stderr)
+                addresses = None
+            else:
+                self._known_hash160s = set()
+                for address in addresses:
+                    hash160, version_byte = base58check_to_hash160(address)
+                    if ord(version_byte) != 0:
+                        raise ValueError("the addresses must be P2PKH addresses")
+                    self._known_hash160s.add(hash160)
 
         # Process the address_limit argument
         if address_limit:
             if mpk:
                 print("warning: address limit is ignored when an mpk is provided", file=sys.stderr)
+                address_limit = None
             else:
                 address_limit = int(address_limit)
                 if address_limit <= 0:
                     raise ValueError("the address limit must be > 0")
                 # (it's assigned to self._addrs_to_generate later)
 
-        # If neither mpk nor address arguments were provided, prompt the user for an mpk first
-        if not mpk and not address:
+        # If mpk, addresses, and hash160s arguments were all not provided, prompt the user for an mpk first
+        if not mpk and not addresses and not hash160s:
             init_gui()
             while True:
                 mpk = tkSimpleDialog.askstring("Electrum 1.x master public key",
@@ -328,36 +344,57 @@ class WalletElectrum1(object):
             assert len(mpk) == 64, "mpk is 64 bytes long (after decoding from hex)"
             self._master_pubkey = SecureBinaryData("\x04" + mpk)  # prepend the uncompressed tag
 
-        # If an mpk wasn't provided (at all), and an address also wasn't provided
-        # (in the original function call), prompt the user for an address.
+        # If an mpk wasn't provided (at all), and addresses and hash160s arguments also
+        # weren't provided (in the original function call), prompt the user for addresses.
         else:
-            if not address:
+            if not addresses and not hash160s:
                 # init_gui() was already called above
+                self._known_hash160s = None
                 while True:
-                    address = tkSimpleDialog.askstring("Bitcoin address",
-                        "Please enter an address from your wallet, preferably one created early in your wallet's lifetime:",
+                    addresses = tkSimpleDialog.askstring("Bitcoin addresses",
+                        "Please enter at least one address from your wallet, "
+                        "preferably some created early in your wallet's lifetime:",
                         initialvalue="17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8" if is_performance else None)
-                    if not address:
-                        sys.exit("canceled")
-                    address = address.strip()
+                    if not addresses: break
+                    addresses.replace(",", " ")
+                    addresses.replace(";", " ")
+                    addresses = addresses.split()
+                    if not addresses: break
+                    self._known_hash160s = set()
                     try:
-                        # (raises ValueError() on failure):
-                        self._known_hash160, version_byte = base58check_to_hash160(address)
-                        if ord(version_byte) != 0:
-                            raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                        for address in addresses:
+                            # (raises ValueError() on failure):
+                            hash160, version_byte = base58check_to_hash160(address)
+                            if ord(version_byte) != 0:
+                                raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                            self._known_hash160s.add(hash160)
                         break
                     except ValueError as e:
-                        tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
+                        tkMessageBox.showerror("Bitcoin addresses", "An entered address is invalid ({})".format(e))
+                        self._known_hash160s = None
+
+                # If there are still no hash160s available (and no mpk), check for an address database before giving up
+                if not self._known_hash160s:
+                    if os.path.isfile(ADDRESSDB_DEF_FILENAME):
+                        print("Using address database file '"+ADDRESSDB_DEF_FILENAME+"' the in current directory.")
+                    else:
+                        print("notice: address database file '"+ADDRESSDB_DEF_FILENAME+"' does not exist in current directory", file=sys.stderr)
+                        sys.exit("canceled")
 
             if not address_limit:
                 init_gui()  # might not have been called yet
+                before_the = "one(s) you just entered" if addresses else "first one in actual use"
                 address_limit = tkSimpleDialog.askinteger("Address limit",
                     "Please enter the address generation limit. Smaller will\n"
                     "be faster, but it must be equal to at least the number\n"
-                    "of addresses created before the one you just entered:", minvalue=1)
+                    "of addresses created before the "+before_the+":", minvalue=1)
                 if not address_limit:
                     sys.exit("canceled")
             self._addrs_to_generate = address_limit
+
+            if not self._known_hash160s:
+                print("Loading address database ...")
+                self._known_hash160s = AddressSet.fromfile(open(ADDRESSDB_DEF_FILENAME, "rb"))
 
         return self
 
@@ -392,7 +429,7 @@ class WalletElectrum1(object):
                 if crypto_ecdsa.CheckPubPrivKeyMatch(SecureBinaryData(seed), self._master_pubkey):
                     return mnemonic_ids, count  # found it
 
-            # Else derive addrs_to_generate addresses from the seed, searching for a match with known_hash160
+            # Else derive addrs_to_generate addresses from the seed, searching for a match with known_hash160s
             else:
                 master_privkey = bytes_to_int(seed)
 
@@ -413,7 +450,7 @@ class WalletElectrum1(object):
 
                     d_pubkey  = crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey))
 
-                    if pubkey_to_hash160(d_pubkey.toBinStr()) == self._known_hash160:  # assumes uncompressed
+                    if pubkey_to_hash160(d_pubkey.toBinStr()) in self._known_hash160s:  # assumes uncompressed
                         return mnemonic_ids, count  # found it
 
         return False, count
@@ -462,10 +499,13 @@ class WalletElectrum1(object):
             print("Seed sentence was too long, deleting {} word{} from each guess."
                   .format(num_deletes, "s" if num_deletes > 1 else ""))
 
-    # Produces an infinite stream of differing mnemonic_ids guesses (for testing)
+    # Produces a long stream of differing and incorrect mnemonic_ids guesses (for testing)
     @staticmethod
     def performance_iterator():
-        return itertools.product(xrange(len(WalletElectrum1._words)), repeat = 12)
+        # See WalletBIP39.performance_iterator() for details
+        prefix = tuple(random.randrange(len(WalletElectrum1._words)) for i in xrange(8))
+        for guess in itertools.product(xrange(len(WalletElectrum1._words)), repeat = 4):
+            yield prefix + guess
 
 
 ############### BIP32 ###############
@@ -523,11 +563,11 @@ class WalletBIP32(object):
                 calc_passwords_per_second(self._checksum_ratio, self._kdf_overhead, scalar_multiplies)
         return max(int(round(self._passwords_per_second * seconds)), 1)
 
-    # Creates a wallet instance from either an mpk or an address and address_limit.
-    # If neither an mpk nor address is supplied, prompts the user for one or the other.
+    # Creates a wallet instance from either an mpk, an addresses container and address_limit,
+    # or a hash160s container. If none of these were supplied, prompts the user for each.
     # (the BIP32 key derivation path is by default BIP44's account 0)
     @classmethod
-    def create_from_params(cls, mpk = None, address = None, address_limit = None, path = None, is_performance = False):
+    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, path = None, is_performance = False):
         self = cls(path, loading=True)
 
         # Process the mpk (master public key) argument
@@ -537,32 +577,45 @@ class WalletBIP32(object):
             mpk = base58check_to_bip32(mpk)
             # (it's processed more later)
 
-        # Process the address argument
-        if address:
+        # Process the hash160s argument
+        if hash160s:
             if mpk:
-                print("warning: address is ignored when an mpk is provided", file=sys.stderr)
+                print("warning: addressdb is ignored when an mpk is provided", file=sys.stderr)
+                hash160s = None
             else:
-                self._known_hash160, version_byte = base58check_to_hash160(address)
-                if ord(version_byte) != 0:
-                    raise ValueError("the address must be a P2PKH address")
+                self._known_hash160s = hash160s
+
+        # Process the addresses argument
+        if addresses:
+            if mpk or hash160s:
+                print("warning: addresses are ignored when an mpk or addressdb is provided", file=sys.stderr)
+                addresses = None
+            else:
+                self._known_hash160s = set()
+                for address in addresses:
+                    hash160, version_byte = base58check_to_hash160(address)
+                    if ord(version_byte) != 0:
+                        raise ValueError("the addresses must be P2PKH addresses")
+                    self._known_hash160s.add(hash160)
 
         # Process the address_limit argument
         if address_limit:
             if mpk:
                 print("warning: address limit is ignored when an mpk is provided", file=sys.stderr)
+                address_limit = None
             else:
                 address_limit = int(address_limit)
                 if address_limit <= 0:
                     raise ValueError("the address limit must be > 0")
                 # (it's assigned to self._addrs_to_generate later)
 
-        # If neither mpk nor address arguments were provided, prompt the user for an mpk first
-        if not mpk and not address:
+        # If mpk, addresses, and hash160s arguments were all not provided, prompt the user for an mpk first
+        if not mpk and not addresses and not hash160s:
             init_gui()
             while True:
                 mpk = tkSimpleDialog.askstring("Master extended public key",
                     "Please enter your master extended public key (xpub) if you "
-                    "have it, or click Cancel to search by an address instead",
+                    "have it, or click Cancel to search by an address instead:",
                     initialvalue=self._performance_xpub() if is_performance else None)
                 if not mpk:
                     break  # if they pressed Cancel, stop prompting for an mpk
@@ -610,36 +663,56 @@ class WalletBIP32(object):
             if self._append_last_index:
                 self._path_indexes += 0,
 
-            # If an mpk wasn't provided (at all), and an address also wasn't provided
-            # (in the original function call), prompt the user for an address.
-            if not address:
+            # If an mpk wasn't provided (at all), and addresses and hash160s arguments also
+            # weren't provided (in the original function call), prompt the user for addresses.
+            if not addresses and not hash160s:
                 # init_gui() was already called above
+                self._known_hash160s = None
                 while True:
-                    address = tkSimpleDialog.askstring("Bitcoin address",
-                        "Please enter an address from the first account in your wallet,\n"
-                        "preferably one created early in the account's lifetime:",
+                    addresses = tkSimpleDialog.askstring("Bitcoin addresses",
+                        "Please enter at least one address from the first account in your wallet, "
+                        "preferably some created early in the account's lifetime:",
                         initialvalue="17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8" if is_performance else None)
-                    if not address:
-                        sys.exit("canceled")
-                    address = address.strip()
+                    if not addresses: break
+                    addresses.replace(",", " ")
+                    addresses.replace(";", " ")
+                    addresses = addresses.split()
+                    if not addresses: break
+                    self._known_hash160s = set()
                     try:
-                        # (raises ValueError() on failure):
-                        self._known_hash160, version_byte = base58check_to_hash160(address)
-                        if ord(version_byte) != 0:
-                            raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                        for address in addresses:
+                            # (raises ValueError() on failure):
+                            hash160, version_byte = base58check_to_hash160(address)
+                            if ord(version_byte) != 0:
+                                raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
+                            self._known_hash160s.add(hash160)
                         break
                     except ValueError as e:
-                        tkMessageBox.showerror("Bitcoin address", "The entered address is invalid ({})".format(e))
+                        tkMessageBox.showerror("Bitcoin addresses", "An entered address is invalid ({})".format(e))
+                        self._known_hash160s = None
+
+                # If there are still no hash160s available (and no mpk), check for an address database before giving up
+                if not self._known_hash160s:
+                    if os.path.isfile(ADDRESSDB_DEF_FILENAME):
+                        print("Using address database file '"+ADDRESSDB_DEF_FILENAME+"' the in current directory.")
+                    else:
+                        print("notice: address database file '"+ADDRESSDB_DEF_FILENAME+"' does not exist in current directory", file=sys.stderr)
+                        sys.exit("canceled")
 
             if not address_limit:
                 init_gui()  # might not have been called yet
+                before_the = "one(s) you just entered" if addresses else "first one in actual use"
                 address_limit = tkSimpleDialog.askinteger("Address limit",
                     "Please enter the address generation limit. Smaller will\n"
                     "be faster, but it must be equal to at least the number\n"
-                    "of addresses created before the one you just entered:", minvalue=1)
+                    "of addresses created before the "+before_the+":", minvalue=1)
                 if not address_limit:
                     sys.exit("canceled")
             self._addrs_to_generate = address_limit
+
+            if not self._known_hash160s:
+                print("Loading address database ...")
+                self._known_hash160s = AddressSet.fromfile(open(ADDRESSDB_DEF_FILENAME, "rb"))
 
         return self
 
@@ -675,7 +748,7 @@ class WalletBIP32(object):
             if i < 2147483648:  # if it's a normal child key
                 data_to_hmac = compress_pubkey(  # derive the compressed public key
                     self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
-            else:                 # else it's a hardened child key
+            else:               # else it's a hardened child key
                 data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
             data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
 
@@ -694,7 +767,7 @@ class WalletBIP32(object):
         else:
             # (note: the rest doesn't support the last path element being hardened)
 
-            # Derive the final public keys, searching for a match with known_hash160
+            # Derive the final public keys, searching for a match with known_hash160s
             # (these first steps below are loop invariants)
             data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
                 self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
@@ -710,7 +783,7 @@ class WalletBIP32(object):
 
                 d_pubkey = compress_pubkey(  # a compressed public key as per BIP32
                     self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey_bytes)).toBinStr())
-                if pubkey_to_hash160(d_pubkey) == self._known_hash160:
+                if pubkey_to_hash160(d_pubkey) in self._known_hash160s:
                     return True
 
         return False
@@ -933,10 +1006,18 @@ class WalletBIP39(WalletBIP32):
         # Note: the words are already in BIP39's normalized form
         return btcrpass.pbkdf2_hmac("sha512", b" ".join(mnemonic_words), self._derivation_salt, 2048)
 
-    # Produces an infinite stream of differing mnemonic_ids guesses (for testing)
+    # Produces a long stream of differing and incorrect mnemonic_ids guesses (for testing)
     # (uses mnemonic_ids_guess, num_inserts, and num_deletes globals as set by config_mnemonic())
     def performance_iterator(self):
-        return itertools.product(self._words, repeat= len(mnemonic_ids_guess) + num_inserts - num_deletes)
+        # This used to just itereate through the entire space, starting at "abandon abandon abandon ..."
+        # and "counting" up from there. However "abandon abandon ... abandon about" is actually in use
+        # in the blockchain (buggy software or people just messing around), and in address-database
+        # mode this creates an unwanted positive hit, so now we have to start with a random prefix.
+        length = len(mnemonic_ids_guess) + num_inserts - num_deletes
+        assert length >= 12
+        prefix = tuple(random.choice(self._words) for i in xrange(length-4))
+        for guess in itertools.product(self._words, repeat=4):
+            yield prefix + guess
 
 
 ############### bitcoinj ###############
@@ -1423,8 +1504,9 @@ def main(argv):
         parser.add_argument("--wallet",      metavar="FILE",        help="the wallet file")
         parser.add_argument("--wallet-type", metavar="TYPE",        help="if not using a wallet file, the wallet type")
         parser.add_argument("--mpk",         metavar="XPUB-OR-HEX", help="if not using a wallet file, the master public key")
-        parser.add_argument("--addr",        metavar="BASE58-ADDR", help="if not using an mpk, an address in the wallet")
-        parser.add_argument("--addr-limit",  type=int, metavar="COUNT", help="if using an address, the gap limit")
+        parser.add_argument("--addrs",       metavar="BASE58-ADDR", nargs="+", help="if not using an mpk, address(es) in the wallet")
+        parser.add_argument("--addressdb",   metavar="FILE", nargs="?", help="if not using addrs, use a full address database (default: %(const)s)", const=ADDRESSDB_DEF_FILENAME)
+        parser.add_argument("--addr-limit",  type=int, metavar="COUNT", help="if using addrs or addressdb, the generation limit")
         parser.add_argument("--typos",       type=int, metavar="COUNT", help="the max number of mistakes to try (default: auto)")
         parser.add_argument("--big-typos",   type=int, metavar="COUNT", help="the max number of big (entirely different word) mistakes to try (default: auto or 0)")
         parser.add_argument("--min-typos",   type=int, metavar="COUNT", help="enforce a min # of mistakes per guess")
@@ -1486,17 +1568,20 @@ def main(argv):
             else:
                 create_from_params["mpk"] = args.mpk
 
-        if args.addr:
+        if args.addrs:
             if args.wallet:
-                print("warning: --addr is ignored when a wallet is provided", file=sys.stderr)
+                print("warning: --addrs is ignored when a wallet is provided", file=sys.stderr)
             else:
-                create_from_params["address"] = args.addr
+                create_from_params["addresses"] = args.addrs
 
         if args.addr_limit is not None:
             if args.wallet:
                 print("warning: --addr-limit is ignored when a wallet is provided", file=sys.stderr)
             else:
                 create_from_params["address_limit"] = args.addr_limit
+
+        if args.addressdb and not os.path.isfile(args.addressdb):
+            sys.exit("file '{}' does not exist".format(args.addressdb))
 
         if args.typos is not None:
             phase["typos"] = args.typos
@@ -1572,6 +1657,10 @@ def main(argv):
             if not args.mnemonic_prompt:
                 # Create a dummy mnemonic; only its language and length are used for anything
                 config_mnemonic_params["mnemonic_guess"] = " ".join("act" for i in xrange(args.mnemonic_length or 12))
+
+        if args.addressdb:
+            print("Loading address database ...")
+            create_from_params["hash160s"] = AddressSet.fromfile(open(args.addressdb, "rb"))
 
     else:  # else if no command-line args are present
         global pause_at_exit
