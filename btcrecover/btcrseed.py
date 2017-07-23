@@ -1529,7 +1529,8 @@ def main(argv):
             import getpass
             encoding = sys.stdin.encoding or "ASCII"
             if "utf" not in encoding.lower():
-                print("terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
+                print("warning: terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
+            print("(note your passphrase will not be displayed as you type)")
             while True:
                 passphrase = getpass.getpass("Please enter the passphrase you added when the seed was first created: ")
                 if not passphrase:

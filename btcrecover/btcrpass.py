@@ -278,6 +278,7 @@ def prompt_unicode_password(prompt, error_msg):
     encoding = sys.stdin.encoding or 'ASCII'
     if 'utf' not in encoding.lower():
         print(prog+": warning: terminal does not support UTF; passwords with non-ASCII chars might not work", file=sys.stderr)
+    prompt = b"(note your password will not be displayed as you type)\n" + prompt
     password = getpass(prompt)
     if not password:
         error_exit(error_msg)
