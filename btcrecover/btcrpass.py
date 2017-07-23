@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.16.2"
+__version__          =  "0.16.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2811,17 +2811,6 @@ def enable_pause():
             pause_registered = False
 
 
-# argparse type functions
-def strings_list(argval):
-    return argval.split(b",")
-#
-def positive_ints_list(argval):
-    try:   result = map(int, argval.split(","))
-    except ValueError: raise argparse.ArgumentTypeError("items in this comma-separated list must be positive integers")
-    if not all(n > 0 for n in result):
-        raise argparse.ArgumentTypeError("integers in this list must be > 0")
-    return result
-
 # can raise an exception on some platforms
 try:                  cpus = multiprocessing.cpu_count()
 except StandardError: cpus = 1
@@ -2878,11 +2867,11 @@ def init_parser_common():
         bip39_group.add_argument("--mnemonic-prompt", action="store_true", help="prompt for the mnemonic guess via the terminal (default: via the GUI)")
         gpu_group = parser_common.add_argument_group("GPU acceleration")
         gpu_group.add_argument("--enable-gpu", action="store_true",     help="enable experimental OpenCL-based GPU acceleration (only supports Bitcoin Core wallets and extracts)")
-        gpu_group.add_argument("--global-ws",  type=positive_ints_list, default=[4096], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL global work size (default: %(default)s)")
-        gpu_group.add_argument("--local-ws",   type=positive_ints_list, default=[None], metavar="PASSWORD-COUNT-1[,PASSWORD-COUNT-2...]", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
+        gpu_group.add_argument("--global-ws",  type=int, nargs="+",     default=[4096], metavar="PASSWORD-COUNT", help="OpenCL global work size (default: 4096)")
+        gpu_group.add_argument("--local-ws",   type=int, nargs="+",     default=[None], metavar="PASSWORD-COUNT", help="OpenCL local work size; --global-ws must be evenly divisible by --local-ws (default: auto)")
         gpu_group.add_argument("--mem-factor", type=int,                default=1,      metavar="FACTOR", help="enable memory-saving space-time tradeoff for Armory")
         gpu_group.add_argument("--calc-memory",action="store_true",     help="list the memory requirements for an Armory wallet")
-        gpu_group.add_argument("--gpu-names",  type=strings_list,       metavar="NAME-OR-ID-1[,NAME-OR-ID-2...]", help="choose GPU(s) on multi-GPU systems (default: auto)")
+        gpu_group.add_argument("--gpu-names",  nargs="+",               metavar="NAME-OR-ID", help="choose GPU(s) on multi-GPU systems (default: auto)")
         gpu_group.add_argument("--list-gpus",  action="store_true",     help="list available GPU names and IDs, then exit")
         gpu_group.add_argument("--int-rate",   type=int, default=200,   metavar="RATE", help="interrupt rate: raise to improve PC's responsiveness at the expense of search performance (default: %(default)s)")
         parser_common_initialized = True
@@ -3488,10 +3477,12 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                 error_exit("number of", argname, "integers must be either one or be the number of GPUs utilized")
             arglist.extend(arglist * (len(devices) - 1))
         #
-        # Check the values of --global-ws and --local-ws (already known to be positive ints)
+        # Check the values of --global-ws and --local-ws
         local_ws_warning = False
         if args.local_ws[0] is not None:  # if one is specified, they're all specified
             for i in xrange(len(args.local_ws)):
+                if args.local_ws[i] < 1:
+                    error_exit("each --local-ws must be a postive integer")
                 if args.local_ws[i] > devices[i].max_work_group_size:
                     error_exit("--local-ws of", args.local_ws[i], "exceeds max of", devices[i].max_work_group_size, "for GPU '"+devices[i].name.strip()+"'")
                 if args.global_ws[i] % args.local_ws[i] != 0:
@@ -3500,8 +3491,10 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                     print(prog+": warning: each --local-ws should probably be divisible by 32 for good performance", file=sys.stderr)
                     local_ws_warning = True
         for ws in args.global_ws:
+            if ws < 1:
+                error_exit("each --global-ws must be a postive integer")
             if isinstance(loaded_wallet, WalletArmory) and ws % 4 != 0:
-                error_exit("each --global_ws must be divisible by 4 for Armory wallets")
+                error_exit("each --global-ws must be divisible by 4 for Armory wallets")
             if ws % 32 != 0:
                 print(prog+": warning: each --global-ws should probably be divisible by 32 for good performance", file=sys.stderr)
                 break
