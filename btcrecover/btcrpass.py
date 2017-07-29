@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.0"
+__version__          =  "0.17.1"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2733,13 +2733,13 @@ class MakePeekable(object):
 # Opens a new or returns an already-opened file, if it passes the specified constraints.
 # * Only examines one file: if filename == "__funccall" and funccall_file is not None,
 #   use it. Otherwise if filename is not None, use it. Otherwise if default_filename
-#   exists, use it. Otherwise, return None.
+#   exists, use it (possibly with its extension duplicated). Otherwise, return None.
 # * After deciding which one file to potentially use, check it against the require_data
 #   or new_or_empty "no-exception" constraints and just return None if either fails.
 #   (These are "soft" fails which don't raise exceptions.)
 # * Tries to open (if not already opened) and return the file, letting any exception
 #   raised by open (a "hard" fail) to pass up.
-# * For Unicode builds (when tstr == unicode), returns a io.TextIOBase which produces
+# * For Unicode builds (when tstr == unicode), returns an io.TextIOBase which produces
 #   unicode strings if and only if mode is text (is not binary / does not contain "b").
 # * The results of opening stdin more than once are undefined.
 def open_or_use(filename, mode = "r",
@@ -2791,6 +2791,13 @@ def open_or_use(filename, mode = "r",
             return sys.stdin
         if os.path.isfile(default_filename):
             filename = default_filename
+        else:
+            # For default filenames only, try doubling the extension to help users who don't realize
+            # their shell is hiding the extension (and thus the actual file has "two" extensions)
+            default_filename, default_ext = os.path.splitext(default_filename)
+            default_filename += default_ext + default_ext
+            if os.path.isfile(default_filename):
+                filename = default_filename
     if not filename:
         return None
     #
@@ -2938,6 +2945,10 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # is changed (due to reading a tokenlist or restore file), we redo parser.parse_args() which
     # changes args, so we only do this early on before most args processing takes place.
 
+    # If no args are present on the command line (e.g. user double-clicked the script
+    # in the shell), enable --pause by default so user doesn't miss any error messages
+    if not effective_argv: enable_pause()
+
     # Create a parser which can parse any supported option, and run it
     global args
     init_parser_common()
@@ -3003,7 +3014,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if not (args.restore or args.passwordlist or args.performance or base_iterator):
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
             default_filename=TOKENS_AUTO_FILENAME, permit_stdin=True, make_peekable=True)
-        if hasattr(tokenlist_file, "name") and tokenlist_file.name == TOKENS_AUTO_FILENAME:
+        if hasattr(tokenlist_file, "name") and tokenlist_file.name.startswith(TOKENS_AUTO_FILENAME):
             enable_pause()  # enabled by default when using btcrecover-tokens-auto.txt
     else:
         tokenlist_file = None
@@ -3068,7 +3079,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         # We finally know the tokenlist filename; open it here
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
             default_filename=TOKENS_AUTO_FILENAME, permit_stdin=True, make_peekable=True)
-        if hasattr(tokenlist_file, "name") and tokenlist_file.name == TOKENS_AUTO_FILENAME:
+        if hasattr(tokenlist_file, "name") and tokenlist_file.name.startswith(TOKENS_AUTO_FILENAME):
             enable_pause()  # enabled by default when using btcrecover-tokens-auto.txt
         # Display a warning if any options (all ignored) were specified in the tokenlist file
         if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
@@ -3694,7 +3705,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                 passwordlist_file == sys.stdin   or
                 args.exclude_passwordlist == '-' or
                 args.android_pin                 or
-                args.blockchain_secondpass
+                args.blockchain_secondpass       or
+                args.mnemonic_prompt
             ) and (
                 passwordlist_file != sys.stdin   or
                 passwordlist_allcached
