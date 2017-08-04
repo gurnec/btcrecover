@@ -1053,6 +1053,10 @@ class Test07WalletDecryption(unittest.TestCase):
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_hdonly(self):
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
+        try:
+            hashlib.new(b"ripemd160")
+        except ValueError:
+            self.skipTest("requires that hashlib implements RIPEMD-160")
         self.wallet_tester("bither-hdonly-wallet.db")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
@@ -1135,6 +1139,10 @@ class Test07WalletDecryption(unittest.TestCase):
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
     def test_bither_hdonly_pp(self):
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
+        try:
+            hashlib.new(b"ripemd160")
+        except ValueError:
+            self.skipTest("requires that hashlib implements RIPEMD-160")
         self.wallet_tester("bither-hdonly-wallet.db", force_purepython=True)
 
     def test_msigna_pp(self):

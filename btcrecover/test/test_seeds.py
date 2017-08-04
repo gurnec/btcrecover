@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # test_seeds.py -- unit tests for seedrecover.py
-# Copyright (C) 2014-2016 Christopher Gurnee
+# Copyright (C) 2014-2017 Christopher Gurnee
 #
 # This file is part of btcrecover.
 #
@@ -38,7 +38,7 @@ warnings.filterwarnings("ignore", r"import \* only allowed at module level", Syn
 
 from .. import btcrseed
 from ..addressset import AddressSet
-import unittest, os, tempfile, shutil, filecmp, sys, hashlib, random, io, mmap, pickle
+import unittest, os, tempfile, shutil, filecmp, sys, hashlib, random, mmap, pickle
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
 
@@ -198,6 +198,18 @@ class TestRecoveryFromMPK(unittest.TestCase):
             passphrase=u"btcr-тест-пароль")
 
 
+is_sha3_loadable = None
+def can_load_sha3():
+    global is_sha3_loadable
+    if is_sha3_loadable is None:
+        try:
+            import sha3
+            is_sha3_loadable = True
+        except ImportError:
+            is_sha3_loadable = False
+    return is_sha3_loadable
+
+
 class TestRecoveryFromAddress(unittest.TestCase):
 
     @classmethod
@@ -208,6 +220,7 @@ class TestRecoveryFromAddress(unittest.TestCase):
             raise unittest.SkipTest("requires that hashlib implements RIPEMD-160")
 
     def address_tester(self, wallet_type, the_address, the_address_limit, correct_mnemonic, **kwds):
+        assert the_address_limit > 1
 
         wallet = wallet_type.create_from_params(addresses=[the_address], address_limit=the_address_limit)
 
@@ -251,6 +264,11 @@ class TestRecoveryFromAddress(unittest.TestCase):
         self.address_tester(btcrseed.WalletBIP39, "1AiAYaVJ7SCkDeNqgFz7UDecycgzb6LoT3", 2,
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
+    @unittest.skipUnless(can_load_sha3(), "requires pysha3")
+    def test_ethereum(self):
+        self.address_tester(btcrseed.WalletEthereum, "0x9544a5BD7D9AACDc0A12c360C1ec6182C84bab11", 3,
+            "cable top mango offer mule air lounge refuse stove text cattle opera")
+
 
 class TestAddressSet(unittest.TestCase):
     HASH_BYTES     = 1
@@ -266,7 +284,6 @@ class TestAddressSet(unittest.TestCase):
         self.assertEqual(len(aset), 1)
 
     def collision_tester(self, aset, addr1, addr2):
-        # the last byte is the "hash", and only the next 8 rightmost bytes are stored
         aset.add(addr1)
         self.assertIn   (addr1, aset)
         self.assertNotIn(addr2, aset)
@@ -279,14 +296,16 @@ class TestAddressSet(unittest.TestCase):
     #
     def test_collision(self):
         aset  = AddressSet(self.TABLE_LEN)
+        # the last HASH_BYTES (1) bytes are the "hash", and only the next BYTES_PER_ADDR (8) rightmost bytes are stored
         addr1 = "".join(chr(b) for b in xrange(20))
-        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR), "\0")
+        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR), "\0")  # the leftmost byte that's stored
         self.collision_tester(aset, addr1, addr2)
     #
     def test_collision_fail(self):
         aset  = AddressSet(self.TABLE_LEN)
+        # the last 1 (HASH_BYTES) bytes are the "hash", and only the next 8 (BYTES_PER_ADDR) rightmost bytes are stored
         addr1 = "".join(chr(b) for b in xrange(20))
-        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR - 1), "\0")
+        addr2 = addr1.replace(chr(20 - self.HASH_BYTES - self.BYTES_PER_ADDR - 1), "\0")  # the rightmost byte not stored
         self.assertRaises(unittest.TestCase.failureException, self.collision_tester, aset, addr1, addr2)
         self.assertEqual(len(aset), 1)
 
@@ -337,8 +356,7 @@ class TestAddressSet(unittest.TestCase):
             self.assertIn(addr, aset)
             self.assertEqual(len(aset), 1)
         finally:
-            if aset is not None:
-                aset.close()
+            aset.close()
             dbfile.close()
             os.remove(dbfile.name)
 
@@ -357,8 +375,7 @@ class TestAddressSet(unittest.TestCase):
             self.assertIn(addr, aset)
             self.assertEqual(len(aset), 1)
         finally:
-            if aset is not None:
-                aset.close()
+            aset.close()
             dbfile.close()
             os.remove(dbfile.name)
 
@@ -371,6 +388,7 @@ class TestRecoveryFromAddressDB(unittest.TestCase):
             raise unittest.SkipTest("requires '"+btcrseed.ADDRESSDB_DEF_FILENAME+"' file in the current directory")
 
     def addressdb_tester(self, wallet_type, the_address_limit, correct_mnemonic, **kwds):
+        assert the_address_limit > 1
 
         addressdb = AddressSet.fromfile(open(btcrseed.ADDRESSDB_DEF_FILENAME, "rb"), preload=False)
         wallet = wallet_type.create_from_params(hash160s=addressdb, address_limit=the_address_limit)
@@ -400,6 +418,7 @@ class TestRecoveryFromAddressDB(unittest.TestCase):
 
 
 # All seed tests are quick
+# TODO: remove slow TestAddressSet.test_false_positives from QuickTests
 class QuickTests(unittest.TestSuite) :
     def __init__(self):
         super(QuickTests, self).__init__()

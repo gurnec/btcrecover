@@ -2313,6 +2313,8 @@ class WalletBither(object):
         # Copy a few globals into local for a small speed boost
         l_scrypt             = pylibscrypt.scrypt
         l_aes256_cbc_decrypt = aes256_cbc_decrypt
+        l_sha256             = hashlib.sha256
+        hashlib_new          = hashlib.new
         iv_encrypted_key     = self._iv_encrypted_key  # 16-byte iv + encrypted_key
         salt                 = self._salt
 
@@ -2334,7 +2336,8 @@ class WalletBither(object):
             pubkey  = self._crypto_ecdsa.ComputePublicKey(btcrseed.SecureBinaryData(privkey)).toBinStr()
             if self._is_compressed:
                 pubkey = btcrseed.compress_pubkey(pubkey)
-            if (btcrseed.pubkey_to_hash160(pubkey) == self._pubkey_hash160):
+            # Compute the hash160 of the public key, and check for a match
+            if hashlib_new("ripemd160", l_sha256(pubkey).digest()).digest() == self._pubkey_hash160:
                 password = password.decode("utf_16_be", "replace")
                 return password.encode("ascii", "replace") if tstr == str else password, count
 
