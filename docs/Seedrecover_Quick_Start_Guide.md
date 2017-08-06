@@ -19,6 +19,8 @@ Note that *seedrecover.py* uses Armory (Bitcoin wallet software) to accelerate t
 
  3. Double-click the downloaded file to install Armory.
 
+ 4. (optional) Follow [these instructions](INSTALL.md#windows) to download and install pywin32.
+
 ### Linux ###
 
 Because Armory has a number of dependencies, installing it on Linux isn't always easy. For Debian-like distributions, a shell script has been provided (in the same directory as this README file) which will automatically download and install Armory along with all of its required dependencies. Simply run it from a terminal window:

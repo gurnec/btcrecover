@@ -898,6 +898,28 @@ def can_load_scrypt():
             pylibscrypt = False
     return pylibscrypt and pylibscrypt._done  # True iff a binary implementation was found
 
+is_ripemd_available = None
+def has_ripemd160():
+    global is_ripemd_available
+    if is_ripemd_available is None:
+        try:
+            hashlib.new(b"ripemd160")
+            is_ripemd_available = True
+        except ValueError:
+            is_ripemd_available = False
+    return is_ripemd_available
+
+is_sha3_loadable = None
+def can_load_sha3():
+    global is_sha3_loadable
+    if is_sha3_loadable is None:
+        try:
+            import sha3
+            is_sha3_loadable = True
+        except ImportError:
+            is_sha3_loadable = False
+    return is_sha3_loadable
+
 
 # Wrapper for btcrpass.init_worker() which clears btcrpass.loaded_wallet to simulate the way
 # multiprocessing works on Windows (even on other OSs) and permits pure python library testing
@@ -1051,12 +1073,9 @@ class Test07WalletDecryption(unittest.TestCase):
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(has_ripemd160(),   "requires that hashlib implements RIPEMD-160")
     def test_bither_hdonly(self):
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
-        try:
-            hashlib.new(b"ripemd160")
-        except ValueError:
-            self.skipTest("requires that hashlib implements RIPEMD-160")
         self.wallet_tester("bither-hdonly-wallet.db")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
@@ -1137,12 +1156,9 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bither-wallet.db", force_purepython=True)
 
     @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(has_ripemd160(),   "requires that hashlib implements RIPEMD-160")
     def test_bither_hdonly_pp(self):
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
-        try:
-            hashlib.new(b"ripemd160")
-        except ValueError:
-            self.skipTest("requires that hashlib implements RIPEMD-160")
         self.wallet_tester("bither-hdonly-wallet.db", force_purepython=True)
 
     def test_msigna_pp(self):
@@ -1221,11 +1237,8 @@ class Test08BIP39Passwords(unittest.TestCase):
             mnemonic= u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき"
         )
 
+    @unittest.skipUnless(has_ripemd160(), "requires that hashlib implements RIPEMD-160")
     def test_bip39_address(self):
-        try:
-            hashlib.new(b"ripemd160")
-        except ValueError:
-            self.skipTest("requires that hashlib implements RIPEMD-160")
         if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             addresses=     ["1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn"],
@@ -1239,6 +1252,16 @@ class Test08BIP39Passwords(unittest.TestCase):
             mpk=              "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
             mnemonic=         "certain come keen collect slab gauge photo inside mechanic deny leader drop",
             force_purepython= True
+        )
+
+    @unittest.skipUnless(can_load_sha3(), "requires pysha3")
+    def test_ethereum_address(self):
+        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
+        self.bip39_tester(
+            wallet_type=   "ethereum",
+            addresses=     ["0x4daE22510CE2fE1BC81B97b31350Faf07c0A80D2"],
+            address_limit= 3,
+            mnemonic=      "cable top mango offer mule air lounge refuse stove text cattle opera"
         )
 
 

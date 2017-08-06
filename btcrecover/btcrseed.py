@@ -1315,7 +1315,7 @@ class WalletEthereum(WalletBIP39):
                 raise ValueError("length (excluding any '0x' prefix) of Ethereum addresses must be 40")
             cur_hash160 = base64.b16decode(address, casefold=True)
             if not address.islower():  # verify the EIP55 checksum unless all letters are lowercase
-                checksum = sha3.keccak_256(address.lower()).digest()
+                checksum = sha3.keccak_256(base64.b16encode(cur_hash160).lower()).digest()
                 for nibble, c in enumerate(address, 0):
                     if c.isalpha() and \
                        c.isupper() != bool(ord(checksum[nibble // 2]) & (0b1000 if nibble&1 else 0b10000000)):
