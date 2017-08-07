@@ -26,9 +26,9 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ =  "0.1.0"
+__version__ =  "0.1.1"
 
-import struct, base64, io, mmap, ast, itertools, sys, gc
+import struct, base64, io, mmap, ast, itertools, sys, gc, glob
 from os import path
 
 
@@ -298,12 +298,14 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
     :type progress_bar: bool
     """
 
-    if not path.isfile(path.join(blockdir, "blk00000.dat")):
-        raise ValueError("'blk00000.dat' doesn't exist in datadir '{}'".format(blockdir))
+    for filename in glob.iglob(path.join(blockdir, "blk*.dat")):
+        if path.isfile(filename): break
+    else:
+        raise ValueError("no block files exist in blocks directory '{}'".format(blockdir))
 
     if update:
         print("Loading address database ...")
-        dbfile = io.open(dbfilename, "r+b")
+        dbfile = open(dbfilename, "r+b")
         address_set   = AddressSet.fromfile(dbfile, mmap_access=mmap.ACCESS_WRITE)
         first_filenum = address_set.last_filenum
         print()
@@ -319,6 +321,10 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
         address_set   = AddressSet(1 << 29)
         first_filenum = 0
 
+    filename = "blk{:05}.dat".format(first_filenum)
+    if not path.isfile(path.join(blockdir, filename)):
+        raise ValueError("first block file '{}' doesn't exist in blocks directory '{}'".format(filename, blockdir))
+
     if progress_bar:
         try:
             import progressbar
@@ -331,7 +337,7 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
             filename = path.join(blockdir, "blk{:05}.dat".format(filenum))
             if not path.isfile(filename):
                 break
-        progress_label = progressbar.FormatLabel(" {:11,} addrs. %(elapsed)s, ".format(0))
+        progress_label = progressbar.FormatLabel(" {:11,} addrs. %(elapsed)s, ".format(len(address_set)))
         progress_bar = progressbar.ProgressBar(maxval=filenum-first_filenum, widgets=[
             progressbar.SimpleProgress(), " ",
             progressbar.Bar(left="[", fill="-", right="]"),
@@ -381,7 +387,7 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
         if progress_bar:
             progress_label.format = " {:11,} addrs. %(elapsed)s, ".format(len(address_set))  # updates address count
             nextval = progress_bar.currval + 1
-            if nextval > progress_bar.maxval:
+            if nextval > progress_bar.maxval:  # can happen if the bitcoin client is left running
                 progress_bar.maxval = nextval
             progress_bar.update(nextval)
         else:
