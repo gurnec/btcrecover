@@ -3505,7 +3505,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             device_name = devices[0].name
             for dev in devices[1:]:
                 if dev.name != device_name:
-                    error_exit("can't automatically determine best GPU(s), please use the --gpus option")
+                    error_exit("can't automatically determine best GPU(s), please use the --gpu-names option")
         #
         # --global-ws and --local-ws lists must be the same length as the number of devices to use, unless
         # they are of length one in which case they are repeated until they are the correct length
