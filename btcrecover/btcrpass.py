@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.2"
+__version__          =  "0.17.3"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -1820,11 +1820,12 @@ class WalletElectrum28(object):
         assert data[:4] == b"BIE1", "wallet file has Electrum 2.8+ magic"
 
         self = cls(loading=True)
-        ephemeral_pubkey  = data[4:37]
-        self._ciphertext  = data[37:-32]
-        self._mac         = data[-32:]
-        self._all_but_mac = data[:-32]
-        ephemeral_pubkey = self._crypto_ecdsa.UncompressPoint(btcrseed.SecureBinaryData(ephemeral_pubkey)).toBinStr()
+        ephemeral_pubkey     = data[4:37]
+        self._ciphertext_beg = data[37:37+16]  # first ciphertext block
+        self._ciphertext_end = data[-64:-32]   # last two blocks (before mac)
+        self._mac            = data[-32:]
+        self._all_but_mac    = data[:-32]
+        ephemeral_pubkey     = self._crypto_ecdsa.UncompressPoint(btcrseed.SecureBinaryData(ephemeral_pubkey)).toBinStr()
         assert len(ephemeral_pubkey) == 65
         assert self._crypto_ecdsa.VerifyPublicKeyValid(btcrseed.SecureBinaryData(ephemeral_pubkey))
         self._ephemeral_pubkey_x = ephemeral_pubkey[1:33]
@@ -1855,17 +1856,17 @@ class WalletElectrum28(object):
             # Only run these initial checks if we have a fast AES library
             if self._aes_library_name != 'aespython':
                 # Check for the expected zlib and deflate headers in the first 16-byte decrypted block
-                plaintext_block = aes256_cbc_decrypt(keys[16:32], keys[:16], self._ciphertext[:16])  # key, iv, ciphertext
+                plaintext_block = aes256_cbc_decrypt(keys[16:32], keys[:16], self._ciphertext_beg)  # key, iv, ciphertext
                 if not (plaintext_block.startswith(b"\x78\x9c") and ord(plaintext_block[2]) & 0x7 == 0x5):
                     continue
 
                 # Check for valid PKCS7 padding in the last 16-byte decrypted block
-                plaintext_block = aes256_cbc_decrypt(keys[16:32], self._ciphertext[-32:-16], self._ciphertext[-16:])  # key, iv, ciphertext
+                plaintext_block = aes256_cbc_decrypt(keys[16:32], self._ciphertext_end[:16], self._ciphertext_end[16:])  # key, iv, ciphertext
                 padding_len = ord(plaintext_block[-1])
                 if not (1 <= padding_len <= 16 and plaintext_block.endswith(chr(padding_len) * padding_len)):
                     continue
 
-            # Check the MAC of the cypertext
+            # Check the MAC
             computed_mac = hmac.new(keys[32:], self._all_but_mac, hashlib.sha256).digest()
             if computed_mac == self._mac:
                 return password if tstr == str else password.decode("utf_8", "replace"), count
