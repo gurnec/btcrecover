@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # for backwards compatibility
 import sys, os
 print >> sys.stderr, "notice: you can also run 'btcrecover.py --utf8' instead of 'btcrecoveru.py'"

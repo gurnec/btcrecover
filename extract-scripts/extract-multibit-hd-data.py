@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-electrum-partmpk.py -- MultiBit HD first block extractor
 # Copyright (C) 2014, 2015 Christopher Gurnee

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # run-all-tests.py -- runs *all* btcrecover tests
 # Copyright (C) 2016, 2017 Christopher Gurnee

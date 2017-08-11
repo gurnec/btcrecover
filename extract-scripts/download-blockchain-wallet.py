@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # download-blockchain-wallet.py -- Blockchain.info wallet file downloader
 # Copyright (C) 2016, 2017 Christopher Gurnee

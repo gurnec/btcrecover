@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-bither-privkey.py -- Bither private key extractor
 # Copyright (C) 2016 Christopher Gurnee

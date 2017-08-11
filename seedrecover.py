@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # seedrecover.py -- Bitcoin mnemonic sentence recovery tool
 # Copyright (C) 2014-2017 Christopher Gurnee

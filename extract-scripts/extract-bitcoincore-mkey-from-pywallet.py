@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-bitcoincore-mkey.py -- Bitcoin wallet master key extractor
 # Copyright (C) 2014, 2015 Christopher Gurnee

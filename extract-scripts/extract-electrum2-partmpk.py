@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-electrum2-partmpk.py -- Electrum 2.x partial mpk extractor
 # Copyright (C) 2014-2017 Christopher Gurnee

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-blockchain-main-data.py -- Blockchain data extractor
 # Copyright (C) 2014-2016 Christopher Gurnee

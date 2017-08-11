@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # create-address-db.py -- Bitcoin address database creator for seedrecover
 # Copyright (C) 2017 Christopher Gurnee

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-msigna-privkey.py -- mSIGNA private key extractor
 # Copyright (C) 2014, 2015 Christopher Gurnee

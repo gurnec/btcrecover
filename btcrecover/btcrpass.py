@@ -810,8 +810,7 @@ class WalletBitcoinCore(object):
         self._cl_global_ws = global_ws
         self._cl_local_ws  = local_ws
 
-        self._cl_V_buffer0s = self._cl_V_buffer1s = self._cl_V_buffer2s = self._cl_V_buffer3s = None  # clear any
-        self._cl_kernel = self._cl_kernel_fill = self._cl_queues = self._cl_hashes_buffers    = None  # previously loaded
+        self._cl_kernel = self._cl_queues = self._cl_hashes_buffers = None  # clear any previously loaded
         cl_context = pyopencl.Context(devices)
         #
         # Load and compile the OpenCL program
