@@ -18,7 +18,8 @@ Locate your wallet type in the list below, and follow the instructions in the se
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
  * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Electrum 2.8+ fully encrypted wallets - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCrypto](#pycrypto)
- * BIP-39 passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation)
+ * BIP-39 Bitcoin passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+](Seedrecover_Quick_Start_Guide.md#installation)
+ * BIP-39 Ethereum passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [Armory 0.92+ and pysha3](Seedrecover_Quick_Start_Guide.md#installation)
  * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
  * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * Blockchain.info - [Python 2.7](#python-27) (2.7.8+ recommended), recommended: [PyCrypto](#pycrypto)
@@ -68,7 +69,7 @@ Download and run the PyCrypto 2.6 installer for Python 2.7, either the 32-bit ve
 
 ##### Linux #####
 
-Many distributions include PyCrypto pre-installed, check your distribution’s package management system to see if it is available (it is often called “python-crypto”). If not, try installing it by using PyPI, for example on Debian-like distributions, if this doesn't work:
+Many distributions include PyCrypto pre-installed, check your distribution’s package management system to see if it is available (it is often called “python-crypto”). If not, try installing it from PyPI, for example on Debian-like distributions (including Ubuntu), if this doesn't work:
 
     sudo apt-get install python-crypto
 
@@ -115,12 +116,14 @@ then try this instead:
 
 ##### Linux #####
 
+Install pylibscrypt and at least one scrypt library, for example on Debian-like distributions (including Ubuntu):
+
  1. Open a terminal window, and type this to install pylibscrypt:
 
         sudo apt-get install python-pip
         sudo pip install pylibscrypt
 
- 2. Install one of the scrypt libraries listed under the Requirements section here: <https://pypi.python.org/pypi/pylibscrypt>. For example on Debian-like distributions, try ***one*** of these commands:
+ 2. Install *one* of the scrypt libraries listed under the Requirements section here: <https://pypi.python.org/pypi/pylibscrypt>, e.g. try each of these commands, stopping after the *first one* succeeds:
 
         sudo apt-get install libscrypt0
         sudo apt-get install python-scrypt
@@ -155,7 +158,7 @@ Open a command prompt window, and type this to install Google Protocol Buffers:
 
 ##### Linux #####
 
-Open a terminal window, and type this to install Google Protocol Buffers:
+Install the Google's Python protobuf library, for example on Debian-like distributions (including Ubuntu), open a terminal window and type this:
 
     sudo apt-get install python-pip
     sudo pip install protobuf

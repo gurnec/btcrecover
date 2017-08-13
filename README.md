@@ -10,7 +10,7 @@
      * [MultiBit HD](https://multibit.org/) and [MultiBit Classic](https://multibit.org/help/v0.5/help_contents.html)
      * [Electrum](https://electrum.org/) (1.x and 2.x)
      * Most wallets based on [bitcoinj](https://bitcoinj.github.io/), including [Hive for OS X](https://github.com/hivewallet/hive-mac/wiki/FAQ)
-     * BIP-39 passphrases (e.g. [TREZOR](https://www.bitcointrezor.com/) & [Ledger](https://www.ledgerwallet.com/) passphrases)
+     * BIP-39 passphrases, Bitcoin & Ethereum supported (e.g. [TREZOR](https://www.bitcointrezor.com/) & [Ledger](https://www.ledgerwallet.com/) passphrases)
      * [mSIGNA (CoinVault)](https://ciphrex.com/products/)
      * [Blockchain.info](https://blockchain.info/wallet)
      * [pywallet --dumpwallet](https://github.com/jackjack-jj/pywallet) of Bitcoin Unlimited/Classic/XT/Core wallets
@@ -24,17 +24,19 @@
      * [Dogecoin Core](http://dogecoin.com/)
      * [MultiDoge](http://multidoge.org/)
      * [Dogecoin Wallet for Android](http://dogecoin.com/) encrypted backups
- * Bitcoin seed recovery support for:
+ * Bitcoin & Ethereum seed recovery support for:
      * [Electrum](https://electrum.org/) (1.x and 2.x, plus wallet file loading support)
      * BIP-32/39 compliant wallets ([bitcoinj](https://bitcoinj.github.io/)), including:
          * [MultiBit HD](https://multibit.org/)
          * [Bitcoin Wallet for Android/BlackBerry](https://play.google.com/store/apps/details?id=de.schildbach.wallet) (with seeds previously extracted by [decrypt\_bitcoinj\_seeds](https://github.com/gurnec/decrypt_bitcoinj_seed))
          * [Hive for Android](https://play.google.com/store/apps/details?id=com.hivewallet.hive.cordova), [for iOS](https://github.com/hivewallet/hive-ios), and [Hive Web](https://hivewallet.com/)
          * [breadwallet for iOS](https://breadwallet.com/)
-     * BIP-32/39/44 compliant wallets, including:
+     * BIP-32/39/44 Bitcoin & Ethereum compliant wallets, including:
          * [Mycelium for Android](https://wallet.mycelium.com/)
          * [TREZOR](https://www.bitcointrezor.com/)
          * [Ledger](https://www.ledgerwallet.com/)
+         * [Jaxx](https://jaxx.io/)
+         * [MyEtherWallet](https://www.myetherwallet.com/)
          * [Bither](https://bither.net/)
          * [Blockchain.info](https://blockchain.info/wallet)
  * [Free and Open Source](http://en.wikipedia.org/wiki/Free_and_open-source_software) - anyone can download, inspect, use, and redistribute this software
