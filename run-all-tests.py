@@ -57,8 +57,8 @@ if __name__ == b'__main__':
 
     from btcrecover.test import test_passwords
 
-    is_armory_loadable = test_passwords.can_load_armory(permit_unicode=True)
-    if is_armory_loadable:
+    is_coincurve_loadable = test_passwords.can_load_coincurve()
+    if is_coincurve_loadable:
         from btcrecover.test import test_seeds
 
     # Add two new arguments to those already provided by main()
@@ -108,7 +108,7 @@ if __name__ == b'__main__':
     results = main(test_passwords, exit=False, buffer= not args.no_buffer).result
     accumulate_results(results)
 
-    if is_armory_loadable:
+    if is_coincurve_loadable:
         print("\n** Testing seed recovery **")
         results = main(test_seeds, exit=False, buffer= not args.no_buffer).result
         accumulate_results(results)

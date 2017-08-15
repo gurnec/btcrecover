@@ -863,15 +863,15 @@ class Test06AutosaveRestore(unittest.TestCase):
 
 
 is_armory_loadable = None
-def can_load_armory(permit_unicode = False):
-    if not permit_unicode and tstr == unicode:
+def can_load_armory():
+    if tstr == unicode:
         return False
     global is_armory_loadable
     # Don't call the load function more than once
     # (calling more than once on success is OK though)
     if is_armory_loadable is None:
         try:
-            btcrpass.load_armory_library(permit_unicode)
+            btcrpass.load_armory_library()
             is_armory_loadable = True
         except ImportError:
             is_armory_loadable = False
@@ -919,6 +919,17 @@ def can_load_sha3():
         except ImportError:
             is_sha3_loadable = False
     return is_sha3_loadable
+
+is_coincurve_loadable = None
+def can_load_coincurve():
+    global is_coincurve_loadable
+    if is_coincurve_loadable is None:
+        try:
+            import coincurve
+            is_coincurve_loadable = True
+        except ImportError:
+            is_coincurve_loadable = False
+    return is_coincurve_loadable
 
 
 # Wrapper for btcrpass.init_worker() which clears btcrpass.loaded_wallet to simulate the way
@@ -1025,13 +1036,13 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_electrum27_upgradedfrom_electrum1(self):
         self.wallet_tester("electrum1-upgradedto-electrum27-wallet")
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
     def test_electrum28(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("electrum28-wallet")
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     def test_electrum28_pp(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("electrum28-wallet", force_purepython=True)
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
@@ -1072,10 +1083,10 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("bither-wallet.db")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
-    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(has_ripemd160(),   "requires that hashlib implements RIPEMD-160")
+    @unittest.skipUnless(can_load_scrypt(),    "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
+    @unittest.skipUnless(has_ripemd160(),      "requires that hashlib implements RIPEMD-160")
     def test_bither_hdonly(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("bither-hdonly-wallet.db")
 
     @unittest.skipUnless(btcrpass.load_aes256_library().__name__ == b"Crypto", "requires PyCrypto")
@@ -1155,10 +1166,10 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_bither_pp(self):
         self.wallet_tester("bither-wallet.db", force_purepython=True)
 
-    @unittest.skipUnless(can_load_scrypt(), "requires a binary implementation of pylibscrypt")
-    @unittest.skipUnless(has_ripemd160(),   "requires that hashlib implements RIPEMD-160")
+    @unittest.skipUnless(can_load_scrypt(),    "requires a binary implementation of pylibscrypt")
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
+    @unittest.skipUnless(has_ripemd160(),      "requires that hashlib implements RIPEMD-160")
     def test_bither_hdonly_pp(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.wallet_tester("bither-hdonly-wallet.db", force_purepython=True)
 
     def test_msigna_pp(self):
@@ -1212,51 +1223,51 @@ class Test08BIP39Passwords(unittest.TestCase):
         pool.close()
         pool.join()
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     @unittest.skipUnless(btcrpass.load_pbkdf2_library().__name__ == b"hashlib",
                          "requires Python 2.7.8+")
     def test_bip39_mpk(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=      "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
             mnemonic= "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         )
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     def test_bip39_unicode_password(self):
-        if tstr != unicode:                          self.skipTest("Unicode mode only")
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
+        if tstr != unicode: self.skipTest("Unicode mode only")
         self.bip39_tester(
             mpk=        "xpub6CZe1G1A1CaaSepbekLMSk1sBRNA9kHZzEQCedudHAQHHB21FW9fYpQWXBevrLVQfL8JFQVFWEw3aACdr6szksaGsLiHDKyRd1rPJ6ev5ig",
             mnemonic=   "certain come keen collect slab gauge photo inside mechanic deny leader drop",
             unicode_pw= True
         )
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     def test_bip39_unicode_mnemonic(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=       "xpub6C7cXo5w4HPs6X93zKdkRNDFyHedGHwQHvmMst7HYjeudySyF3eTsWktz6JVz4CkrzuLiEbieYP8dQaxsffJXjquD3FLmnqioHe8qZwcBF3",
             mnemonic= u"あんまり　おんがく　いとこ　ひくい　こくはく　あらゆる　てあし　げどく　はしる　げどく　そぼろ　はみがき"
         )
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     @unittest.skipUnless(has_ripemd160(), "requires that hashlib implements RIPEMD-160")
     def test_bip39_address(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             addresses=     ["1AmugMgC6pBbJGYuYmuRrEpQVB9BBMvCCn"],
             address_limit= 5,
             mnemonic=      "certain come keen collect slab gauge photo inside mechanic deny leader drop"
         )
 
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
     def test_bip39_pp(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             mpk=              "xpub6D3uXJmdUg4xVnCUkNXJPCkk18gZAB8exGdQeb2rDwC5UJtraHHARSCc2Nz7rQ14godicjXiKxhUn39gbAw6Xb5eWb5srcbkhqPgAqoTMEY",
             mnemonic=         "certain come keen collect slab gauge photo inside mechanic deny leader drop",
             force_purepython= True
         )
 
-    @unittest.skipUnless(can_load_sha3(), "requires pysha3")
+    @unittest.skipUnless(can_load_coincurve(), "requires coincurve")
+    @unittest.skipUnless(can_load_sha3(),      "requires pysha3")
     def test_ethereum_address(self):
-        if not can_load_armory(permit_unicode=True): self.skipTest("requires Armory")
         self.bip39_tester(
             wallet_type=   "ethereum",
             addresses=     ["0x4daE22510CE2fE1BC81B97b31350Faf07c0A80D2"],

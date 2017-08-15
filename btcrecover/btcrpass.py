@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.3"
+__version__          =  "0.17.4"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -311,8 +311,8 @@ def add_armory_library_path():
     is_armory_path_added = True
 
 is_armory_loaded = False
-def load_armory_library(permit_unicode = False):
-    if not permit_unicode and tstr == unicode:
+def load_armory_library():
+    if tstr == unicode:
         error_exit("armory wallets do not support unicode; please remove the --utf8 option")
     global is_armory_loaded
     if is_armory_loaded: return
@@ -1779,29 +1779,26 @@ class WalletElectrum28(object):
 
     def __init__(self, loading = False):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
-        global btcrseed, hmac
-        from . import btcrseed  # imports Armory library plus some other needed utility functions
-        import hmac
+        global hmac, coincurve
+        import hmac, coincurve
         pbkdf2_library_name    = load_pbkdf2_library().__name__
         self._aes_library_name = load_aes256_library().__name__
-        self._crypto_ecdsa     = btcrseed.CryptoECDSA()
-        self._passwords_per_second = 500 if pbkdf2_library_name == "hashlib" else 130
+        self._passwords_per_second = 800 if pbkdf2_library_name == "hashlib" else 140
 
     def __getstate__(self):
-        # Delete unpicklable Armory library object
+        # Serialize unpicklable coincurve.PublicKey object
         state = self.__dict__.copy()
-        del state["_crypto_ecdsa"]
+        state["_ephemeral_pubkey"] = self._ephemeral_pubkey.format(compressed=False)
         return state
 
     def __setstate__(self, state):
-        # (re-)load the required libraries after being unpickled
-        global btcrseed, hmac
-        from . import btcrseed  # imports Armory library plus some other needed utility functions
-        import hmac
+        # Restore coincurve.PublicKey object and (re-)load the required libraries
+        global hmac, coincurve
+        import hmac, coincurve
         load_pbkdf2_library()
         load_aes256_library()
         self.__dict__ = state
-        self._crypto_ecdsa = btcrseed.CryptoECDSA()
+        self._ephemeral_pubkey = coincurve.PublicKey(self._ephemeral_pubkey)
 
     # Load an Electrum 2.8 encrypted wallet file
     @classmethod
@@ -1819,16 +1816,11 @@ class WalletElectrum28(object):
         assert data[:4] == b"BIE1", "wallet file has Electrum 2.8+ magic"
 
         self = cls(loading=True)
-        ephemeral_pubkey     = data[4:37]
-        self._ciphertext_beg = data[37:37+16]  # first ciphertext block
-        self._ciphertext_end = data[-64:-32]   # last two blocks (before mac)
-        self._mac            = data[-32:]
-        self._all_but_mac    = data[:-32]
-        ephemeral_pubkey     = self._crypto_ecdsa.UncompressPoint(btcrseed.SecureBinaryData(ephemeral_pubkey)).toBinStr()
-        assert len(ephemeral_pubkey) == 65
-        assert self._crypto_ecdsa.VerifyPublicKeyValid(btcrseed.SecureBinaryData(ephemeral_pubkey))
-        self._ephemeral_pubkey_x = ephemeral_pubkey[1:33]
-        self._ephemeral_pubkey_y = ephemeral_pubkey[33:]
+        self._ephemeral_pubkey = coincurve.PublicKey(data[4:37])
+        self._ciphertext_beg   = data[37:37+16]  # first ciphertext block
+        self._ciphertext_end   = data[-64:-32]   # last two blocks (before mac)
+        self._mac              = data[-32:]
+        self._all_but_mac      = data[:-32]
         return self
 
     def difficulty_info(self):
@@ -1837,6 +1829,7 @@ class WalletElectrum28(object):
     # This is the time-consuming function executed by worker thread(s). It returns a tuple: if a password
     # is correct return it, else return False for item 0; return a count of passwords checked for item 1
     def return_verified_password_or_false(self, passwords):
+        cutils = coincurve.utils
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
@@ -1846,10 +1839,9 @@ class WalletElectrum28(object):
 
             # Derive the ECIES shared public key, and from it, the AES and HMAC keys
             static_privkey = pbkdf2_hmac(b"sha512", password, b"", 1024, 64)
-            # ( this next step isn't technically necessary, but it results in a nice speed improvement: )
-            static_privkey = btcrseed.int_to_bytes( btcrseed.bytes_to_int(static_privkey) % btcrseed.GENERATOR_ORDER )
-            shared_pubkey  = self._crypto_ecdsa.ECMultiplyPoint(static_privkey, self._ephemeral_pubkey_x, self._ephemeral_pubkey_y)
-            shared_pubkey  = btcrseed.compress_pubkey(b"\x04" + shared_pubkey)
+            # Electrum uses a 512-bit private key (why?), but libsecp256k1 expects a 256-bit key < group's order:
+            static_privkey = cutils.int_to_bytes( cutils.bytes_to_int(static_privkey) % cutils.GROUP_ORDER_INT )
+            shared_pubkey  = self._ephemeral_pubkey.multiply(static_privkey).format()
             keys           = hashlib.sha512(shared_pubkey).digest()
 
             # Only run these initial checks if we have a fast AES library
@@ -2191,20 +2183,12 @@ class WalletBither(object):
         assert loading, 'use load_from_* to create a ' + self.__class__.__name__
         # loading crypto libraries is done in load_from_*
 
-    def __getstate__(self):
-        # Delete unpicklable Armory library object
-        state = self.__dict__.copy()
-        del state["_crypto_ecdsa"]
-        return state
-
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        global pylibscrypt, btcrseed
-        import pylibscrypt
-        from . import btcrseed
+        global pylibscrypt, coincurve
+        import pylibscrypt, coincurve
         load_aes256_library()
         self.__dict__ = state
-        self._crypto_ecdsa = btcrseed.CryptoECDSA()
 
     # Load a Bither wallet file (the part of it we need)
     @classmethod
@@ -2279,15 +2263,14 @@ class WalletBither(object):
         else:
             if not pubkey_hash:
                 error_exit("pubkey hash160 not present in Bither password_seed")
-            global btcrseed
-            from . import btcrseed  # imports Armory library plus some other needed utility functions
+            global coincurve
+            import coincurve
             self = cls(loading=True)
             self._passwords_per_second = bitcoinj_wallet._passwords_per_second  # they're the same
             self._iv_encrypted_key     = base64.b16decode(iv, casefold=True) + encrypted_key
             self._salt                 = salt  # already hex decoded
             self._pubkey_hash160       = base64.b16decode(pubkey_hash, casefold=True)[1:]  # strip the bitcoin version byte
             self._is_compressed        = bool(flags & 1)  # 1 is the is_compressed flag
-            self._crypto_ecdsa         = btcrseed.CryptoECDSA()
             return self
 
     # Import a Bither private key that was extracted by extract-bither-privkey.py
@@ -2317,6 +2300,8 @@ class WalletBither(object):
         hashlib_new          = hashlib.new
         iv_encrypted_key     = self._iv_encrypted_key  # 16-byte iv + encrypted_key
         salt                 = self._salt
+        pubkey_from_secret   = coincurve.PublicKey.from_valid_secret
+        cutils               = coincurve.utils
 
         # Convert strings (lazily) to UTF-16BE bytestrings
         passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
@@ -2333,9 +2318,9 @@ class WalletBither(object):
 
             # Decrypt the rest of the encrypted_key, derive its pubkey, and compare it to what's expected
             privkey = l_aes256_cbc_decrypt(derived_aeskey, iv_encrypted_key[:16], iv_encrypted_key[16:-16]) + privkey_end
-            pubkey  = self._crypto_ecdsa.ComputePublicKey(btcrseed.SecureBinaryData(privkey)).toBinStr()
-            if self._is_compressed:
-                pubkey = btcrseed.compress_pubkey(pubkey)
+            # privkey can be any size, but libsecp256k1 expects a 256-bit key < the group's order:
+            privkey = cutils.int_to_bytes_padded( cutils.bytes_to_int(privkey) % cutils.GROUP_ORDER_INT )
+            pubkey  = pubkey_from_secret(privkey).format(self._is_compressed)
             # Compute the hash160 of the public key, and check for a match
             if hashlib_new("ripemd160", l_sha256(pubkey).digest()).digest() == self._pubkey_hash160:
                 password = password.decode("utf_16_be", "replace")
@@ -3415,7 +3400,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         # file (this sets the loaded_wallet global, and returns the validated CRC)
         key_crc = load_from_base64_key(key_crc_base64)
         #
-        # Armory's extract script provides an encrpyted full private key (but not the master private key nor the chaincode)
+        # Armory's extract script provides an encrypted full private key (but not the master private key nor the chaincode)
         if isinstance(loaded_wallet, WalletArmory):
             print("WARNING: an Armory private key, once decrypted, provides access to that key's Bitcoin", file=sys.stderr)
         #

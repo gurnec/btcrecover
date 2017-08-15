@@ -28,15 +28,12 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 from . import btcrpass
 from .addressset import AddressSet
-import sys, os, io, base64, hashlib, hmac, difflib, itertools, \
+import sys, os, io, base64, hashlib, hmac, difflib, coincurve, itertools, \
        unicodedata, collections, struct, glob, atexit, re, random
-
-btcrpass.add_armory_library_path()
-from CppBlockUtils import CryptoECDSA, SecureBinaryData
 
 
 # Order of the base point generator, from SEC 2
@@ -187,7 +184,7 @@ def calc_passwords_per_second(checksum_ratio, kdf_overhead, scalar_multiplies):
     :return: estimated mnemonic check rate in hertz (per CPU core)
     :rtype: float
     """
-    return 1.0 / (checksum_ratio * (kdf_overhead + scalar_multiplies*0.0026) + 0.00001)
+    return 1.0 / (checksum_ratio * (kdf_overhead + scalar_multiplies*0.0001) + 0.00001)
 
 
 ############### WalletBase ###############
@@ -251,23 +248,10 @@ class WalletElectrum1(WalletBase):
         self._load_wordlist()
         self._num_words = len(self._words)  # needs to be an instance variable so it can be pickled
 
-    def __getstate__(self):
-        # Convert unpicklable Armory library object to a standard binary string
-        state = self.__dict__.copy()
-        if self._master_pubkey:
-            state["_master_pubkey"] = self._master_pubkey.toBinStr()
-        return state
-
-    def __setstate__(self, state):
-        # Restore unpicklable Armory library object
-        if state["_master_pubkey"]:
-            state["_master_pubkey"] = SecureBinaryData(state["_master_pubkey"])
-        self.__dict__ = state
-
     def passwords_per_seconds(self, seconds):
         if not self._passwords_per_second:
             self._passwords_per_second = \
-                calc_passwords_per_second(1, 0.14, 1 if self._master_pubkey else self._addrs_to_generate)
+                calc_passwords_per_second(1, 0.12, 1 if self._master_pubkey else self._addrs_to_generate + 1)
         return max(int(round(self._passwords_per_second * seconds)), 1)
 
     # Load an Electrum1 wallet file (the part of it we need, just the master public key)
@@ -287,7 +271,7 @@ class WalletElectrum1(WalletBase):
         master_pubkey = base64.b16decode(wallet["master_public_key"], casefold=True)
         if len(master_pubkey) != 64:         raise ValueError("Electrum1 master public key is not 64 bytes long")
         self = cls(loading=True)
-        self._master_pubkey = SecureBinaryData("\x04" + master_pubkey)  # prepend the uncompressed tag
+        self._master_pubkey = "\x04" + master_pubkey  # prepend the uncompressed tag
         return self
 
     # Creates a wallet instance from either an mpk, an addresses container and address_limit,
@@ -355,7 +339,7 @@ class WalletElectrum1(WalletBase):
         # If an mpk has been provided (in the function call or from a user), convert it to the needed format
         if mpk:
             assert len(mpk) == 64, "mpk is 64 bytes long (after decoding from hex)"
-            self._master_pubkey = SecureBinaryData("\x04" + mpk)  # prepend the uncompressed tag
+            self._master_pubkey = "\x04" + mpk  # prepend the uncompressed tag
 
         # If an mpk wasn't provided (at all), and addresses and hash160s arguments also
         # weren't provided (in the original function call), prompt the user for addresses.
@@ -418,7 +402,6 @@ class WalletElectrum1(WalletBase):
         hashlib_new  = hashlib.new
         num_words    = self._num_words
         num_words2   = num_words * num_words
-        crypto_ecdsa = CryptoECDSA()
 
         for count, mnemonic_ids in enumerate(mnemonic_ids_list, 1):
             # Compute the binary seed from the word list the Electrum1 way
@@ -434,16 +417,17 @@ class WalletElectrum1(WalletBase):
 
             # If a master public key was provided, check the pubkey derived from the seed against it
             if self._master_pubkey:
-                if crypto_ecdsa.CheckPubPrivKeyMatch(SecureBinaryData(seed), self._master_pubkey):
-                    return mnemonic_ids, count  # found it
+                try:
+                    if coincurve.PublicKey.from_valid_secret(seed).format(compressed=False) == self._master_pubkey:
+                        return mnemonic_ids, count  # found it
+                except ValueError: continue
 
             # Else derive addrs_to_generate addresses from the seed, searching for a match with known_hash160s
             else:
                 master_privkey = bytes_to_int(seed)
 
-                master_pubkey_bytes = crypto_ecdsa.ComputePublicKey(SecureBinaryData(seed)).toBinStr()
-                assert master_pubkey_bytes[0] == "\x04", "ComputePublicKey() returns an uncompressed pubkey"
-                master_pubkey_bytes = master_pubkey_bytes[1:]  # remove the uncompressed tag byte
+                try: master_pubkey_bytes = coincurve.PublicKey.from_valid_secret(seed).format(compressed=False)[1:]
+                except ValueError: continue
 
                 for seq_num in xrange(self._addrs_to_generate):
                     # Compute the next deterministic private/public key pair the Electrum1 way.
@@ -456,7 +440,7 @@ class WalletElectrum1(WalletBase):
                         ).digest()).digest() )
                     d_privkey = int_to_bytes((master_privkey + d_offset) % GENERATOR_ORDER, 32)
 
-                    d_pubkey  = crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey)).toBinStr()
+                    d_pubkey  = coincurve.PublicKey.from_valid_secret(d_privkey).format(compressed=False)
                     # Compute the hash160 of the *uncompressed* public key, and check for a match
                     if hashlib_new("ripemd160", l_sha256(d_pubkey).digest()).digest() in self._known_hash160s:
                         return mnemonic_ids, count  # found it
@@ -524,7 +508,6 @@ class WalletBIP32(WalletBase):
         super(WalletBIP32, self).__init__(loading)
         self._chaincode            = None
         self._passwords_per_second = None
-        self._crypto_ecdsa         = CryptoECDSA()
 
         # Split the BIP32 key derivation path into its constituent indexes
         if not path:  # Defaults to BIP44
@@ -545,17 +528,6 @@ class WalletBIP32(WalletBase):
             else:
                 self._path_indexes += int(path_index),
 
-    def __getstate__(self):
-        # Delete unpicklable Armory library object
-        state = self.__dict__.copy()
-        del state["_crypto_ecdsa"]
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__ = state
-        # Restore unpicklable Armory library object
-        self._crypto_ecdsa = CryptoECDSA()
-
     def passwords_per_seconds(self, seconds):
         if not self._passwords_per_second:
             scalar_multiplies = 0
@@ -563,7 +535,7 @@ class WalletBIP32(WalletBase):
                 if i < 2147483648:          # if it's a normal child key
                     scalar_multiplies += 1  # then it requires a scalar multiply
             if not self._chaincode:
-                scalar_multiplies += self._addrs_to_generate  # each addr. to generate req. a scalar multiply
+                scalar_multiplies += self._addrs_to_generate + 1  # each addr. to generate req. a scalar multiply
             self._passwords_per_second = \
                 calc_passwords_per_second(self._checksum_ratio, self._kdf_overhead, scalar_multiplies)
         return max(int(round(self._passwords_per_second * seconds)), 1)
@@ -739,9 +711,9 @@ class WalletBIP32(WalletBase):
         chaincode_bytes = seed_bytes[32:]
         for i in self._path_indexes:
 
-            if i < 2147483648:  # if it's a normal child key
-                data_to_hmac = compress_pubkey(  # derive the compressed public key
-                    self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+            if i < 2147483648:  # if it's a normal child key, derive the compressed public key
+                try: data_to_hmac = coincurve.PublicKey.from_valid_secret(privkey_bytes).format()
+                except ValueError: return False
             else:               # else it's a hardened child key
                 data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
             data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
@@ -763,8 +735,8 @@ class WalletBIP32(WalletBase):
 
             # Derive the final public keys, searching for a match with known_hash160s
             # (these first steps below are loop invariants)
-            data_to_hmac = compress_pubkey(  # derive the parent's compressed public key
-                self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(privkey_bytes)).toBinStr())
+            try: data_to_hmac = coincurve.PublicKey.from_valid_secret(privkey_bytes).format()
+            except ValueError: return False
             privkey_int = bytes_to_int(privkey_bytes)
             #
             for i in xrange(self._addrs_to_generate):
@@ -775,7 +747,7 @@ class WalletBIP32(WalletBase):
                 d_privkey_bytes = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
                                                 privkey_int) % GENERATOR_ORDER)
 
-                d_pubkey = self._crypto_ecdsa.ComputePublicKey(SecureBinaryData(d_privkey_bytes)).toBinStr()
+                d_pubkey = coincurve.PublicKey.from_valid_secret(d_privkey_bytes).format(compressed=False)
                 if self.pubkey_to_hash160(d_pubkey) in self._known_hash160s:
                     return True
 
@@ -815,12 +787,12 @@ class WalletBIP39(WalletBIP32):
         if not self._language_words:
             self._load_wordlists()
         pbkdf2_library_name = btcrpass.load_pbkdf2_library().__name__  # btcrpass's pbkdf2 library is used in _derive_seed()
-        self._kdf_overhead = 0.0039 if pbkdf2_library_name == "hashlib" else 0.015
+        self._kdf_overhead = 0.0026 if pbkdf2_library_name == "hashlib" else 0.013
 
     def __setstate__(self, state):
-        super(WalletBIP39, self).__setstate__(state)
         # (Re)load the pbkdf2 library if necessary
         btcrpass.load_pbkdf2_library()
+        self.__dict__ = state
 
     # Converts a mnemonic word from a Python unicode (as produced by load_wordlist())
     # into a bytestring (of type str) in the format required by BIP39
@@ -1160,7 +1132,7 @@ class WalletElectrum2(WalletBIP39):
                     if len(mpk) != 64:
                         raise ValueError("Electrum1 master public key is not 64 bytes long")
                     self = WalletElectrum1(loading=True)
-                    self._master_pubkey = SecureBinaryData("\x04" + mpk)  # prepend the uncompressed tag
+                    self._master_pubkey = "\x04" + mpk  # prepend the uncompressed tag
                     return self
 
                 else:
