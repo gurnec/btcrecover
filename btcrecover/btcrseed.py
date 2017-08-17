@@ -1833,6 +1833,7 @@ def show_mnemonic_gui(mnemonic_sentence):
     entry.select_range(0, tk.END)
     entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=padding, pady=padding)
     tk_root.deiconify()
+    tk_root.lift()
     entry.focus_set()
     tk_root.mainloop()  # blocks until the user closes the window
     pause_at_exit = False
