@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.4"
+__version__          =  "0.17.5"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -307,7 +307,13 @@ def add_armory_library_path():
     elif sys.platform.startswith("linux"):
         sys.path.extend(("/usr/local/lib/armory", "/usr/lib/armory"))
     elif sys.platform == "darwin":
-        sys.path.append("/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory")
+        import glob
+        sys.path.extend((
+            "/Applications/Armory.app/Contents/MacOS/py/usr/local/lib/armory",
+            "/Applications/Armory.app/Contents/MacOS/py/usr/lib/armory",
+            "/Applications/Armory.app/Contents/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages"))
+        sys.path.extend(glob.iglob(
+            "/Applications/Armory.app/Contents/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/*.egg"))
     is_armory_path_added = True
 
 is_armory_loaded = False
