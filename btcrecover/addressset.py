@@ -26,7 +26,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ =  "0.1.1"
+__version__ =  "0.1.2"
 
 import struct, base64, io, mmap, ast, itertools, sys, gc, glob
 from os import path
@@ -65,7 +65,7 @@ class AddressSet(object):
         :param max_load: max permissible load factor before an exception is raised
         :type max_load: float
         """
-        if table_len < 1 or 2 ** (table_len.bit_length()-1) != table_len:
+        if table_len < 1 or 1 << (table_len.bit_length()-1) != table_len:
             raise ValueError("table_len must be a positive power of 2")
         if not 1 <= bytes_per_addr <= 19:
             raise ValueError("bytes_per_addr must be between 1 and 19 inclusive")
@@ -114,16 +114,15 @@ class AddressSet(object):
 
         :param address: the address in hash160 (length 20) format to add
         :type address: bytes or str
-        :return: the truncated bytes actually added to the set, or None if it was a duplicate
         """
         pos = self._find(address)
         if pos is not True:
-            if address.endswith(self._null_addr):
+            bytes_to_add = address[ -(self._bytes_per_addr+self._hash_bytes) : -self._hash_bytes]
+            if bytes_to_add.endswith(self._null_addr):
                 return  # ignore these invalid addresses
             if self._len >= self._max_len:
                 raise ValueError("addition to AddressSet exceeds load factor")
-            self._data[pos : pos+self._bytes_per_addr] = \
-                address[ -(self._bytes_per_addr+self._hash_bytes) : -self._hash_bytes]
+            self._data[pos : pos+self._bytes_per_addr] = bytes_to_add
             self._len += 1
 
     # Hash table with open addressing and linear probing:
@@ -139,7 +138,9 @@ class AddressSet(object):
             cur_addr = self._data[pos : pos+self._bytes_per_addr]
             if cur_addr == self._null_addr:
                 return pos  # the position this element could be inserted at
-            if cur_addr == addr_to_find[ -(self._bytes_per_addr+self._hash_bytes) : -self._hash_bytes]:
+            if len(addr_to_find) > self._bytes_per_addr:
+                addr_to_find = addr_to_find[ -(self._bytes_per_addr+self._hash_bytes) : -self._hash_bytes]
+            if cur_addr == addr_to_find:
                 return True
             pos += self._bytes_per_addr  # linear probing
             if pos >= self._table_bytes:
@@ -169,13 +170,15 @@ class AddressSet(object):
 
     def _header(self):
         # Construct a 64K header with the file magic, this object's attributes, plus the version
-        header = self.__dict__.copy()
-        self._remove_nonheader_attribs(header)
-        header["version"] = self.VERSION
-        header = self.MAGIC + repr(header) + b"\r\n"
+        header_dict = self.__dict__.copy()
+        self._remove_nonheader_attribs(header_dict)
+        header_dict["version"] = self.VERSION
+        header = repr(header_dict) + b"\r\n"
+        assert ast.literal_eval(header) == header_dict
+        header = self.MAGIC + header
         header_len = len(header)
         assert header_len < self.HEADER_LEN
-        return header + b"\0" * (self.HEADER_LEN - header_len)
+        return header + b"\0" * (self.HEADER_LEN - header_len)  # appends at least one nul
 
     def tofile(self, dbfile):
         """Save the address set to a file
@@ -190,7 +193,7 @@ class AddressSet(object):
             raise ValueError("must open file in binary mode")
         # Windows Python 2 file objects can't handle writes >= 4GiB. Objects returned
         # by io.open() work around this issue, see https://bugs.python.org/issue9611
-        if not isinstance(dbfile, io.BufferedIOBase) and self._table_bytes >= 2**32:
+        if not isinstance(dbfile, io.BufferedIOBase) and self._table_bytes >= 1 << 32:
             raise ValueError("must open file with io.open if size >= 4GiB")
         dbfile.truncate(dbfile.tell() + self.HEADER_LEN + self._table_bytes)
         dbfile.write(self._header())
@@ -244,7 +247,7 @@ class AddressSet(object):
         #
         # Most of the time it makes sense to load the file serially instead of letting
         # the OS load each page as it's touched in random order, especially with HDDs;
-        # reading a byte from each page is sufficient (Cpython doesn't optimize this away)
+        # reading a byte from each page is sufficient (CPython doesn't optimize this away)
         if preload:
             for i in xrange(self._table_bytes // mmap.PAGESIZE):
                 self._data[i * mmap.PAGESIZE]
@@ -260,7 +263,7 @@ class AddressSet(object):
                     self._data.flush()
             self._data.close()
             self._dbfile = None
-        elif isinstance(self._data, bytearray):
+        elif isinstance(self._data, bytearray) and self._data:
             self._data = bytearray()
         if flush:
             gc.collect()
@@ -271,7 +274,7 @@ class AddressSet(object):
 
 
 # Decodes a Bitcoin-style variable precision integer and
-# returns a tuple containing its value and byte length
+# returns a tuple containing its value and incremented offset
 def varint(data, offset):
     b = ord(data[offset])
     if b <= 252:
@@ -305,11 +308,17 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
 
     if update:
         print("Loading address database ...")
-        dbfile = open(dbfilename, "r+b")
-        address_set   = AddressSet.fromfile(dbfile, mmap_access=mmap.ACCESS_WRITE)
+        address_set   = AddressSet.fromfile(open(dbfilename, "r+b"), mmap_access=mmap.ACCESS_WRITE)
         first_filenum = address_set.last_filenum
         print()
     else:
+        first_filenum = 0
+
+    filename = "blk{:05}.dat".format(first_filenum)
+    if not path.isfile(path.join(blockdir, filename)):
+        raise ValueError("first block file '{}' doesn't exist in blocks directory '{}'".format(filename, blockdir))
+
+    if not update:
         # Open the file early to make sure we can, but don't overwrite it yet
         # (see AddressSet.tofile() for why io.open() instead of open() is used)
         try:
@@ -318,12 +327,7 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
             dbfile = io.open(dbfilename, "wb")
         # With the default bytes_per_addr and max_load, this allocates
         # about 4 GiB which is room for a little over 400 million addresses
-        address_set   = AddressSet(1 << 29)
-        first_filenum = 0
-
-    filename = "blk{:05}.dat".format(first_filenum)
-    if not path.isfile(path.join(blockdir, filename)):
-        raise ValueError("first block file '{}' doesn't exist in blocks directory '{}'".format(filename, blockdir))
+        address_set = AddressSet(1 << 29)
 
     if progress_bar:
         try:
@@ -370,9 +374,9 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
                     txin_count, offset = varint(block, offset + 4)              # skips 4-byte tx version
                     for txin_num in xrange(txin_count):
                         sigscript_len, offset = varint(block, offset + 36)      # skips 32-byte tx id & 4-byte tx index
-                        offset += sigscript_len + 4                             # skips sequence number
+                        offset += sigscript_len + 4                             # skips sequence number & sigscript
                     txout_count, offset = varint(block, offset)
-                    for txo in xrange(txout_count):
+                    for txout_num in xrange(txout_count):
                         pkscript_len, offset = varint(block, offset + 8)        # skips 8-byte satoshi count
 
                         # If this is a P2PKH script (OP_DUP OP_HASH160 PUSH(20) <20 address bytes> OP_EQUALVERIFY OP_CHECKSIG)

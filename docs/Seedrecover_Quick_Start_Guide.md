@@ -83,7 +83,7 @@ When *seedrecover.py* tries different guesses based on the seed you entered, it 
 
 This works by generating Bitcoin addresses, just as above, and then looking for each generated address in the entire Bitcoin blockchain. In order to do this, you must first create a database of addresses based on the full blockchain:
 
- 1. You must use a computer with at least 150GB of free drive space to store the full blockchain and at least 8 GB of RAM (you could probably get away with 6 GB of RAM, but no less).
+ 1. You must use a computer with at least 150GB of free drive space to store the full blockchain and at least 6 GB of RAM. You must have the 64-bit version of Python installed.
 
  2. Install a full-node Bitcoin client, such as [Bitcoin Unlimited](https://www.bitcoinunlimited.info/), [Bitcoin Classic](https://bitcoinclassic.com/), [Bitcoin XT](https://bitcoinxt.software/), or [Bitcoin Core](https://bitcoincore.org/).
 
