@@ -1555,6 +1555,16 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_blockchain_secondpass_no_iter_count_pp(self):  # extracted from blockchain-unencrypted-wallet.aes.json which is missing a second password iter_count
         self.key_tester("YnM6ujsYxz3SE7fEEekfMuIC1oII7KY//j5FMObBn7HydqVyjnaeTCZDAaC4LbJcVkxaAAAAAE/24yM=", force_kdf_purepython=True)
 
+    def init_opencl_kernel(self, devices, global_ws, int_rate = 200, **kwds):
+        try:
+            btcrpass.loaded_wallet.init_opencl_kernel(devices, global_ws, global_ws, int_rate, **kwds)
+        except SystemExit as e:
+            # this can happen with OpenCL CPUs whose max local-ws is 1, see #104
+            if "local-ws" in e.code and "exceeds max" in e.code:
+                btcrpass.loaded_wallet.init_opencl_kernel(devices, global_ws, [None] * len(global_ws), int_rate, **kwds)
+            else:
+                raise
+
     @unittest.skipUnless(has_any_opencl_devices(), "requires OpenCL and a compatible device")
     def test_bitcoincore_cl(self):
         btcrpass.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
@@ -1563,7 +1573,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            self.init_opencl_kernel([dev], [4])
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
@@ -1581,7 +1591,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            self.init_opencl_kernel([dev], [4])
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 ["btcr-wrong-password-3", "btcr-тест-пароль", "btcr-wrong-password-4"]), ("btcr-тест-пароль", 2),
@@ -1596,7 +1606,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
+            self.init_opencl_kernel([dev], [4], int_rate=1)
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
@@ -1613,7 +1623,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.skipTest("requires two identical OpenCL devices")
 
         btcrpass.load_from_base64_key("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
-        btcrpass.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [2, 2], [2, 2], 200)
+        self.init_opencl_kernel([devices_by_name[dev.name], dev], [2, 2])
 
         self.assertEqual(btcrpass.return_verified_password_or_false(
             [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-wrong-password-3"), tstr("btcr-wrong-password-4")]), (False, 4))
@@ -1631,7 +1641,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 200)
+            self.init_opencl_kernel([dev], [4])
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
@@ -1649,7 +1659,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [8], [8], 200, save_every=3)
+            self.init_opencl_kernel([dev], [8], save_every=3)
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2),
@@ -1668,7 +1678,7 @@ class Test08KeyDecryption(unittest.TestCase):
         for dev in btcrpass.get_opencl_devices():
             if dev.name in dev_names_tested: continue
             dev_names_tested.add(dev.name)
-            btcrpass.loaded_wallet.init_opencl_kernel([dev], [4], [4], 1)
+            self.init_opencl_kernel([dev], [4], int_rate=1)
 
             self.assertEqual(btcrpass.return_verified_password_or_false(
                 [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2")]), (False, 2))
@@ -1686,7 +1696,7 @@ class Test08KeyDecryption(unittest.TestCase):
             self.skipTest("requires two identical OpenCL devices")
 
         btcrpass.load_from_base64_key("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
-        btcrpass.loaded_wallet.init_opencl_kernel([devices_by_name[dev.name], dev], [4, 4], [4, 4], 200)
+        self.init_opencl_kernel([devices_by_name[dev.name], dev], [4, 4])
 
         self.assertEqual(btcrpass.return_verified_password_or_false(
             [tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2"), tstr("btcr-wrong-password-3"), tstr("btcr-wrong-password-4"),
