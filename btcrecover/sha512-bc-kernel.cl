@@ -180,6 +180,12 @@ __constant uint64_t k[] = {
 };
 
 
+#define PFOUT8 "%16lx %16lx %16lx %16lx %16lx %16lx %16lx %16lx"
+#define PFLETTERS a, b, c, d, e, f, g, h
+
+#define PFOUT16 PFOUT8 " " PFOUT8
+#define PFWS w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11], w[12], w[13], w[14], w[15]
+
 // From sha512_kernel.cl
 
 __kernel
@@ -192,6 +198,8 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 
     // Get location of the hash to work on for this kernel
     hashes_buffer += (get_global_id(0) << 3);
+
+    printf("AA: " PFOUT8 "\n", hashes_buffer[0], hashes_buffer[1], hashes_buffer[2], hashes_buffer[3], hashes_buffer[4], hashes_buffer[5], hashes_buffer[6], hashes_buffer[7]);
 
     // Copy initial hash into local input variable and convert endianness
     #pragma unroll
@@ -217,6 +225,9 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 	g = H6;
 	h = H7;
 
+    printf("BB: " PFOUT16 "\n", PFWS);
+    printf("BB: " PFOUT8  "\n", PFLETTERS);
+
 	#pragma unroll
 	for (int i = 0; i < 16; i++) {
 	    t = k[i] + w[i] + h + Sigma1(e) + Ch(e, f, g);
@@ -230,6 +241,9 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 	    c = b;
 	    b = a;
 	    a = t;
+
+        printf("%2d: %16lx\n",      i, t);
+        printf("%2d: " PFOUT8 "\n", i, PFLETTERS);
 	}
 
 	#pragma unroll
@@ -246,6 +260,10 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 	    c = b;
 	    b = a;
 	    a = t;
+
+        printf("%2d: %16lx\n",       i, t);
+        printf("%2d: " PFOUT16 "\n", i, PFWS);
+        printf("%2d: " PFOUT8 "\n",  i, PFLETTERS);
 	}
 
 	// Copy resulting SHA512 hash back into the local input variable
@@ -264,6 +282,8 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 	for (int i = 9; i < 15; i++)
 	    w[i] = 0;
 	w[15] = 512;                  // The length in bits
+
+    printf("ZZ: " PFOUT16 "\n", PFWS);
     }
 
     // Copy iterated SHA512 hash into the I/O buffer and convert endianness

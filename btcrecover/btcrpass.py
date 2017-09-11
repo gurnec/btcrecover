@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.5"
+__version__          =  "0.17.5-debuggpu-0"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -847,6 +847,7 @@ class WalletBitcoinCore(object):
         # many iterations should be done at a time based on iter_count and the requested int_rate,
         # rounding up to maximize the number of iterations done in the last set to optimize performance
         assert hasattr(self, "_iter_count") and self._iter_count, "WalletBitcoinCore.init_opencl_kernel: bitcoin core wallet or mkey has been loaded"
+        self._iter_count = 3
         self._iter_count_chunksize = self._iter_count // int_rate or 1
         if self._iter_count_chunksize % int_rate != 0:  # if not evenly divisible,
             self._iter_count_chunksize += 1             # then round up
@@ -5342,7 +5343,7 @@ def main():
 
     # Measure the performance of the verification function
     # (for CPU, run for about 0.5s; for GPU, run for one global-worksize chunk)
-    if args.performance and args.enable_gpu:  # skip this time-consuming & unnecessary measurement in this case
+    if True or args.performance and args.enable_gpu:  # skip this time-consuming & unnecessary measurement in this case
         est_secs_per_password = 0.01          # set this to something relatively big, it doesn't matter exactly what
     else:
         if args.enable_gpu:
