@@ -14,11 +14,11 @@ One way around this that only works for the tokenlist file is to use the `%s` wi
 
 Additionally, *btcrecover* considers the following symbols special under certain specific circumstances in the tokenlist file (and for the `#` symbol, also in the typos-map file). A special symbol is part of the syntax, and not part of a password.
 
- * `%` - always considered special; `%%` in a token will be replaced by `%` during searches
+ * `%` - always considered special (see the [Wildcards](../TUTORIAL.md#expanding-wildcards) section); `%%` in a token will be replaced by `%` during searches
  * `^` - only special if it's the first character of a token; `%^` will be replaced by `^` during searches
  * `$` - only special if it's the last character of a token; `%S` (note the capital `S`) will be replaced by `$` during searches
- * `#` - only special if it's the very first character on a line, the rest of the line is then ignored (a comment); note that if `#--` is at the very beginning of the tokenlist file, then the first line is parsed as additional command-line options
- * `+` - only special if it's the first token (after possibly stripping whitespace) on a line, followed by a delimiter, and then followed by other token(s) (see the [Mutual Exclusion](../TUTORIAL.md#mutual-exclusion) section); if you need  a `+` character in a token, make sure it's either not first on a line, or it's part of a larger token, or it's on a line all by itself
+ * `#` - only special if it's the *very first* character on a line, see the [note about comments here](../TUTORIAL.md#basics)
+ * `+` - only special if it's the first (not including any spaces) character on a line, immediately followed by a space (or delimiter) and then some tokens (see the [Mutual Exclusion](../TUTORIAL.md#mutual-exclusion) section); if you need  a single `+` character as a token, make sure it's not the first token on the line, or it's on a line all by itself
 
 None of this applies to passwordlist files, which always treat spaces and symbols (except for carriage-returns and line-feeds) verbatim, treating them as parts of a password.
 

@@ -41,6 +41,13 @@ Let’s say that you remember your password contains 3 parts, you just can’t r
 
 When used with these contents, *btcrecover* will try all possible combinations using one or more of these three tokens, e.g. `Hotel_california` (just one token), `BettlejuiceCairo` (two tokens pasted together), etc.
 
+Note that lines which start with a `#` are ignored as comments, but only if the `#` is at the *very beginning* of the line:
+
+    # This line is a comment, it's ignored.
+    # The line at the bottom is not a comment because the
+    # first character on the line is a space, and not a #
+     #a_single_token_starting_with_the_#_symbol
+
 ### Mutual Exclusion ###
 
 Maybe you’re not sure about how you spelled or capitalized one of those words. Take this token file:

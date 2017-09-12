@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.5"
+__version__          =  "0.17.6"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2529,7 +2529,7 @@ def check_chars_range(s, error_msg, no_replacement_chars=False):
         for c in s:
             if ord(c) > 127:  # 2**7 - 1
                 error_exit(error_msg, "has character with code point", ord(c), "> max (127 / ASCII)\n"
-                                      "(Unicode mode can be enabled with the --utf8 option)")
+                                      "(see the Unicode Support section in the Tutorial and the --utf8 option)")
     else:
         # For Unicode mode, a REPLACEMENT CHARACTER indicates a failed conversion from UTF-8
         if no_replacement_chars and "\uFFFD" in s:
@@ -2540,7 +2540,7 @@ def check_chars_range(s, error_msg, no_replacement_chars=False):
             for c in s:
                 c = ord(c)
                 if 0xD800 <= c <= 0xDBFF or 0xDC00 <= c <= 0xDFFF:
-                    error_exit(error_msg, "has character with code point > max ("+unicode(sys.maxunicode)+" / BMP)")
+                    error_exit(error_msg, "has character with code point > max ("+unicode(sys.maxunicode)+" / Unicode BMP)")
 
 
 # Returns an (order preserved) list or string with duplicate elements removed
@@ -2700,11 +2700,11 @@ class MakePeekable(object):
         if size == 0: return tstr("")
         peeked = self._peeked
         self._peeked = b""
-        if peeked == "\n": return peeked  # A blank Unix-style line (or OS X)
-        if peeked == "\r":                # A blank Windows or MacOS line
+        if peeked == b"\n": return peeked # A blank Unix-style line (or OS X)
+        if peeked == b"\r":               # A blank Windows or MacOS line
             if size == 1:
                 return peeked
-            if self.peek() == "\n":
+            if self.peek() == b"\n":
                 peeked = self._peeked
                 self._peeked = b""
                 return b"\r"+peeked       # A blank Windows-style line
@@ -3014,7 +3014,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
 
     # If we're not --restoring nor using a passwordlist, try to open the tokenlist_file now
     # (if we are restoring, we don't know what to open until after the restore data is loaded)
-    TOKENS_AUTO_FILENAME = "btcrecover-tokens-auto.txt"
+    TOKENS_AUTO_FILENAME = b"btcrecover-tokens-auto.txt"
     if not (args.restore or args.passwordlist or args.performance or base_iterator):
         tokenlist_file = open_or_use(args.tokenlist, "r", kwds.get("tokenlist"),
             default_filename=TOKENS_AUTO_FILENAME, permit_stdin=True, make_peekable=True)
@@ -3026,24 +3026,24 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # If the first line of the tokenlist file starts with "#\s*--", parse it as additional arguments
     # (note that command line arguments can override arguments in this file)
     tokenlist_first_line_num = 1
-    if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
+    if tokenlist_file and tokenlist_file.peek() == b"#": # if it's either a comment or additional args
         first_line = tokenlist_file.readline()[1:].strip()
         tokenlist_first_line_num = 2                     # need to pass this to parse_token_list
-        if first_line.startswith("--"):                  # if it's additional args, not just a comment
-            print("Read additional options from tokenlist file: "+first_line, file=sys.stderr)
+        if first_line.startswith(b"--"):                 # if it's additional args, not just a comment
+            print(b"Read additional options from tokenlist file: "+first_line, file=sys.stderr)
             tokenlist_args = first_line.split()          # TODO: support quoting / escaping?
             effective_argv = tokenlist_args + effective_argv  # prepend them so that real argv takes precedence
             args = parser.parse_args(effective_argv)     # reparse the arguments
             # Check this again as early as possible so user doesn't miss any error messages
             if args.pause: enable_pause()
             for arg in tokenlist_args:
-                if arg.startswith("--to"):               # --tokenlist
+                if arg.startswith(b"--to"):              # --tokenlist
                     error_exit("the --tokenlist option is not permitted inside a tokenlist file")
-                elif arg.startswith("--pas"):            # --passwordlist
+                elif arg.startswith(b"--pas"):           # --passwordlist
                     error_exit("the --passwordlist option is not permitted inside a tokenlist file")
-                elif arg.startswith("--pe"):             # --performance
+                elif arg.startswith(b"--pe"):            # --performance
                     error_exit("the --performance option is not permitted inside a tokenlist file")
-                elif arg.startswith("--u"):              # --utf8
+                elif arg.startswith(b"--u"):             # --utf8
                     error_exit("the --utf8 option is not permitted inside a tokenlist file")
 
 
@@ -3086,11 +3086,11 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
         if hasattr(tokenlist_file, "name") and tokenlist_file.name.startswith(TOKENS_AUTO_FILENAME):
             enable_pause()  # enabled by default when using btcrecover-tokens-auto.txt
         # Display a warning if any options (all ignored) were specified in the tokenlist file
-        if tokenlist_file and tokenlist_file.peek() == "#":  # if it's either a comment or additional args
+        if tokenlist_file and tokenlist_file.peek() == b"#": # if it's either a comment or additional args
             first_line = tokenlist_file.readline()
             tokenlist_first_line_num = 2                     # need to pass this to parse_token_list
             if re.match(b"#\s*--", first_line, re.UNICODE):  # if it's additional args, not just a comment
-                print(prog+": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+"'", file=sys.stderr)
+                print(prog+b": warning: all options loaded from restore file; ignoring options in tokenlist file '"+tokenlist_file.name+b"'", file=sys.stderr)
         print("Using autosave file '"+restore_filename+"'")
         args.skip = savestate[b"skip"]  # override this with the most recent value
         restored = True  # a global flag for future reference
@@ -3279,7 +3279,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     typos_map = None
     if args.typos_map:
         sha1 = hashlib.sha1() if savestate else None
-        typos_map = parse_mapfile(open_or_use(args.typos_map, "r", kwds.get("typos_map")), sha1, "--typos-map")
+        typos_map = parse_mapfile(open_or_use(args.typos_map, "r", kwds.get("typos_map")), sha1, b"--typos-map")
         #
         # If autosaving, take the hash of the typos_map and either check it
         # during a session restore to make sure we're actually restoring
@@ -3729,21 +3729,21 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
 #   running_hash   -- (opt.) adds the map's data to the hash object
 #   feature_name   -- (opt.) used to generate more descriptive error messages
 #   same_permitted -- (opt.) if True, the input value may be mapped to the same output value
-def parse_mapfile(map_file, running_hash = None, feature_name = "map", same_permitted = False):
+def parse_mapfile(map_file, running_hash = None, feature_name = b"map", same_permitted = False):
     map_data = dict()
     try:
         for line_num, line in enumerate(map_file, 1):
-            if line.startswith("#"): continue  # ignore comments
+            if line.startswith(b"#"): continue  # ignore comments
             #
             # Remove the trailing newline, then split the line exactly
             # once on the specified delimiter (default: whitespace)
             split_line = line.rstrip(tstr("\r\n")).split(args.delimiter, 1)
             if split_line in ([], [tstr('')]): continue  # ignore empty lines
             if len(split_line) == 1:
-                error_exit(feature_name, "file '"+map_file.name+"' has an empty replacement list on line", line_num)
+                error_exit(feature_name, b"file '"+map_file.name+b"' has an empty replacement list on line", line_num)
             if args.delimiter is None: split_line[1] = split_line[1].rstrip()  # ignore trailing whitespace by default
 
-            check_chars_range(tstr().join(split_line), feature_name + " file" + (" '" + map_file.name + "'" if hasattr(map_file, "name") else ""))
+            check_chars_range(tstr().join(split_line), feature_name + b" file" + (b" '" + map_file.name + b"'" if hasattr(map_file, "name") else b""))
             for c in split_line[0]:  # (c is the character to be replaced)
                 replacements = duplicates_removed(map_data.get(c, tstr()) + split_line[1])
                 if not same_permitted and c in replacements:
@@ -3822,14 +3822,14 @@ class AnchoredToken(object):
     MIDDLE     = 3  # has .begin and .end attributes
 
     def __init__(self, token, line_num = "?"):
-        if token.startswith("^"):
+        if token.startswith(b"^"):
             # If it is a syntactically correct positional, relative, or middle anchor
             match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<rel>[rR])?(?P<pos>\d+))(?:\^|\$)", token)
             if match:
                 # If it's a middle (ranged) anchor
-                if match.group("middle"):
-                    begin = match.group("begin")
-                    end   = match.group("end")
+                if match.group(b"middle"):
+                    begin = match.group(b"begin")
+                    end   = match.group(b"end")
                     cached_str = tstr("^")  # begin building the cached __str__
                     if begin is None:
                         begin = 2
@@ -3853,10 +3853,10 @@ class AnchoredToken(object):
                     self.end   = end   - 1 if end != sys.maxint else end
                 #
                 # If it's a positional or relative anchor
-                elif match.group("pos"):
-                    pos = int(match.group("pos"))
+                elif match.group(b"pos"):
+                    pos = int(match.group(b"pos"))
                     cached_str = tstr("^")  # begin building the cached __str__
-                    if match.group("rel"):
+                    if match.group(b"rel"):
                         cached_str += tstr("r") + tstr(pos) + tstr("^")
                         self.type = AnchoredToken.RELATIVE
                         self.pos  = pos
@@ -3875,10 +3875,10 @@ class AnchoredToken(object):
             #
             # Else it's a begin anchor
             else:
-                if len(token) > 1 and token[1] in "0123456789,":
+                if len(token) > 1 and token[1] in b"0123456789,":
                     print(prog+": warning: token on line", line_num, "looks like it might be a positional or middle anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
-                if len(token) > 2 and token[1].lower() == "r" and token[2] in "0123456789":
+                if len(token) > 2 and token[1].lower() == b"r" and token[2] in b"0123456789":
                     print(prog+": warning: token on line", line_num, "looks like it might be a relative anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                 cached_str = tstr("^")  # begin building the cached __str__
@@ -3886,13 +3886,13 @@ class AnchoredToken(object):
                 self.pos   = 0
                 self.text  = token[1:]
             #
-            if self.text.endswith("$"):
+            if self.text.endswith(b"$"):
                 error_exit("token on line", line_num, "is anchored with both ^ at the beginning and $ at the end")
             #
             cached_str += self.text  # finish building the cached __str__
         #
         # Parse end anchor if present
-        elif token.endswith("$"):
+        elif token.endswith(b"$"):
             cached_str = token
             self.type  = AnchoredToken.POSITIONAL
             self.pos   = b"$"
@@ -3929,7 +3929,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
     for line_num, line in enumerate(tokenlist_file, first_line_num):
 
         # Ignore comments
-        if line.startswith("#"):
+        if line.startswith(b"#"):
             if re.match(b"#\s*--", line, re.UNICODE):
                 print(prog+": warning: all options must be on the first line, ignoring options on line", unicode(line_num), file=sys.stderr)
             continue
@@ -3948,7 +3948,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
         # If a "+" is present at the beginning followed by at least one token,
         # then exactly one of the token(s) is required. This is noted in the structure
         # by removing the preceding None we added above (and also delete the "+")
-        if new_list[1] == "+" and len(new_list) > 2:
+        if new_list[1] == b"+" and len(new_list) > 2:
             del new_list[0:2]
 
         # Check token syntax and convert any anchored tokens to an AnchoredToken object
@@ -3967,7 +3967,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
 
             # Check for tokens which look suspiciously like command line options
             # (using a private ArgumentParser member func is asking for trouble...)
-            if token.startswith("--") and parser_common._get_option_tuples(token):
+            if token.startswith(b"--") and parser_common._get_option_tuples(token):
                 if line_num == 1:
                     print(prog+": warning: token on line 1 looks like an option, "
                                "but line 1 did not start like this: #--option1 ...", file=sys.stderr)
@@ -3976,7 +3976,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
                                " but all options must be on the first line", file=sys.stderr)
 
             # Parse anchor if present and convert to an AnchoredToken object
-            if token.startswith("^") or token.endswith("$"):
+            if token.startswith(b"^") or token.endswith(b"$"):
                 token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
                 new_list[i] = token
                 has_any_anchors = True
@@ -4026,7 +4026,7 @@ def load_backreference_maps_from_token(token):
             if savestate and not backreference_maps_sha1:
                 backreference_maps_sha1 = hashlib.sha1()
             backreference_maps[map_filename] = \
-                parse_mapfile(open(map_filename, "r"), backreference_maps_sha1, "backreference map", same_permitted=True)
+                parse_mapfile(open(map_filename, "r"), backreference_maps_sha1, b"backreference map", same_permitted=True)
 
 
 ################################### Password Generation ###################################
@@ -4582,7 +4582,7 @@ def passwordlist_base_password_generator():
             except SystemExit as e:
                 passwordlist_warn(line_num, e.code)
                 continue
-            if args.has_wildcards and "%" in password_base:
+            if args.has_wildcards and b"%" in password_base:
                 count_or_error_msg = count_valid_wildcards(password_base, permit_contracting_wildcards=True)
                 if isinstance(count_or_error_msg, basestring):
                     passwordlist_warn(line_num, count_or_error_msg)
@@ -4675,7 +4675,7 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = None):
                 custom_wildcard_cache[(m_custom, m_nocase)] = wildcard_set
         else:  # either a "normal" or a contracting wildcard
             m_type = match.group(b"type")
-            is_expanding = m_type not in "<>-"
+            is_expanding = m_type not in b"<>-"
             if is_expanding:
                 if m_nocase and m_type in wildcard_nocase_sets:
                     wildcard_set = wildcard_nocase_sets[m_type]
@@ -4764,8 +4764,8 @@ def expand_wildcards_generator(password_with_wildcards, prior_prefix = None):
     else:
         # Determine the max # of characters that can be removed from either the left
         # or the right of the wildcard, not yet taking wildcard_maxlen into account
-        max_from_left  = l_len(password_prefix) if m_type in "<-" else 0
-        if m_type in ">-":
+        max_from_left  = l_len(password_prefix) if m_type in b"<-" else 0
+        if m_type in b">-":
             max_from_right = password_postfix_with_wildcards.find("%")
             if max_from_right == -1: max_from_right = l_len(password_postfix_with_wildcards)
         else:
