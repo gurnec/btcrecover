@@ -269,6 +269,12 @@ class TestRecoveryFromAddress(unittest.TestCase):
         self.address_tester(btcrseed.WalletEthereum, "0x9544a5BD7D9AACDc0A12c360C1ec6182C84bab11", 3,
             "cable top mango offer mule air lounge refuse stove text cattle opera")
 
+    # tests for a bug affecting certain seeds/wallets in v0.7.1
+    @unittest.skipUnless(can_load_sha3(), "requires pysha3")
+    def test_padding_bug(self):
+        self.address_tester(btcrseed.WalletEthereum, "0xaeaa91ba7235dc2d90e28875d3e466aaa27e076d", 2,
+            "appear section card oak mercy output person grab rotate sort where rural")
+
 
 class TestAddressSet(unittest.TestCase):
     HASH_BYTES     = 1

@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 from . import btcrpass
 from .addressset import AddressSet
@@ -55,7 +55,7 @@ def bytes_to_int(bytes_rep):
     """
     return long(base64.b16encode(bytes_rep), 16)
 
-def int_to_bytes(int_rep, min_length = 0):
+def int_to_bytes(int_rep, min_length):
     """convert an unsigned integer to a string of bytes (in big-endian order)
 
     :param int_rep: a non-negative integer
@@ -722,7 +722,7 @@ class WalletBIP32(WalletBase):
 
             # The child private key is the parent one + the first half of the seed_bytes (mod n)
             privkey_bytes   = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
-                                            bytes_to_int(privkey_bytes)) % GENERATOR_ORDER)
+                                            bytes_to_int(privkey_bytes)) % GENERATOR_ORDER, 32)
             chaincode_bytes = seed_bytes[32:]
 
         # If an extended public key was provided, check the derived chain code against it
@@ -745,7 +745,7 @@ class WalletBIP32(WalletBase):
 
                 # The final derived private key is the parent one + the first half of the seed_bytes
                 d_privkey_bytes = int_to_bytes((bytes_to_int(seed_bytes[:32]) +
-                                                privkey_int) % GENERATOR_ORDER)
+                                                privkey_int) % GENERATOR_ORDER, 32)
 
                 d_pubkey = coincurve.PublicKey.from_valid_secret(d_privkey_bytes).format(compressed=False)
                 if self.pubkey_to_hash160(d_pubkey) in self._known_hash160s:
