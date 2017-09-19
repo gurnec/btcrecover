@@ -469,6 +469,12 @@ class Test04Typos(GeneratorTester):
         if tstr != unicode: self.skipTest("Unicode mode only")
         self.do_generator_test(["Один2Три"], ["Один2Три", "оДИН2тРИ"],
             "--typos-capslock --typos 2 -d", True)
+    def test_capslock_min_1(self):
+        self.do_generator_test(["One2Three"], ["oNE2tHREE"],
+            "--typos-capslock --typos 2 -d --min-typos 1", True)
+    def test_capslock_min_2(self):
+        self.do_generator_test(["One2Three"], [],
+            "--typos-capslock --typos 2 -d --min-typos 2", True)
 
     def test_swap(self):
         self.do_generator_test(["abcdd"], ["abcdd", "bacdd", "acbdd", "abdcd", "badcd"],
@@ -476,6 +482,15 @@ class Test04Typos(GeneratorTester):
     def test_swap_max(self):
         self.do_generator_test(["abcdd"], ["abcdd", "bacdd", "acbdd", "abdcd"],
             "--typos-swap --max-typos-swap 1 --typos 2 -d", True)
+    def test_swap_min_1(self):
+        self.do_generator_test(["abcdd"], ["bacdd", "acbdd", "abdcd", "badcd"],
+            "--typos-swap --typos 2 -d --min-typos 1", True)
+    def test_swap_min_2(self):
+        self.do_generator_test(["abcdd"], ["badcd"],
+            "--typos-swap --typos 2 -d --min-typos 2", True)
+    def test_swap_min_3(self):
+        self.do_generator_test(["abcdd"], [],
+            "--typos-swap --typos 3 -d --min-typos 3", True)
 
     def test_repeat(self):
         self.do_generator_test(["abc"], ["abc", "aabc", "abbc", "abcc", "aabbc", "aabcc", "abbcc"],
@@ -483,6 +498,15 @@ class Test04Typos(GeneratorTester):
     def test_repeat_max(self):
         self.do_generator_test(["abc"], ["abc", "aabc", "abbc", "abcc"],
             "--typos-repeat --max-typos-repeat 1 --typos 2 -d", True)
+    def test_repeat_min_1(self):
+        self.do_generator_test(["abc"], ["aabc", "abbc", "abcc", "aabbc", "aabcc", "abbcc"],
+            "--typos-repeat --typos 2 -d --min-typos 1", True)
+    def test_repeat_min_2(self):
+        self.do_generator_test(["abc"], ["aabbc", "aabcc", "abbcc"],
+            "--typos-repeat --typos 2 -d --min-typos 2", True)
+    def test_repeat_min_4(self):
+        self.do_generator_test(["abc"], [],
+            "--typos-repeat --typos 4 -d --min-typos 4", True)
 
     def test_delete(self):
         self.do_generator_test(["abc"], ["abc", "bc", "ac", "ab", "c", "b", "a"],
@@ -516,6 +540,17 @@ class Test04Typos(GeneratorTester):
         self.do_generator_test(["abc"],
             ["abc", "Xabc", "aXbc", "abXc", "abcX"],
             "--typos-insert X --max-typos-insert 1 --typos 2 -d", True)
+    def test_insert_min_1(self):
+        self.do_generator_test(["abc"],
+            ["Xabc", "aXbc", "abXc", "abcX", "XaXbc", "XabXc", "XabcX", "aXbXc", "aXbcX", "abXcX"],
+            "--typos-insert X --typos 2 -d --min-typos 1", True)
+    def test_insert_min_2(self):
+        self.do_generator_test(["abc"],
+            ["XaXbc", "XabXc", "XabcX", "aXbXc", "aXbcX", "abXcX"],
+            "--typos-insert X --typos 2 -d --min-typos 2", True)
+    def test_insert_min_5(self):
+        self.do_generator_test(["abc"], [],
+            "--typos-insert X --typos 5 -d --min-typos 5", True)
     def test_insert_adjacent_1(self):
         self.do_generator_test(["ab"], ["ab", "Xab", "aXb", "abX", "XXab", "XaXb", "XabX", "aXXb", "aXbX", "abXX"],
             "--typos-insert X --typos 2 --max-adjacent-inserts 2 -d", True)

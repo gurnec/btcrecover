@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.6"
+__version__          =  "0.17.7"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -4098,12 +4098,18 @@ def init_password_generator():
     global password_dups, token_combination_dups, passwordlist_warnings
     password_dups = token_combination_dups = None
     passwordlist_warnings = 0
+    # (re)set the min_typos argument default values to 0
+    capslock_typos_generator.func_defaults = (0,)
+    swap_typos_generator    .func_defaults = (0,)
+    simple_typos_generator  .func_defaults = (0,)
+    insert_typos_generator  .func_defaults = (0,)
 #
 def password_generator(chunksize = 1, only_yield_count = False):
     assert chunksize > 0, "password_generator: chunksize > 0"
     # Used to communicate between typo generators the number of typos that have been
     # created so far during each password generated so that later generators know how
-    # many additional typos, at most, they are permitted to add
+    # many additional typos, at most, they are permitted to add, and also if it is
+    # the last typo generator that will run, how many, at least, it *must* add
     global typos_sofar
     typos_sofar = 0
 
@@ -4120,7 +4126,6 @@ def password_generator(chunksize = 1, only_yield_count = False):
 
     # Copy a few globals into local for a small speed boost
     l_generator_product = generator_product
-    l_args_min_typos    = args.min_typos
     l_regex_only        = regex_only
     l_regex_never       = regex_never
     l_password_dups     = password_dups
@@ -4137,6 +4142,12 @@ def password_generator(chunksize = 1, only_yield_count = False):
     if enabled_simple_typos: modification_generators.append( simple_typos_generator     )
     if args.typos_insert:    modification_generators.append( insert_typos_generator     )
     modification_generators_len = len(modification_generators)
+
+    # Only the last typo generator needs to enforce a min-typos requirement
+    if args.min_typos:
+        assert modification_generators[-1] != expand_wildcards_generator
+        # set the min_typos argument default value
+        modification_generators[-1].func_defaults = (args.min_typos,)
 
     # The base password generator is set in parse_arguments(); it's either an iterable
     # or a generator function (which returns an iterator) that produces base passwords
@@ -4165,8 +4176,6 @@ def password_generator(chunksize = 1, only_yield_count = False):
             modification_iterator = (password_base,)
 
         for password in modification_iterator:
-
-            if typos_sofar < l_args_min_typos: continue
 
             # Check the password against the --regex-only and --regex-never options
             if l_regex_only  and not l_regex_only .search(password): continue
@@ -4809,11 +4818,14 @@ def expand_mapping_backreference_wildcard(password_prefix, minlen, maxlen, bpos,
 # capslock_typos_generator() is a generator function which tries swapping the case of
 # the entire password (producing just one variation of the password_base in addition
 # to the password_base itself)
-def capslock_typos_generator(password_base):
+def capslock_typos_generator(password_base, min_typos = 0):
     global typos_sofar
 
+    min_typos -= typos_sofar
+    if min_typos > 1: return  # this generator can't ever generate more than 1 typo
+
     # Start with the unmodified password itself, and end if there's nothing left to do
-    yield password_base
+    if min_typos   <= 0:          yield password_base
     if typos_sofar >= args.typos: return
 
     password_swapped = password_base.swapcase()
@@ -4827,7 +4839,7 @@ def capslock_typos_generator(password_base):
 # of the password_base where zero or more pairs of adjacent characters are swapped. Even
 # when multiple swapping typos are requested, any single character is never swapped more
 # than once per generated password.
-def swap_typos_generator(password_base):
+def swap_typos_generator(password_base, min_typos = 0):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
     l_xrange                 = xrange
@@ -4835,14 +4847,15 @@ def swap_typos_generator(password_base):
     l_args_nodupchecks       = args.no_dupchecks
 
     # Start with the unmodified password itself
-    yield password_base
+    min_typos -= typos_sofar
+    if min_typos <= 0: yield password_base
 
     # First swap one pair of characters, then all combinations of 2 pairs, then of 3,
     # up to the max requested or up to the max number swappable (whichever's less). The
     # max number swappable is len // 2 because we never swap any single character twice.
     password_base_len = len(password_base)
     max_swaps = min(args.max_typos_swap, args.typos - typos_sofar, password_base_len // 2)
-    for swap_count in l_xrange(1, max_swaps + 1):
+    for swap_count in l_xrange(max(1, min_typos), max_swaps + 1):
         typos_sofar += swap_count
 
         # Generate all possible combinations of swapping exactly swap_count characters;
@@ -4896,7 +4909,7 @@ def case_id_changed(case_id1, case_id2):
 # itself isn't very simple... it's called "simple" because the functions in the Configurables
 # section which simple_typos_generator() calls are simple; they are collectively called
 # simple typo generators)
-def simple_typos_generator(password_base):
+def simple_typos_generator(password_base, min_typos = 0):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
     l_xrange               = xrange
@@ -4907,12 +4920,13 @@ def simple_typos_generator(password_base):
     assert len(enabled_simple_typos) > 0, "simple_typos_generator: at least one simple typo enabled"
 
     # Start with the unmodified password itself
-    yield password_base
+    min_typos -= typos_sofar
+    if min_typos <= 0: yield password_base
 
     # First change all single characters, then all combinations of 2 characters, then of 3, etc.
     password_base_len = len(password_base)
     max_typos         = min(sum_max_simple_typos, args.typos - typos_sofar, password_base_len)
-    for typos_count in l_xrange(1, max_typos + 1):
+    for typos_count in l_xrange(max(1, min_typos), max_typos + 1):
         typos_sofar += typos_count
 
         # Pre-calculate all possible permutations of the chosen simple_typos_choices
@@ -5003,7 +5017,7 @@ def product_max_elements(sequence, repeat, max_elements):
 # insert_typos_generator() is a generator function which inserts one or more strings
 # from the typos_insert_expanded list between every pair of characters in password_base,
 # as well as at its beginning and its end.
-def insert_typos_generator(password_base):
+def insert_typos_generator(password_base, min_typos = 0):
     global typos_sofar
     # Copy a few globals into local for a small speed boost
     l_max_adjacent_inserts = args.max_adjacent_inserts
@@ -5011,7 +5025,8 @@ def insert_typos_generator(password_base):
     l_itertools_product    = itertools.product
 
     # Start with the unmodified password itself
-    yield password_base
+    min_typos -= typos_sofar
+    if min_typos <= 0: yield password_base
 
     password_base_len = len(password_base)
     assert l_max_adjacent_inserts > 0
@@ -5025,7 +5040,7 @@ def insert_typos_generator(password_base):
         max_inserts = min(args.max_typos_insert, args.typos - typos_sofar, password_base_len + 1)
 
     # First insert a single string, then all combinations of 2 strings, then of 3, etc.
-    for inserts_count in l_xrange(1, max_inserts + 1):
+    for inserts_count in l_xrange(max(1, min_typos), max_inserts + 1):
         typos_sofar += inserts_count
 
         # Select the indexes (some possibly the same) of exactly inserts_count characters
