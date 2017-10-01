@@ -35,7 +35,7 @@ if __name__ == "__main__":
     btcrpass.parse_arguments(sys.argv[1:])
     (password_found, not_found_msg) = btcrpass.main()
 
-    if password_found:
+    if isinstance(password_found, basestring):
         btcrpass.safe_print("Password found: '" + password_found + "'")
         if any(ord(c) < 32 or ord(c) > 126 for c in password_found):
             print("HTML encoded:   '" + password_found.encode("ascii", "xmlcharrefreplace") + "'")
