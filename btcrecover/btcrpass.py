@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.7"
+__version__          =  "0.17.8"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -2814,6 +2814,12 @@ def open_or_use(filename, mode = "r",
         file = io.open(filename, mode, encoding="utf_8_sig", errors=decoding_errors)
     else:
         file = open(filename, mode)
+    #
+    if "b" not in mode:
+        if file.read(5) == br"{\rtf":
+            error_exit(filename, "must be a plain text file (.txt), not a Rich Text File (.rtf)")
+        file.seek(0)
+    #
     return MakePeekable(file) if make_peekable else file
 
 
