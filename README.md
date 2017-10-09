@@ -59,6 +59,6 @@
 **Please see the [Password Recovery Quick Start](TUTORIAL.md#btcrecover-tutorial) or the [Seed Recovery Quick Start](docs/Seedrecover_Quick_Start_Guide.md) for more information.**
 
 If you find *btcrecover* helpful, please consider a small donation:
-**[17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8](bitcoin:17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8?label=btcrecover)**
+**[3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4](bitcoin:3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4?label=btcrecover)**
 
 #### Thank You! ####
