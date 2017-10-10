@@ -12,7 +12,7 @@ Locate your wallet type in the list below, and follow the instructions in the se
  * Armory 0.92.x on Windows - [Python 2.7](#python-27) **32-bit** (x86)
  * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
  * Armory 0.92+ on Linux - no additional requirements
- * Armory 0.92+ on OS X - some version of Armory may not work correctly on OS X, if in doubt use version 0.95.1
+ * Armory 0.92+ on OS X - some versions of Armory may not work correctly on OS X, if in doubt use version 0.95.1
  * Bitcoin Unlimited/Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
  * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
  * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
@@ -48,15 +48,27 @@ Download and run the latest version of the pywin32 installer for Python 2.7, eit
 
 ##### Windows #####
 
-Visit the Python download page here: <https://www.python.org/downloads/windows/>, and click the link for the latest **Python 2** release. Download and run either the `Windows x86 MSI installer` for the 32-bit version of Python, or the `Windows x86-64 MSI installer` for the 64-bit one (for Armory wallets, be sure to choose the correct one as noted above). If you're unsure which one is compatible with your PC, choose the 32-bit one.
+Visit the Python download page here: <https://www.python.org/downloads/windows/>, and click the link for the latest **Python 2** release. Download and run either the `Windows x86 MSI installer` for the 32-bit version of Python, or the `Windows x86-64 MSI installer` for the 64-bit one (for Armory wallets, be sure to choose the correct one as noted above). Modern PCs should use the 64-bit version, however if you're unsure which one is compatible with your PC, choose the 32-bit one.
 
-##### Linux or OS X #####
+##### Linux #####
 
 Most distributions include Python 2.7 pre-installed.
 
-Note that for Blockchain.info wallets, Python version 2.7.8 or greater is recommended, and will run approximately 5 times faster than earlier versions. You can determine which version of Python you have installed by running `python --version` in a terminal. If your version is earlier than 2.7.8, you may want to check if your distribution has a “backports” repository with a more up-to-date version, or for OS X you could try using [Homebrew](https://brew.sh/) to install a more recent version.
+Note that for Blockchain.info wallets, Python version 2.7.8 or greater is recommended, and will run approximately 5 times faster than earlier versions. You can determine which version of Python you have installed by running `python --version` in a terminal. If your version is earlier than 2.7.8, you may want to check if your distribution has a “backports” repository with a more up-to-date version.
 
-Some OS X versions (and some Linux distributions) do not include the bsddb (Berkeley DB) Python module. This is usually not a problem, however if you encounter a `master key #1 not found` error, it might be resolved by installing the bsddb module (or a version of Python which includes it). For notes on how to do this in OS X, please see [this issue on GitHub](https://github.com/gurnec/btcrecover/issues/21).
+Some Linux distributions do not include the bsddb (Berkeley DB) Python module. This is usually not a problem, however if you encounter a `master key #1 not found` error, it might be resolved by installing the bsddb module (or a version of Python which includes it).
+
+##### OS X #####
+
+Since OS X includes an older version of Python 2, it's strongly recommended that you install the latest version. Doing so will not affect the older OS X version, the new one will be installed in a different place from the existing one.
+
+To install the latest version, visit the Python download page here: <https://www.python.org/downloads/mac-osx/>, and click the link for the latest **Python 2** release. Download and open either the `Mac OS X 64-bit/32-bit installer` for OS X 10.6 and later (most people will want this one), or the `Mac OS X 32-bit i386/PPC installer` for OS X 10.5.
+
+If you have any Terminal windows open, close them after the installation completes to allow the new version to go into effect.
+
+If (and only if) you decide *not* to install the latest version of Python 2, you will need to manually install `pip` if you need to install any of the other requirements below:
+
+        curl https://bootstrap.pypa.io/get-pip.py | sudo python
 
 
 ### PyCrypto ###
@@ -84,9 +96,8 @@ then try this instead:
 
         xcode-select --install
 
- 2. Type this to install Python pip and PyCrypto:
+ 2. Type this to install PyCrypto:
 
-        curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install pycrypto
 
 
@@ -139,7 +150,6 @@ Install pylibscrypt and at least one scrypt library, for example on Debian-like 
 
  2. Type this to install pylibscrypt and libscrypt:
 
-        curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install pylibscrypt
 
         curl -Lo libscrypt.zip https://github.com/technion/libscrypt/archive/master.zip
@@ -171,7 +181,6 @@ Install the Google's Python protobuf library, for example on Debian-like distrib
 
  2. Type this to install Google Protocol Buffers:
 
-        curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install protobuf
 
 ----------

@@ -28,11 +28,13 @@ Most distributions include Python 2.7 pre-installed. Two additional Python libra
 
 ### OS X ###
 
- 1. Open a terminal window (open the Launchpad and search for "terminal"). Type this and then choose `Install` to install the command line developer tools:
+ 1. Follow [these instructions](INSTALL.md#os-x) to download and install the latest version of Python 2.7.
+
+ 2. Open a terminal window (open the Launchpad and search for "terminal"). Type this and then choose `Install` to install the command line developer tools:
 
         xcode-select --install
 
- 2. Type this to install the GNU Multiple Precision Arithmetic Library: 
+ 3. Type this to install the GNU Multiple Precision Arithmetic Library: 
  
         curl -O https://gmplib.org/download/gmp/gmp-6.1.2.tar.xz
         tar xf gmp-6.1.2.tar.xz
@@ -43,9 +45,8 @@ Most distributions include Python 2.7 pre-installed. Two additional Python libra
         cd ..
         rm -rf gmp-6.1.2 gmp-6.1.2.tar.xz
 
- 3. Type this to install Python pip, coincurve, and (for Ethereum wallets) pysha3:
+ 4. Type this to install coincurve and (for Ethereum wallets) pysha3:
 
-        curl https://bootstrap.pypa.io/get-pip.py | sudo python
         sudo pip install coincurve==5.2.0 pysha3
 
 
