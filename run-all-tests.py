@@ -59,7 +59,10 @@ if __name__ == b'__main__':
 
     is_coincurve_loadable = test_passwords.can_load_coincurve()
     if is_coincurve_loadable:
-        from btcrecover.test import test_seeds
+        from btcrecover.test     import test_seeds
+        from btcrecover.btcrseed import full_version
+    else:
+        from btcrecover.btcrpass import full_version
 
     # Add two new arguments to those already provided by main()
     parser = argparse.ArgumentParser(add_help=False)
@@ -71,6 +74,8 @@ if __name__ == b'__main__':
     # By default, pause before exiting
     if not args.no_pause:
         atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
+
+    print("Testing", full_version() + "\n")
 
     # Additional setup normally done by green.cmdline.main()
     if has_green:

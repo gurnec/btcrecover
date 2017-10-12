@@ -44,6 +44,17 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickl
 # Armory, btcrecover will just load the version that ships with Armory.
 
 
+def full_version():
+    from struct import calcsize
+    return "btcrecover {} on Python {} {}-bit, {}-bit unicodes, {}-bit ints".format(
+        __version__,
+        ".".join(str(i) for i in sys.version_info[:3]),
+        calcsize("P") * 8,
+        sys.maxunicode.bit_length(),
+        sys.maxint.bit_length() + 1
+    )
+
+
 # One of these two is typically called relatively early by parse_arguments()
 def enable_unicode_mode():
     global io, tstr, tstr_from_stdin, tchr
@@ -2883,7 +2894,7 @@ def init_parser_common():
         parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
         parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
         parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
-        parser_common.add_argument("--version","-v",action="version", version="%(prog)s " + __version__)
+        parser_common.add_argument("--version","-v",action="store_true", help="show full version information and exit")
         bip39_group = parser_common.add_argument_group("BIP-39 passwords")
         bip39_group.add_argument("--bip39",      action="store_true",   help="search for a BIP-39 password instead of from a wallet")
         bip39_group.add_argument("--mpk",        metavar="XPUB",        help="the master public key")
@@ -3005,6 +3016,9 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     elif args.help:
         parser.print_help()
         sys.exit(0)
+
+    # Version information is always printed by btcrecover.py, so just exit
+    if args.version: sys.exit(0)
 
 
     if args.performance and (base_iterator or args.passwordlist or args.tokenlist):

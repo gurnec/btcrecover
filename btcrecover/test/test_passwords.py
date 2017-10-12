@@ -67,7 +67,6 @@ def setUpModule():
         class StringIONonClosing(BytesIO, NonClosingBase):
             def close(self): pass
         btcrpass.enable_ascii_mode()
-        tstr = str
         tchr = chr
         utf8_opt = ""
         print("** Testing in ASCII character mode **")
@@ -81,7 +80,6 @@ def setUpModule():
         class StringIONonClosing(StringIO, NonClosingBase):
             def close(self): pass
         btcrpass.enable_unicode_mode()
-        tstr = unicode
         tchr = unichr
         utf8_opt = " --utf8"
         print("** Testing in Unicode character mode **")

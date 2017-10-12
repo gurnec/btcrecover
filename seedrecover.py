@@ -32,6 +32,7 @@ import sys, multiprocessing
 
 if __name__ == "__main__":
 
+    print("Starting", btcrseed.full_version())
     btcrseed.register_autodetecting_wallets()
     mnemonic_sentence = btcrseed.main(sys.argv[1:])
 

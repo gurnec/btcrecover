@@ -32,6 +32,7 @@ import sys, multiprocessing
 
 if __name__ == "__main__":
 
+    print("Starting", btcrpass.full_version())
     btcrpass.parse_arguments(sys.argv[1:])
     (password_found, not_found_msg) = btcrpass.main()
 

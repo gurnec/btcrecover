@@ -41,6 +41,12 @@ GENERATOR_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036
 
 ADDRESSDB_DEF_FILENAME = "addresses.db"
 
+def full_version():
+    return "seedrecover {}, {}".format(
+        __version__,
+        btcrpass.full_version()
+    )
+
 
 ################################### Utility Functions ###################################
 
@@ -1549,7 +1555,7 @@ def main(argv):
         parser.add_argument("--no-pause",    action="store_true",   help="never pause before exiting (default: auto)")
         parser.add_argument("--performance", action="store_true",   help="run a continuous performance test (Ctrl-C to exit)")
         parser.add_argument("--btcr-args",   action="store_true",   help=argparse.SUPPRESS)
-        parser.add_argument("--version","-v", action="version", version="%(prog)s {} (btcrecover.py {})".format(__version__, btcrpass.__version__))
+        parser.add_argument("--version","-v",action="store_true",   help="show full version information and exit")
 
         # Optional bash tab completion support
         try:
@@ -1559,11 +1565,14 @@ def main(argv):
             pass
         assert argv
 
-        # Parse the args; unknown args will be passed to btcrpass.parse_arguments() iff --btcrpass-args is specified
+        # Parse the args; unknown args will be passed to btcrpass.parse_arguments() iff --btcr-args is specified
         args, extra_args = parser.parse_known_args(argv)
         if extra_args and not args.btcr_args:
             parser.parse_args(argv)  # re-parse them just to generate an error for the unknown args
             assert False
+
+        # Version information is always printed by seedrecover.py, so just exit
+        if args.version: sys.exit(0)
 
         if args.wallet:
             loaded_wallet = btcrpass.load_wallet(args.wallet)
