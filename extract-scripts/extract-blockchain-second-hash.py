@@ -89,14 +89,14 @@ data = open(wallet_filename, "rb").read(64 * 2**20)  # up to 64M, typical size i
 iter_count = 0
 
 try:
-    class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
+    class MayBeBlockchainV0(BaseException): pass;  # an exception which jumps to the end of the try block below
     try:
 
         # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
         try:
             data = json.loads(data)
         except ValueError:
-            raise MayBeBlockchainV0();
+            raise MayBeBlockchainV0()
 
         # Config files have no version attribute; they encapsulate the wallet file plus some detrius
         if u"version" not in data:
@@ -107,14 +107,14 @@ try:
             try:
                 data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
             except ValueError:
-                raise MayBeBlockchainV0();
+                raise MayBeBlockchainV0()
 
         # Extract what's needed from a v2.0/3.0 wallet file
         if data[u"version"] > 3:
-            raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+            raise NotImplementedError("Unsupported Blockchain wallet version " + str(data[u"version"]))
         iter_count = data[u"pbkdf2_iterations"]
         if not isinstance(iter_count, int) or iter_count < 1:
-            raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+            raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
         data = data[u"payload"]
 
     except MayBeBlockchainV0:
