@@ -28,7 +28,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 
 from . import btcrpass
 from .addressset import AddressSet
@@ -770,18 +770,30 @@ class WalletBIP32(WalletBase):
 
 @register_selectable_wallet_class("Standard BIP39/BIP44 (Mycelium, TREZOR, Ledger, Bither, Blockchain.info, Jaxx)")
 class WalletBIP39(WalletBIP32):
+    FIRSTFOUR_TAG = "-firstfour"
 
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
     _language_words = {}
     @classmethod
-    def _load_wordlists(cls, name = "bip39"):
-        for filename in glob.iglob(os.path.join(wordlists_dir, name + "-??*.txt")):
-            wordlist_lang = os.path.basename(filename)[len(name)+1:-4]  # e.g. "en", or "zh-hant"
-            if wordlist_lang in cls._language_words:
-                continue  # skips loading bip39-fr if electrum2-fr is already loaded
-            wordlist = load_wordlist(name, wordlist_lang)
-            assert len(wordlist) == 2048 or cls is not WalletBIP39, "BIP39 wordlist has 2048 words"
-            cls._language_words[wordlist_lang] = wordlist
+    def _load_wordlists(cls):
+        assert not cls._language_words, "_load_wordlists() should only be called once from the first init()"
+        cls._do_load_wordlists("bip39")
+        for wordlist_lang in cls._language_words.keys():  # takes a copy of the keys so the dict can be safely changed
+            wordlist = cls._language_words[wordlist_lang]
+            assert len(wordlist) == 2048, "BIP39 wordlist has 2048 words"
+            # Special case for the four languages whose words may be truncated to the first four letters
+            if wordlist_lang in ("en", "es", "fr", "it"):
+                cls._language_words[wordlist_lang + cls.FIRSTFOUR_TAG] = [ w[:4] for w in wordlist ]
+    #
+    @classmethod
+    def _do_load_wordlists(cls, name, wordlist_langs = None):
+        if not wordlist_langs:
+            wordlist_langs = []
+            for filename in glob.iglob(os.path.join(wordlists_dir, name + "-??*.txt")):
+                wordlist_langs.append(os.path.basename(filename)[len(name)+1:-4])  # e.g. "en", or "zh-hant"
+        for lang in wordlist_langs:
+            assert lang not in cls._language_words, "wordlist not already loaded"
+            cls._language_words[lang] = load_wordlist(name, lang)
 
     @property
     def word_ids(self): return self._words
@@ -830,6 +842,33 @@ class WalletBIP39(WalletBIP32):
                 if 0xD800 <= c <= 0xDBFF or 0xDC00 <= c <= 0xDFFF:
                     raise ValueError("this version of Python doesn't support passphrases with Unicode code points > "+str(sys.maxunicode))
         self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
+
+        # Special case for wallets which tell users to record only the first four letters of each word;
+        # convert all short words into long ones (intentionally done *after* the finding of close words).
+        # Specifically, update self._words and the globals mnemonic_ids_guess and close_mnemonic_ids.
+        if self._lang.endswith(self.FIRSTFOUR_TAG):
+            long_lang_words = self._language_words[self._lang[:-len(self.FIRSTFOUR_TAG)]]
+            assert isinstance(long_lang_words[0], unicode),  "long words haven't yet been converted into bytes"
+            assert isinstance(self._words[0],     bytes),    "short words have already been converted into bytes"
+            assert len(long_lang_words) == len(self._words), "long and short word lists have the same length"
+            long_lang_words = [ self._unicode_to_bytes(l) for l in long_lang_words ]
+            short_to_long   = { s:l for s,l in zip(self._words, long_lang_words) }
+            self._words     = long_lang_words
+            #
+            global mnemonic_ids_guess  # the to-be-replaced short-words guess
+            long_ids_guess = ()        # the new long-words guess
+            for short_id in mnemonic_ids_guess:
+                long_ids_guess += None if short_id is None else short_to_long[short_id],
+            mnemonic_ids_guess = long_ids_guess
+            #
+            global close_mnemonic_ids
+            if close_mnemonic_ids:
+                assert isinstance(close_mnemonic_ids.iterkeys()  .next(),       bytes), "close word keys have already been converted into bytes"
+                assert isinstance(close_mnemonic_ids.itervalues().next()[0][0], bytes), "close word values have already been converted into bytes"
+                for key in close_mnemonic_ids.keys():  # takes a copy of the keys so the dict can be safely changed
+                    vals = close_mnemonic_ids.pop(key)
+                    # vals is a tuple containing length-1 tuples which in turn each contain one word in bytes-format
+                    close_mnemonic_ids[short_to_long[key]] = tuple( (short_to_long[v[0]],) for v in vals )
 
         # Calculate each word's index in binary (needed by _verify_checksum())
         self._word_to_binary = { word : "{:011b}".format(i) for i,word in enumerate(self._words) }
@@ -1071,8 +1110,9 @@ class WalletElectrum2(WalletBIP39):
     # Load the wordlists for all languages (actual one to use is selected in config_mnemonic() )
     @classmethod
     def _load_wordlists(cls):
-        super(WalletElectrum2, cls)._load_wordlists("electrum2")  # the Electrum2-specific word lists
-        super(WalletElectrum2, cls)._load_wordlists()             # the default bip39 word lists
+        assert not cls._language_words, "_load_wordlists() should only be called once from the first init()"
+        cls._do_load_wordlists("electrum2")
+        cls._do_load_wordlists("bip39", ("en", "es", "ja", "zh-hans"))  # only the four bip39 ones used by Electrum2
         assert all(len(w) >= 1411 for w in cls._language_words.values()), \
                "Electrum2 wordlists are at least 1411 words long" # because we assume a max mnemonic length of 13
 

@@ -177,6 +177,12 @@ class TestRecoveryFromMPK(unittest.TestCase):
             "xpub6BgCDhMefYxRS1gbVbxyokYzQji65v1eGJXGEiGdoobvFBShcNeJt97zoJBkNtbASLyTPYXJHRvkb3ahxaVVGEtC1AD4LyuBXULZcfCjBZx",
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
+    def test_bip44_firstfour(self):
+        # an xpub at path m/44'/0'/0', as Mycelium for Android would export
+        self.mpk_tester(btcrseed.WalletBIP39,
+            "xpub6BgCDhMefYxRS1gbVbxyokYzQji65v1eGJXGEiGdoobvFBShcNeJt97zoJBkNtbASLyTPYXJHRvkb3ahxaVVGEtC1AD4LyuBXULZcfCjBZx",
+            "cert come keen coll slab gaug phot insi mech deny lead drop")
+
     def test_bip44_ja(self):
         # an xpub at path m/44'/0'/0'
         self.mpk_tester(btcrseed.WalletBIP39,
@@ -423,12 +429,74 @@ class TestRecoveryFromAddressDB(unittest.TestCase):
             "certain come keen collect slab gauge photo inside mechanic deny leader drop")
 
 
-# All seed tests are quick
-# TODO: remove slow TestAddressSet.test_false_positives from QuickTests
-class QuickTests(unittest.TestSuite) :
+class TestSeedTypos(unittest.TestCase):
+    XPUB = "xpub6BgCDhMefYxRS1gbVbxyokYzQji65v1eGJXGEiGdoobvFBShcNeJt97zoJBkNtbASLyTPYXJHRvkb3ahxaVVGEtC1AD4LyuBXULZcfCjBZx"
+
+    def seed_tester(self, the_mpk, correct_mnemonic, mnemonic_guess, typos = None, big_typos = 0):
+        correct_mnemonic = correct_mnemonic.split()
+        assert mnemonic_guess.split() != correct_mnemonic
+        assert typos or big_typos
+        btcrseed.loaded_wallet = btcrseed.WalletBIP39.create_from_params(mpk=the_mpk)
+        btcrseed.loaded_wallet.config_mnemonic(mnemonic_guess)
+        self.assertEqual(
+            btcrseed.run_btcrecover(typos or big_typos, big_typos, extra_args="--threads 1".split()),
+            tuple(correct_mnemonic))
+
+    def test_delete(self):
+        self.seed_tester(self.XPUB,
+            "certain      come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "certain come come keen collect slab gauge photo inside mechanic deny leader drop",  # guess
+            typos=1)
+
+    def test_replacewrong(self):
+        self.seed_tester(self.XPUB,
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "certain X    keen collect slab gauge photo inside mechanic deny leader drop",  # guess
+            big_typos=1)
+
+    def test_insert(self):
+        self.seed_tester(self.XPUB,
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "        come keen collect slab gauge photo inside mechanic deny leader drop",  # guess
+            big_typos=1)
+
+    def test_swap(self):
+        self.seed_tester(self.XPUB,
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "certain keen come collect slab gauge photo inside mechanic deny leader drop",  # guess
+            typos=1)
+
+    def test_replace(self):
+        self.seed_tester(self.XPUB,
+            "certain  come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "disagree come keen collect slab gauge photo inside mechanic deny leader drop",  # guess
+            big_typos=1)
+
+    def test_replaceclose(self):
+        self.seed_tester(self.XPUB,
+            "certain come   keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "certain become keen collect slab gauge photo inside mechanic deny leader drop",  # guess
+            typos=1)
+
+    def test_replaceclose_firstfour(self):
+        self.seed_tester(self.XPUB,
+            "certain come keen collect slab gauge photo inside mechanic deny leader drop",  # correct
+            "cere    come keen coll    slab gaug  phot  insi   mech     deny lead   drop",  # guess
+            # "cere" is close to "cert" in the en-firstfour language, even though "cereal" is not close to "certain"
+            typos=1)
+
+
+# All seed tests except TestAddressSet.test_false_positives are quick
+class QuickTests(unittest.TestSuite):
     def __init__(self):
         super(QuickTests, self).__init__()
-        self.addTests(unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]))
+        for suite in unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]):
+            if isinstance(suite._tests[0], TestAddressSet):
+                for test_num in xrange(len(suite._tests)):
+                    if suite._tests[test_num]._testMethodName == "test_false_positives":
+                        del suite._tests[test_num]
+                        break
+            self.addTests(suite)
 
 
 if __name__ == b'__main__':

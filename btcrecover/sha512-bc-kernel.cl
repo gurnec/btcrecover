@@ -198,7 +198,7 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
     for (int i = 0; i < 8; i++)
 	w[i] = SWAP64(hashes_buffer[i]);
 
-    // Assumes original input length was 64 bytes
+    // Assumes original input length was 64 bytes; add padding to it
     w[8] = 0x8000000000000000UL;  // The appended "1" bit
     #pragma unroll
     for (int i = 9; i < 15; i++)
@@ -258,7 +258,7 @@ void kernel_sha512_bc(__global uint64_t* hashes_buffer,
 	w[6] = g + H6;
 	w[7] = h + H7;
 
-	// Assumes original input length was 64 bytes
+	// SHA512 output length is always 64 bytes; add padding to it
 	w[8] = 0x8000000000000000UL;  // The appended "1" bit
 	#pragma unroll
 	for (int i = 9; i < 15; i++)
