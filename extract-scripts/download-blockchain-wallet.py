@@ -62,7 +62,10 @@ def do_request(query, body = None):
         req.add_data((body+"&" if body else "") + "api_code=" + API_CODE)
     if auth_token:
         req.add_header("authorization", "Bearer " + auth_token)
-    return urllib2.urlopen(req)
+    try:
+        return urllib2.urlopen(req, cadefault=True)  # calls ssl.create_default_context() (despite what the docs say)
+    except TypeError:
+        return urllib2.urlopen(req)  # Python < 2.7.9 doesn't support the cadefault argument
 #
 # Performs a do_request(), decoding the result as json
 def do_request_json(query, body = None):
@@ -85,6 +88,8 @@ except urllib2.HTTPError as e:
         error_msg = json.loads(error_msg)["initial_error"]
     except: pass
     print(error_msg)
+    if error_msg.lower().startswith("unknown wallet identifier"):
+        sys.exit(1)
 
     # Wait for the user to complete the requested authorization
     time.sleep(5)
