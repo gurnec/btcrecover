@@ -53,7 +53,7 @@ except ImportError:
 
 if __name__ == b'__main__':
 
-    import argparse, sys, atexit, time, timeit, os
+    import argparse, sys, atexit, time, timeit, os, multiprocessing
 
     from btcrecover.test import test_passwords
 
@@ -73,7 +73,8 @@ if __name__ == b'__main__':
 
     # By default, pause before exiting
     if not args.no_pause:
-        atexit.register(lambda: raw_input("\nPress Enter to exit ..."))
+        atexit.register(lambda: not multiprocessing.current_process().name.startswith("PoolWorker-") and
+                                raw_input("Press Enter to exit ..."))
 
     print("Testing", full_version() + "\n")
 
@@ -118,7 +119,7 @@ if __name__ == b'__main__':
         results = main(test_seeds, exit=False, buffer= not args.no_buffer).result
         accumulate_results(results)
     else:
-        print("\nwarning: skipping seed recovery tests (can't find prerequisite Armory)")
+        print("\nwarning: skipping seed recovery tests (can't find prerequisite coincurve)")
 
     print("\n\n*** Full Results ***")
     if has_green:

@@ -33,7 +33,7 @@ __version__ = "0.7.3"
 from . import btcrpass
 from .addressset import AddressSet
 import sys, os, io, base64, hashlib, hmac, difflib, coincurve, itertools, \
-       unicodedata, collections, struct, glob, atexit, re, random
+       unicodedata, collections, struct, glob, atexit, re, random, multiprocessing
 
 
 # Order of the base point generator, from SEC 2
@@ -1736,8 +1736,9 @@ def main(argv):
     else:  # else if no command-line args are present
         global pause_at_exit
         pause_at_exit = True
-        atexit.register(lambda: pause_at_exit and raw_input("\nPress Enter to exit ..."))
-
+        atexit.register(lambda: pause_at_exit and
+                                not multiprocessing.current_process().name.startswith("PoolWorker-") and
+                                raw_input("Press Enter to exit ..."))
 
     if not loaded_wallet and not wallet_type:  # neither --wallet nor --wallet-type were specified
 

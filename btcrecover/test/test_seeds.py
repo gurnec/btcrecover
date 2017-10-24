@@ -29,18 +29,23 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-import warnings
-# Convert warnings to errors:
-warnings.simplefilter("error")
-# except these from Armory:
-warnings.filterwarnings("ignore", r"the sha module is deprecated; use the hashlib module instead", DeprecationWarning)
-warnings.filterwarnings("ignore", r"import \* only allowed at module level", SyntaxWarning)
-
-from .. import btcrseed
-from ..addressset import AddressSet
-import unittest, os, tempfile, shutil, filecmp, sys, hashlib, random, mmap, pickle
+import warnings, unittest, os, tempfile, shutil, filecmp, sys, hashlib, random, mmap, pickle
+if __name__ == b'__main__':
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from btcrecover import btcrseed
+from btcrecover.addressset import AddressSet
 
 wallet_dir = os.path.join(os.path.dirname(__file__), "test-wallets")
+
+
+def setUpModule():
+    global orig_warnings
+    orig_warnings = warnings.filters[:]  # the slice notation takes a shallow copy
+    # Convert warnings to errors:
+    warnings.simplefilter("error")
+
+def tearDownModule():
+    warnings.filters[:] = orig_warnings  # the slice notation replaces the list contents, not the list itself
 
 
 class TestRecoveryFromWallet(unittest.TestCase):

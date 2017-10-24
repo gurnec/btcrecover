@@ -29,11 +29,11 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.8"
+__version__          =  "0.17.9"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
-       time, hashlib, collections, base64, struct, atexit, zlib, math, json, numbers
+       time, timeit, hashlib, collections, base64, struct, atexit, zlib, math, json, numbers
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -334,9 +334,10 @@ def load_armory_library():
     global is_armory_loaded
     if is_armory_loaded: return
 
-    # Temporarily blank out argv before importing Armory, otherwise it attempts to process argv
+    # Temporarily blank out argv before importing Armory, otherwise it attempts to process argv,
+    # and then add this one option to avoid a confusing warning message from Armory
     old_argv = sys.argv[1:]
-    del sys.argv[1:]
+    sys.argv[1:] = ["--language", "es"]
 
     add_armory_library_path()
     try:
@@ -349,6 +350,10 @@ def load_armory_library():
             except IOError as e:
                 if i<9 and e.filename.endswith(r"\armorylog.txt"):
                     time.sleep(random.uniform(0.05, 0.15))
+                else: raise  # unexpected failure
+            except SystemExit:
+                if len(sys.argv) == 3:
+                    del sys.argv[1:]  # older versions of Armory don't support the --language option; remove it
                 else: raise  # unexpected failure
             except ImportError as e:
                 if "not a valid Win32 application" in unicode(e):
@@ -691,7 +696,7 @@ class WalletBitcoinCore(object):
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     # Load a Bitcoin Core BDB wallet file given the filename and extract part of the first encrypted master key
@@ -1027,7 +1032,7 @@ class WalletMultiBit(object):
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     def passwords_per_seconds(self, seconds):
@@ -1174,7 +1179,7 @@ class WalletBitcoinj(object):
         # (re-)load the required libraries after being unpickled
         global pylibscrypt
         import pylibscrypt
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     # Load a bitcoinj wallet file (the part of it we need)
@@ -1411,7 +1416,7 @@ class WalletMsigna(object):
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     def passwords_per_seconds(self, seconds):
@@ -1518,7 +1523,7 @@ class WalletElectrum(object):
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     def passwords_per_seconds(self, seconds):
@@ -1812,8 +1817,8 @@ class WalletElectrum28(object):
         # Restore coincurve.PublicKey object and (re-)load the required libraries
         global hmac, coincurve
         import hmac, coincurve
-        load_pbkdf2_library()
-        load_aes256_library()
+        load_pbkdf2_library(warnings=False)
+        load_aes256_library(warnings=False)
         self.__dict__ = state
         self._ephemeral_pubkey = coincurve.PublicKey(self._ephemeral_pubkey)
 
@@ -1908,8 +1913,8 @@ class WalletBlockchain(object):
 
     def __setstate__(self, state):
         # (re-)load the required libraries after being unpickled
-        load_pbkdf2_library()
-        load_aes256_library()
+        load_pbkdf2_library(warnings=False)
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     def passwords_per_seconds(self, seconds):
@@ -2204,7 +2209,7 @@ class WalletBither(object):
         # (re-)load the required libraries after being unpickled
         global pylibscrypt, coincurve
         import pylibscrypt, coincurve
-        load_aes256_library()
+        load_aes256_library(warnings=False)
         self.__dict__ = state
 
     # Load a Bither wallet file (the part of it we need)
@@ -2397,7 +2402,7 @@ class WalletBIP39(object):
         global normalize, hmac
         from unicodedata import normalize
         import hmac
-        load_pbkdf2_library()
+        load_pbkdf2_library(warnings=False)
         self.__dict__ = state
 
     def passwords_per_seconds(self, seconds):
@@ -2440,7 +2445,7 @@ class WalletNull(object):
 # three bytestring arguments: key, iv, ciphertext. ciphertext must be a multiple of 16 bytes, and any
 # padding present is not stripped.
 missing_pycrypto_warned = False
-def load_aes256_library(force_purepython = False):
+def load_aes256_library(force_purepython = False, warnings = True):
     global aes256_cbc_decrypt, aes256_ofb_decrypt, missing_pycrypto_warned
     if not force_purepython:
         try:
@@ -2452,7 +2457,7 @@ def load_aes256_library(force_purepython = False):
                 new_aes(key, Crypto.Cipher.AES.MODE_OFB, iv).decrypt(ciphertext)
             return Crypto  # just so the caller can check which version was loaded
         except ImportError:
-            if not missing_pycrypto_warned:
+            if warnings and not missing_pycrypto_warned:
                 print(prog+": warning: can't find PyCrypto, using aespython instead", file=sys.stderr)
                 missing_pycrypto_warned = True
 
@@ -2483,14 +2488,14 @@ def load_aes256_library(force_purepython = False):
 # The created function takes a hash name, two bytestring arguments and two integer arguments:
 # hash_name (e.g. b"sha1"), password, salt, iter_count, key_len (the length of the returned key)
 missing_pbkdf2_warned = False
-def load_pbkdf2_library(force_purepython = False):
+def load_pbkdf2_library(force_purepython = False, warnings = True):
     global pbkdf2_hmac, missing_pbkdf2_warned
     if not force_purepython:
         try:
             pbkdf2_hmac = hashlib.pbkdf2_hmac
             return hashlib  # just so the caller can check which version was loaded
         except AttributeError:
-            if not missing_pbkdf2_warned:
+            if warnings and not missing_pbkdf2_warned:
                 print(prog+": warning: hashlib.pbkdf2_hmac requires Python 2.7.8+, using passlib instead", file=sys.stderr)
                 missing_pbkdf2_warned = True
     #
@@ -2840,7 +2845,8 @@ def enable_pause():
     global pause_registered
     if pause_registered is None:
         if sys.stdin.isatty():
-            atexit.register(lambda: raw_input("Press Enter to exit ..."))
+            atexit.register(lambda: not multiprocessing.current_process().name.startswith("PoolWorker-") and
+                                    raw_input("Press Enter to exit ..."))
             pause_registered = True
         else:
             print(prog+": warning: ignoring --pause since stdin is not interactive (or was redirected)", file=sys.stderr)
@@ -5388,16 +5394,17 @@ def main():
             # last for about 1/100th of a second (determined experimentally to be about the best I could do, YMMV)
             CHUNKSIZE_SECONDS = 1.0 / 100.0
             measure_performance_iterations = loaded_wallet.passwords_per_seconds(0.5)
-            inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # assumes 0.5 second's worth
+            inner_iterations = int(round(2*measure_performance_iterations * CHUNKSIZE_SECONDS)) or 1  # the "2*" is due to the 0.5 seconds above
             outer_iterations = int(round(measure_performance_iterations / inner_iterations))
+            assert outer_iterations > 0
         #
         performance_generator = performance_base_password_generator()  # generates dummy passwords
-        start = time.clock()
+        start = timeit.default_timer()
         # Emulate calling the verification function with lists of size inner_iterations
         for o in xrange(outer_iterations):
             loaded_wallet.return_verified_password_or_false(list(
                 itertools.islice(itertools.ifilter(custom_final_checker, performance_generator), inner_iterations)))
-        est_secs_per_password = (time.clock() - start) / (outer_iterations * inner_iterations)
+        est_secs_per_password = (timeit.default_timer() - start) / (outer_iterations * inner_iterations)
         del performance_generator
         assert isinstance(est_secs_per_password, float) and est_secs_per_password > 0.0
 
@@ -5448,9 +5455,10 @@ def main():
             # if the main thread is sharing CPU time with a verifying thread
             if spawned_threads == 0 and not args.enable_gpu or spawned_threads >= cpus:
                 eta_seconds += iterate_time
-            eta_seconds = int(round(eta_seconds)) or 1
             if l_savestate:
-                est_passwords_per_5min = passwords_count // eta_seconds * 300
+                est_passwords_per_5min = int(round(passwords_count / eta_seconds * 300.0))
+                assert est_passwords_per_5min > 0
+            eta_seconds = int(round(eta_seconds)) or 1
 
     # else if args.no_eta and savestate, calculate a simple approximate of est_passwords_per_5min
     elif l_savestate:
@@ -5549,7 +5557,8 @@ def main():
     # (so that passwords_tried % est_passwords_per_5min will eventually == 0)
     if l_savestate:
         assert isinstance(est_passwords_per_5min, numbers.Integral)
-        est_passwords_per_5min = int(round(est_passwords_per_5min / chunksize)) * chunksize
+        assert isinstance(chunksize,              numbers.Integral)
+        est_passwords_per_5min = (est_passwords_per_5min // chunksize or 1) * chunksize
 
     # Iterate through password_found_iterator looking for a successful guess
     password_found  = False
@@ -5558,7 +5567,14 @@ def main():
     try:
         for password_found, passwords_tried_last in password_found_iterator:
             if password_found:
-                if pool: pool.close()
+                if pool:
+                    # Close the pool, but don't wait for (join) processes to exit gracefully on
+                    # the off chance one is in an inconsistent state (otherwise the found password
+                    # may never be printed). We also don't want pool to be garbage-collected when
+                    # main() returns (it can cause confusing warnings), so keep a reference to it.
+                    pool.close()
+                    global _pool
+                    _pool = pool
                 passwords_tried += passwords_tried_last - 1  # just before the found password
                 if progress:
                     progress.next_update = 0  # force a screen update
@@ -5577,7 +5593,7 @@ def main():
                 else:
                     progress.widgets.pop()  # remove the ETA
                 progress.finish()
-            if pool: pool.join()
+            if pool: pool.join()  # if not found, waiting for processes to exit gracefully isn't a problem
 
     # Gracefully handle any exceptions, printing the count completed so far so that it can be
     # skipped if the user restarts the same run. If the exception was expected (Ctrl-C or some
