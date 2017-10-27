@@ -3850,7 +3850,7 @@ class AnchoredToken(object):
     def __init__(self, token, line_num = "?"):
         if token.startswith(b"^"):
             # If it is a syntactically correct positional, relative, or middle anchor
-            match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<rel>[rR])?(?P<pos>\d+))(?:\^|\$)", token)
+            match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<rel>[rR])?(?P<pos>\d+))[\^$]", token)
             if match:
                 # If it's a middle (ranged) anchor
                 if match.group(b"middle"):

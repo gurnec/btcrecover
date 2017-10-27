@@ -215,8 +215,8 @@ class WalletBase(object):
     def pubkey_to_hash160(uncompressed_pubkey):
         """convert from an uncompressed public key to its Bitcoin compressed-pubkey hash160 form
 
-        :param pubkey_bytes: SEC 1 EllipticCurvePoint OctetString
-        :type pubkey_bytes: str
+        :param uncompressed_pubkey: SEC 1 EllipticCurvePoint OctetString
+        :type uncompressed_pubkey: str
         :return: ripemd160(sha256(compressed_pubkey))
         :rtype: str
         """
@@ -1345,8 +1345,8 @@ class WalletEthereum(WalletBIP39):
     def pubkey_to_hash160(uncompressed_pubkey):
         """convert from an uncompressed public key to its Ethereum hash160 form
 
-        :param pubkey_bytes: SEC 1 EllipticCurvePoint OctetString
-        :type pubkey_bytes: str
+        :param uncompressed_pubkey: SEC 1 EllipticCurvePoint OctetString
+        :type uncompressed_pubkey: str
         :return: last 20 bytes of keccak256(raw_64_byte_pubkey)
         :rtype: str
         """
