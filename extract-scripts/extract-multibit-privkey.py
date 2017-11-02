@@ -55,6 +55,9 @@ with open(privkey_filename, "rb") as privkey_file:
         print(prog+": error: file is not a MultiBit private key file (too short)", file=sys.stderr)
         sys.exit(1)
 
+print("\nWARNING: please read the important warning in the Usage for MultiBit\n"
+        "         Classic section of Extract_Scripts.md before proceeding.\n")
+
 print("MultiBit partial first encrypted private key, salt, and crc in base64:", file=sys.stderr)
 
 # salt_privkey[8:32] now consists of:

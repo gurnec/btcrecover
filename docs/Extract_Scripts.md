@@ -276,6 +276,8 @@ Without access to the rest of your wallet file, it is impossible the decrypted p
 
 ### Usage for MultiBit Classic ###
 
+***Warning:*** Using the `extract-multibit-privkey.py` script on a MultiBit Classic key file, as described below, can lead to *false positives*. A *false positive* occurs when *btcrecover* reports that it has found the password, but is mistaken—the password which it displays may not be correct. If you plan to test a large number of passwords (on the order of 10 billion (10,000,000,000) or more), it's **strongly recommended** that you use *btcrecover* directly with a key file instead of using `extract-multibit-privkey.py`.
+
 *btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
 
     %appdata%\MultiBit\multibit-data\key-backup
@@ -304,6 +306,8 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
     Password found: xxxx
 
 #### MultiBit Classic Technical Details ####
+
+**Warning:** MultiBit Classic data-extracts have a false positive rate of approximately 1 in 3×10<sup>11</sup>. See the warning above for more information.
 
 The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts 8 bytes of password salt plus the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 34% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 bytes are decrypted (assuming the password search succeeds). Because these 16 characters, once decrypted, are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
 

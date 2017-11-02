@@ -1058,6 +1058,7 @@ class WalletMultiBit(object):
     @classmethod
     def load_from_data_extract(cls, privkey_data):
         assert len(privkey_data) == 24
+        print(prog + ": WARNING: read the Usage for MultiBit Classic section of Extract_Scripts.md before proceeding", file=sys.stderr)
         self = cls(loading=True)
         self._encrypted_block = privkey_data[8:]  # a single 16-byte AES block
         self._salt            = privkey_data[:8]
