@@ -1980,9 +1980,9 @@ class WalletBlockchain(object):
         if not iter_count:  # if this is a v0.0 wallet
             # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
             # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
-            # (decreased test below to 7.3 after being shown a wallet with just under 7.4 entropy bits)
+            # (decreased test below to 7.2 after being shown a wallet with just under 7.4 entropy bits)
             entropy_bits = est_entropy_bits(data)
-            if entropy_bits < 7.3:
+            if entropy_bits < 7.2:
                 raise ValueError("Doesn't look random enough to be an encrypted Blockchain wallet (only {:.1f} bits of entropy per byte)".format(entropy_bits))
 
         return data, iter_count  # iter_count == 0 for v0 wallets
