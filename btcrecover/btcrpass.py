@@ -3012,6 +3012,8 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     # (--help is handled directly by argparse in this case)
     if args.passwordlist or base_iterator:
         parser = argparse.ArgumentParser(add_help=True)
+        parser.add_argument("--autosave",     metavar="FILE",      help="autosave (5 min) progress to or restore it from a file")
+        parser.add_argument("--restore",      metavar="FILE",      help="restore progress and options from an autosave file (must be the only option on the command line)")
         parser.add_argument("--passwordlist", required=not base_iterator, nargs="?", const="-", metavar="FILE", help="instead of using a tokenlist, read complete passwords (exactly one per line) from this file or from stdin")
         parser.add_argument("--has-wildcards",action="store_true", help="parse and expand wildcards inside passwordlists (default: disabled for passwordlists)")
         parser._add_container_actions(parser_common)
