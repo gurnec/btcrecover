@@ -2,6 +2,19 @@
 
 *btcrecover* is an open source Bitcoin wallet password and seed recovery tool. It is designed for the case where you already know most of your password or seed, but need assistance in trying different possible combinations.
 
+
+## Quick Start ##
+
+To try recovering your password, please start with the **[Password Recovery Quick Start](TUTORIAL.md#btcrecover-tutorial)**.
+
+If you mostly know your recovery seed/mnemonic (12-24 recovery words), but think there may be a mistake in it, please see the **[Seed Recovery Quick Start](docs/Seedrecover_Quick_Start_Guide.md)**.
+
+If you find *btcrecover* helpful, please consider a small donation:
+**[3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4](bitcoin:3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4?label=btcrecover)**
+
+**Thank You!**
+
+
 ## Features ##
 
  * Bitcoin wallet password recovery support for:
@@ -51,14 +64,3 @@
  * Automated seed recovery with a simple graphical user interface
  * “Offline” mode for nearly all supported wallets - use one of the [extract scripts (click for more information)](docs/Extract_Scripts.md) to extract just enough information to attempt password recovery, without giving *btcrecover* or whoever runs it access to *any* of the addresses or private keys in your Bitcoin wallet.
  * “Nearly offline” mode for Armory - use an [extract script (click for more information)](docs/Extract_Scripts.md) to extract a single private key for attempting password recovery. *btcrecover* and whoever runs it will only have access to this one address/private key from your Bitcoin wallet (read the link above for an important caveat).
-
-----------
-
-### Documentation ###
-
-**Please see the [Password Recovery Quick Start](TUTORIAL.md#btcrecover-tutorial) or the [Seed Recovery Quick Start](docs/Seedrecover_Quick_Start_Guide.md) for more information.**
-
-If you find *btcrecover* helpful, please consider a small donation:
-**[3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4](bitcoin:3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4?label=btcrecover)**
-
-#### Thank You! ####
