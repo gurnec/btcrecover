@@ -48,7 +48,7 @@ else:
 assert not os.path.exists(filename), filename + " already exists, won't overwrite"
 
 print("Please enter your wallet's ID (e.g. 9bb4c672-563e-4806-9012-a3e8f86a0eca)")
-wallet_id = str(uuid.UUID(raw_input("> ")))
+wallet_id = str(uuid.UUID(raw_input("> ").strip()))
 
 
 # Performs a web request, adding the api_code and (if available) auth_token
@@ -110,7 +110,7 @@ except urllib2.HTTPError as e:
 while not wallet_data:
 
     print("This wallet has two-factor authentication enabled, please enter your 2FA code")
-    two_factor = raw_input("> ")
+    two_factor = raw_input("> ").strip()
 
     try:
         # Send the 2FA to the server and download the wallet
