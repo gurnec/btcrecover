@@ -3102,7 +3102,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             else:
                 error_exit("autosave was created with an incompatible version of "+prog)
         assert args.autosave,         "parse_arguments: autosave option enabled in restored autosave file"
-        assert not args.passwordlist, "parse_arguments: passwordlist option not specified in restored autosave file"
+        assert args.passwordlist, "parse_arguments: passwordlist option not specified in restored autosave file"
         # If --utf8 was specified in the autosave file, it's not too late
         # to change the character mode (we haven't yet called open_or_use())
         if args.utf8: enable_unicode_mode()
