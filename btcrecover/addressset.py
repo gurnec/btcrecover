@@ -26,7 +26,7 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
-__version__ =  "0.1.2"
+__version__ =  "0.1.3"
 
 import struct, base64, io, mmap, ast, itertools, sys, gc, glob
 from os import path
@@ -371,7 +371,11 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
                 block = blockfile.read(struct.unpack_from("<I", header, 4)[0])  # read in the rest of the block
                 tx_count, offset = varint(block, 80)                            # skips 80 bytes of header
                 for tx_num in xrange(tx_count):
-                    txin_count, offset = varint(block, offset + 4)              # skips 4-byte tx version
+                    offset += 4                                                 # skips 4-byte tx version
+                    is_bip144 = block[offset] == b"\0"                          # bip-144 marker
+                    if is_bip144:
+                        offset += 2                                             # skips 1-byte marker & 1-byte flag
+                    txin_count, offset = varint(block, offset)
                     for txin_num in xrange(txin_count):
                         sigscript_len, offset = varint(block, offset + 36)      # skips 32-byte tx id & 4-byte tx index
                         offset += sigscript_len + 4                             # skips sequence number & sigscript
@@ -384,7 +388,13 @@ def create_address_db(dbfilename, blockdir, update = False, progress_bar = True)
                             # Add the discovered address to the address set
                             address_set.add(block[offset+3:offset+23])
 
-                        offset += pkscript_len
+                        offset += pkscript_len                                  # advances past the pubkey script
+                    if is_bip144:
+                        for txin_num in xrange(txin_count):
+                            stackitem_count, offset = varint(block, offset)
+                            for stackitem_num in xrange(stackitem_count):
+                                stackitem_len, offset = varint(block, offset)
+                                offset += stackitem_len                         # skips this stack item
                     offset += 4                                                 # skips the 4-byte locktime
                 header = blockfile.read(8)  # read in the next magic and remaining block length
 
