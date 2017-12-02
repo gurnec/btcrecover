@@ -32,7 +32,7 @@ import sys, os.path, base64, json, getpass, re, itertools, uuid, zlib, struct
 ################################### Cryptography Libraries ###################################
 
 # Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
-# and one key derivation function, pbkdf2(), using either PyCrypto if it's available or pure python
+# and one key derivation function, pbkdf2(), using either PyCryptodome if it's available or pure python
 # libraries. The created decryption functions each take three bytestring arguments: key, iv, ciphertext.
 # ciphertext must be a multiple of 16 bytes, and any padding present is not stripped. pbkdf2() takes
 # four arguments: password, salt, iter_count, len (len is the desired key length)

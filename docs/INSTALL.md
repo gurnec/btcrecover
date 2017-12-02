@@ -13,26 +13,26 @@ Locate your wallet type in the list below, and follow the instructions in the se
  * Armory 0.93+ on Windows - [Python 2.7](#python-27) **64-bit** (x86-64)
  * Armory 0.92+ on Linux - no additional requirements
  * Armory 0.92+ on OS X - some versions of Armory may not work correctly on OS X, if in doubt use version 0.95.1
- * Bitcoin Unlimited/Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
- * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCrypto](#pycrypto)
- * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Electrum 2.8+ fully encrypted wallets - [Python 2.7](#python-27) (2.7.8+ recommended), [coincurve](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCrypto](#pycrypto)
+ * Bitcoin Unlimited/Classic/XT/Core - [Python 2.7](#python-27),  optional: [PyCryptodome](#pycryptodome)
+ * MultiBit Classic - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * MultiBit HD - [Python 2.7](#python-27), [scrypt](#scrypt), optional: [PyCryptodome](#pycryptodome)
+ * Electrum (1.x or 2.x) - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Electrum 2.8+ fully encrypted wallets - [Python 2.7](#python-27) (2.7.8+ recommended), [coincurve](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCryptodome](#pycryptodome)
  * BIP-39 Bitcoin passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [coincurve](Seedrecover_Quick_Start_Guide.md#installation)
  * BIP-39 Ethereum passphrases (e.g. TREZOR) - [Python 2.7](#python-27) (2.7.8+ recommended), [coincurve and pysha3](Seedrecover_Quick_Start_Guide.md#installation)
- * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
- * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Blockchain.info - [Python 2.7](#python-27) (2.7.8+ recommended), recommended: [PyCrypto](#pycrypto)
- * Bitcoin Wallet for Android/BlackBerry backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Bitcoin Wallet for Android/BlackBerry spending PIN - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCrypto](#pycrypto)
- * KnC Wallet for Android backup - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Bither - [Python 2.7](#python-27), [scrypt](#scrypt), [coincurve](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCrypto](#pycrypto)
- * Litecoin-Qt - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
- * Electrum-LTC - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Litecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Dogecoin Core - [Python 2.7](#python-27),  optional: [PyCrypto](#pycrypto)
- * MultiDoge - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
- * Dogecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
+ * Hive for OS X - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCryptodome](#pycryptodome)
+ * mSIGNA (CoinVault) - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Blockchain.info - [Python 2.7](#python-27) (2.7.8+ recommended), recommended: [PyCryptodome](#pycryptodome)
+ * Bitcoin Wallet for Android/BlackBerry backup - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Bitcoin Wallet for Android/BlackBerry spending PIN - [Python 2.7](#python-27), [scrypt](#scrypt), [Google protobuf](#google-protocol-buffers), optional: [PyCryptodome](#pycryptodome)
+ * KnC Wallet for Android backup - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Bither - [Python 2.7](#python-27), [scrypt](#scrypt), [coincurve](Seedrecover_Quick_Start_Guide.md#installation), optional: [PyCryptodome](#pycryptodome)
+ * Litecoin-Qt - [Python 2.7](#python-27),  optional: [PyCryptodome](#pycryptodome)
+ * Electrum-LTC - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Litecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Dogecoin Core - [Python 2.7](#python-27),  optional: [PyCryptodome](#pycryptodome)
+ * MultiDoge - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
+ * Dogecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCryptodome](#pycryptodome)
 
 
 ### Windows ###
@@ -71,24 +71,40 @@ If (and only if) you decide *not* to install the latest version of Python 2, you
         curl https://bootstrap.pypa.io/get-pip.py | sudo python
 
 
-### PyCrypto ###
+### PyCryptodome ###
 
-PyCrypto is not strictly required for any wallet, however it offers a 20x speed improvement for wallets that tag it as recommended in the list above.
+PyCryptodome is not strictly required for any wallet, however it offers a 20x speed improvement for wallets that tag it as recommended in the list above.
 
 ##### Windows #####
 
-Download and run the PyCrypto 2.6 installer for Python 2.7, either the 32-bit version or the 64-bit version to match your version of Python. This is either `PyCrypto 2.6 for Python 2.7 32bit` or `PyCrypto 2.6 for Python 2.7 64bit` available here: <http://www.voidspace.org.uk/python/modules.shtml#pycrypto>
+To install PyCryptodome on Windows, you can simply do it with:
+
+    pip install pycryptodome
+
+If you don't have pip installed, you can read the instructions here: <https://pip.pypa.io/en/stable/installing/>
+
+**Note:** PyCryptodome is a forked and enhanced version of the now inactive PyCrypto package. So it is best to not have both installed at the same time. If you had installed PyCrypto earlier, you can uninstall it with:
+
+    pip uninstall pycrypto
+
+You can do this before installing PyCryptodome, so these do not interfere.
 
 ##### Linux #####
 
-Many distributions include PyCrypto pre-installed, check your distribution’s package management system to see if it is available (it is often called “python-crypto”). If not, try installing it from PyPI, for example on Debian-like distributions (including Ubuntu), if this doesn't work:
+Many distributions include PyCryptodome pre-installed, check your distribution’s package management system to see if it is available (it is often called “python-crypto”). If not, try installing it from PyPI, for example on Debian-like distributions (including Ubuntu), if this doesn't work:
 
     sudo apt-get install python-crypto
 
 then try this instead:
 
     sudo apt-get install python-pip
-    sudo pip install pycrypto
+    sudo pip install pycryptodome
+
+**Note:** PyCryptodome is a forked and enhanced version of the now inactive PyCrypto package. So it is best to not have both installed at the same time. If you had installed PyCrypto earlier, you can uninstall it with:
+
+    sudo pip uninstall pycrypto
+
+You can do this before installing PyCryptodome, so these do not interfere.
 
 ##### OS X #####
 
@@ -96,10 +112,22 @@ then try this instead:
 
         xcode-select --install
 
- 2. Type this to install PyCrypto:
+ 2. Type this to install PyCryptodome:
 
-        sudo pip install pycrypto
+        sudo pip install pycryptodome
 
+**Note:** PyCryptodome is a forked and enhanced version of the now inactive PyCrypto package. So it is best to not have both installed at the same time. If you had installed PyCrypto earlier, you can uninstall it with:
+
+    sudo pip uninstall pycrypto
+
+You can do this before installing PyCryptodome, so these do not interfere.
+
+##### Further information #####
+
+If you have any issues in configuring PyCryptodome, you check out it's:
+- Documentation: https://www.pycryptodome.org/en/latest/src/introduction.html
+- GitHub repo: https://github.com/Legrandin/pycryptodome
+- Package page: https://pypi.python.org/pypi/pycryptodome
 
 ### scrypt ###
 
@@ -121,7 +149,7 @@ then try this instead:
  4. Copy the chosen `libsodium.dll` file into your `C:\Python27` directory.
 
  5. Download and install one of the two update packages below from Microsoft, either the 32-bit version or the 64-bit version (the second) to match the version of Python that you've installed.
- 
+
     * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **32-bit**](https://go.microsoft.com/fwlink/?LinkId=746572)
     * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **64-bit**](https://go.microsoft.com/fwlink/?LinkId=746571)
 
@@ -202,4 +230,4 @@ Install the Google's Python protobuf library, for example on Debian-like distrib
 
     Note that you may need to change either the directory (on the first line) or the filename (on the second) depending on the filename you downloaded and its location.
 
-[PyCrypto](#pycrypto) is also recommended for Bitcoin Unlimited/Classic/XT/Core or Litecoin-Qt wallets for a 2x speed improvement.
+[PyCryptodome](#pycryptodome) is also recommended for Bitcoin Unlimited/Classic/XT/Core or Litecoin-Qt wallets for a 2x speed improvement.
