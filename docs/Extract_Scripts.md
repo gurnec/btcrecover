@@ -190,7 +190,7 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
     ...
     Password found: xxxx
 
-Please note that you must either download the entire *btcrecover* package which includes an AES decryption library, or you must already have PyCrypto installed in order to use the *extract-blockchain-second-hash.py* script.
+Please note that you must either download the entire *btcrecover* package which includes an AES decryption library, or you must already have PyCryptodome installed in order to use the *extract-blockchain-second-hash.py* script.
 
 #### Blockchain.info Technical Details ####
 

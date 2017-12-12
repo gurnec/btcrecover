@@ -2442,7 +2442,7 @@ class WalletNull(object):
 
 
 # Creates two decryption functions (in global namespace), aes256_cbc_decrypt() and aes256_ofb_decrypt(),
-# using either PyCrypto if it's available or a pure python library. The created functions each take
+# using either PyCryptodome if it's available or a pure python library. The created functions each take
 # three bytestring arguments: key, iv, ciphertext. ciphertext must be a multiple of 16 bytes, and any
 # padding present is not stripped.
 missing_pycrypto_warned = False
@@ -2459,12 +2459,12 @@ def load_aes256_library(force_purepython = False, warnings = True):
             return Crypto  # just so the caller can check which version was loaded
         except ImportError:
             if warnings and not missing_pycrypto_warned:
-                print(prog+": warning: can't find PyCrypto, using aespython instead", file=sys.stderr)
+                print(prog+": warning: can't find PyCryptodome, using aespython instead", file=sys.stderr)
                 missing_pycrypto_warned = True
 
     # This version is attributed to GitHub user serprex; please see the aespython
     # README.txt for more information. It measures over 30x faster than the more
-    # common "slowaes" package (although it's still 30x slower than the PyCrypto)
+    # common "slowaes" package (although it's still 30x slower than the PyCryptodome)
     #
     import aespython
     expandKey = aespython.key_expander.expandKey

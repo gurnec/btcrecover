@@ -2,7 +2,7 @@
 
 # Best practice for Travis CI is to use Python virtualenv instead of the system Python.
 # Unfortunately, the virtualenv which Travis CI sets up has a broken bsddb module,
-# doesn't have PyCrypto preinstalled, and doesn't play nice with dependencies from
+# doesn't have PyCryptodome preinstalled, and doesn't play nice with dependencies from
 # the Armory .deb distribution, so we just use the system Python instead.
 
 set -e

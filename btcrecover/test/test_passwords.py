@@ -1067,15 +1067,15 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_armory(self):
         self.wallet_tester("armory-wallet.wallet")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_bitcoincore(self):
         self.wallet_tester("bitcoincore-wallet.dat")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_electrum(self):
         self.wallet_tester("electrum-wallet")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_electrum27(self):
         self.wallet_tester("electrum27-wallet")
 
@@ -1098,7 +1098,7 @@ class Test07WalletDecryption(unittest.TestCase):
         self.wallet_tester("electrum1-upgradedto-electrum27-wallet")
 
     @skipUnless(can_load_coincurve, "requires coincurve")
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     def test_electrum28(self):
         self.wallet_tester("electrum28-wallet")
 
@@ -1106,27 +1106,27 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_electrum28_pp(self):
         self.wallet_tester("electrum28-wallet", force_purepython=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_multibit(self):
         self.wallet_tester("multibit-wallet.key")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
         self.wallet_tester("mbhd.wallet.aes")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_multibithd_v0_5_0(self):
         self.wallet_tester(os.path.join("multibithd-v0.5.0", "mbhd.wallet.aes"))
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_protobuf, "requires protobuf")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_bitcoinj(self):
         self.wallet_tester("bitcoinj-wallet.wallet")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_protobuf, "requires protobuf")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_androidpin(self):
@@ -1138,38 +1138,38 @@ class Test07WalletDecryption(unittest.TestCase):
     def test_androidpin_unencrypted(self):
         self.wallet_tester("bitcoinj-wallet.wallet", android_backuppass="IGNORED")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_bither(self):
         self.wallet_tester("bither-wallet.db")
 
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     @skipUnless(can_load_scrypt,    "requires a binary implementation of pylibscrypt")
     @skipUnless(can_load_coincurve, "requires coincurve")
     @skipUnless(has_ripemd160,      "requires that hashlib implements RIPEMD-160")
     def test_bither_hdonly(self):
         self.wallet_tester("bither-hdonly-wallet.db")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_msigna(self):
         self.wallet_tester("msigna-wallet.vault")
 
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     @skipUnless(has_hashlib_pbkdf2, "requires Python 2.7.8+")
     def test_blockchain_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json")
 
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     @skipUnless(has_hashlib_pbkdf2, "requires Python 2.7.8+")
     def test_blockchain_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json")
 
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     @skipUnless(has_hashlib_pbkdf2, "requires Python 2.7.8+")
     def test_blockchain_secondpass_v0(self):
         self.wallet_tester("blockchain-v0.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
 
-    @skipUnless(can_load_pycrypto,  "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,  "requires PyCryptodome")
     @skipUnless(has_hashlib_pbkdf2, "requires Python 2.7.8+")
     def test_blockchain_secondpass_v2(self):
         self.wallet_tester("blockchain-v2.0-wallet.aes.json", blockchain_mainpass="btcr-test-password")
@@ -1361,97 +1361,97 @@ class Test08KeyDecryption(unittest.TestCase):
     def test_armory(self):
         self.key_tester("YXI6r7mks1qvph4G+rRT7WlIptdr9qDqyFTfXNJ3ciuWJ12BgWX5Il+y28hLNr/u4Wl49hUi4JBeq6Jz9dVBX3vAJ6476FEAACAABAAAAGGwnwXRpPbBzC5lCOBVVWDu7mUJetBOBvzVAv0IbrboDXqA8A==")
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_bitcoincore(self):
         self.key_tester("YmM65iRhIMReOQ2qaldHbn++T1fYP3nXX5tMHbaA/lqEbLhFk6/1Y5F5x0QJAQBI/maR")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_bitcoincore_unicode(self):
         self.key_tester("YmM6XAL2X19VfzlKJfc+7LIeNrB2KC8E9DWe1YhhOchPoClvwftbuqjXKkfdAAARmggo", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_multibit(self):
         self.key_tester("bWI6oikebfNQTLk75CfI5X3svX6AC7NFeGsgTNXZfA==")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_multibit_unicode(self):
         self.key_tester("bWI6YK6OX8bVP2Ar/j2dZBBQ+F0pEn8kZK6rlXiAWA==", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_multidoge(self):
         self.key_tester("bWI6IdK25nMhHI9n4zlb1cUtWBl7mL7gh7ZtxkYaDw==")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_multidoge_unicode(self):
         self.key_tester("bWI6ry78W+RkeTi2dVt2omZMfXRi46xDsIhr0jKN3g==", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_androidwallet(self):
         self.key_tester("bWI6Ii/ZEeDjUJKq704wzUxKudpvAralnrOQtXM4og==")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_androidwallet_unicode(self):
         self.key_tester("bWI6f1QdX7xXtC0zG7XK9pTGTifie5FUeAGhJ05esw==", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_androidknc(self):
         self.key_tester("bWI6n6ccPSkbrmxQpdfKNAOBFppQLGloPDHE2sOucQ====")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_androidknc_unicode(self):
         self.key_tester("bWI6TaEiZOBE+52jqe09jKcVa39KqvOpJxbpEtCVPQ==", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_multibithd(self):
         self.key_tester("bTU6LbH/+ROEa0cQ0inH7V3thcYVi5WL/4uGfU9/JQgsPZ6Y3zps")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     @skipUnless(can_load_scrypt,         "requires a binary implementation of pylibscrypt")
     def test_multibithd_unicode(self):
         self.key_tester("bTU6M7wXqwXQWo4o22eN50PNnsYVi5WL/4uGfU9/JQgsPZ42BGtS", unicode_pw=True)
     #
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
     def test_multibithd_v0_5_0(self):
         self.key_tester("bTU6Uh0pDwAKoBrKkMbf2ARxmyftdKB5dsqDUWTsD1fVrnsM2EYW")
 
     @skipUnless(can_load_protobuf, "requires protobuf")
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_bitcoinj(self):
         self.key_tester("Ymo6MacXiCd1+6/qtPc5rCaj6qIGJbu5tX2PXQXqF4Df/kFrjNGMDMHqrwBAAAAIAAEAZwdBow==")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
     @skipUnless(can_load_protobuf,       "requires protobuf")
     @skipUnless(can_load_scrypt,         "requires a binary implementation of pylibscrypt")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_bitcoinj_unicode(self):
         self.key_tester("Ymo6hgWTejxVYfL/LLF4af8j2RfEsi5y16kTQhECWnn9iCt8AmGWPoPomQBAAAAIAAEAfNRA3A==", unicode_pw=True)
 
     @skipUnless(can_load_scrypt,   "requires a binary implementation of pylibscrypt")
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_bither(self):
         self.key_tester("YnQ6PocfHvWGVbCzlVb9cUtPDjosnuB7RoyspTEzZZAqURlCsLudQaQ4IkIW8YE=")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
     @skipUnless(can_load_scrypt,         "requires a binary implementation of pylibscrypt")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_bither_unicode(self):
         self.key_tester("YnQ6ENNU1KSJlzC8FMfAq/MHgWgaZkxpiByt/vLQ/UdP2NlCsLudQaQ4IjTbPcw=", unicode_pw=True)
 
-    @skipUnless(can_load_pycrypto, "requires PyCrypto")
+    @skipUnless(can_load_pycrypto, "requires PyCryptodome")
     def test_msigna(self):
         self.key_tester("bXM6SWd6U+qTKOzQDfz8auBL1/tzu0kap7NMOqctt7U0nA8XOI6j6BCjxCsc7mU=")
     #
     @skipUnless(lambda: tstr == unicode, "Unicode mode only")
-    @skipUnless(can_load_pycrypto,       "requires PyCrypto")
+    @skipUnless(can_load_pycrypto,       "requires PyCryptodome")
     def test_msigna_unicode(self):
         self.key_tester("bXM6i9OkMzrIJqWvpM+Dxq795jeFFxiB6DtBwuGmeEtfHLLOjMvoJRAWeSsf+Pg=", unicode_pw=True)
 
