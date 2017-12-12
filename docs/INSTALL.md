@@ -48,7 +48,7 @@ Download and run the latest version of the pywin32 installer for Python 2.7, eit
 
 ##### Windows #####
 
-Visit the Python download page here: <https://www.python.org/downloads/windows/>, and click the link for the latest **Python 2** release. Download and run either the `Windows x86 MSI installer` for the 32-bit version of Python, or the `Windows x86-64 MSI installer` for the 64-bit one (for Armory wallets, be sure to choose the correct one as noted above). Modern PCs should use the 64-bit version, however if you're unsure which one is compatible with your PC, choose the 32-bit one.
+Visit the Python download page here: <https://www.python.org/downloads/windows/>, and click the link for the latest **Python 2.7** release near the top of the page under the heading *Python Releases for Windows*. Download and run either the `Windows x86 MSI installer` for the 32-bit version of Python, or the `Windows x86-64 MSI installer` for the 64-bit one (for Armory wallets, be sure to choose the correct one as noted above). Modern PCs should use the 64-bit version, however if you're unsure which one is compatible with your PC, choose the 32-bit one.
 
 ##### Linux #####
 

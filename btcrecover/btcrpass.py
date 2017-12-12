@@ -49,7 +49,7 @@ def full_version():
     return "btcrecover {} on Python {} {}-bit, {}-bit unicodes, {}-bit ints".format(
         __version__,
         ".".join(str(i) for i in sys.version_info[:3]),
-        calcsize("P") * 8,
+        calcsize(b"P") * 8,
         sys.maxunicode.bit_length(),
         sys.maxint.bit_length() + 1
     )
@@ -310,7 +310,7 @@ def add_armory_library_path():
         armory_path    = progfiles_path + r"\Armory"
         sys.path.extend((armory_path, armory_path + r"\library.zip"))
         # 64-bit Armory might install into the 32-bit directory; if this is 64-bit Python look in both
-        if struct.calcsize('P') * 8 == 64:  # calcsize('P') is a pointer's size in bytes
+        if struct.calcsize(b"P") * 8 == 64:  # calcsize('P') is a pointer's size in bytes
             assert not progfiles_path.endswith("(x86)"), "ProgramFiles doesn't end with '(x86)' on x64 Python"
             progfiles_path += " (x86)"
             armory_path     = progfiles_path + r"\Armory"
