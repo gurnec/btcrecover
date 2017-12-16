@@ -4,7 +4,7 @@ Just download the latest version from <https://github.com/gurnec/btcrecover/arch
 
 ### Wallet Installation Requirements ###
 
-Locate your wallet type in the list below, and follow the instructions in the sections indicated for your wallet.
+Locate your wallet type in the list below, and follow the instructions for only the sections listed next to your wallet.
 
 **Note** that for Armory wallets, you must have Armory 0.92.x or later installed on the computer where you run *btcrecover*.
 
@@ -109,7 +109,7 @@ then try this instead:
 
         C:\Python27\Scripts\pip install pylibscrypt
 
- 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.13-msvc.zip>
+ 2. Download this libsodium zip file, and extract it to a temporary location: <https://download.libsodium.org/libsodium/releases/libsodium-1.0.16-msvc.zip>
 
  3. Find the correct `libsodium.dll` file from the extracted files, it will be located at one of these two paths:
 
@@ -122,8 +122,8 @@ then try this instead:
 
  5. Download and install one of the two update packages below from Microsoft, either the 32-bit version or the 64-bit version (the second) to match the version of Python that you've installed.
  
-    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **32-bit**](https://go.microsoft.com/fwlink/?LinkId=746572)
-    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **64-bit**](https://go.microsoft.com/fwlink/?LinkId=746571)
+    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **32-bit**](https://go.microsoft.com/fwlink/?LinkId=746571)
+    * [Microsoft Visual C++ Redistributable for Visual Studio 2017 **64-bit**](https://go.microsoft.com/fwlink/?LinkId=746572)
 
 ##### Linux #####
 
