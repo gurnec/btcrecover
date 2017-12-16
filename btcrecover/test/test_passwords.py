@@ -44,7 +44,8 @@ tstr = None
 def setUpModule():
     global orig_warnings, tstr, tchr, utf8_opt, BytesIO, StringIO, BytesIONonClosing, StringIONonClosing
 
-    orig_warnings = warnings.filters[:]  # the slice notation takes a shallow copy
+    orig_warnings = warnings.catch_warnings()
+    orig_warnings.__enter__()  # save the current warnings settings (it's a context manager)
     # Convert warnings to errors:
     warnings.simplefilter("error")
     # except this from Intel's OpenCL compiler:
@@ -89,7 +90,7 @@ def setUpModule():
 def tearDownModule():
     global tstr
     tstr = None
-    warnings.filters[:] = orig_warnings  # the slice notation replaces the list contents, not the list itself
+    orig_warnings.__exit__(None, None, None)  # restore the original warnings settings
 
 
 WALLET_DIR = os.path.join(os.path.dirname(__file__), "test-wallets")
