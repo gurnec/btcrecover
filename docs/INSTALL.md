@@ -35,12 +35,6 @@ Locate your wallet type in the list below, and follow the instructions for only 
  * Dogecoin Wallet for Android - [Python 2.7](#python-27), recommended: [PyCrypto](#pycrypto)
 
 
-### Windows ###
-
-***After*** installing the requirements for your wallet from above, if you'd like you may *optionally* install pywin32 which allows *btcrecover* to run as a low-priority process so it doesn’t hog your CPU, and slightly improves autosave safety.
-
-Download and run the latest version of the pywin32 installer for Python 2.7, either the 32-bit version or the 64-bit version to match the version of Python you installed. Currently this is `pywin32-221.win32-py2.7.exe` for the 32-bit version or `pywin32-221.win-amd64-py2.7.exe` for the 64-bit version available in the `Build 221` folder here: <http://sourceforge.net/projects/pywin32/files/pywin32/>
-
 ----------
 
 

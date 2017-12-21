@@ -17,8 +17,6 @@ Additional requirements are described below.
 
         C:\Python27\Scripts\pip install coincurve==5.2.0 pysha3
 
- 3. (optional) Follow [these instructions](INSTALL.md#windows) to download and install pywin32 which allows *seedrecover.py* to run as a low-priority process so it doesn’t hog your CPU.
-
 ### Linux ###
 
 Most distributions include Python 2.7 pre-installed. Two additional Python libraries, coincurve and (for Ethereum wallets) pysha3 are required. For example on Debian-like distributions (including Ubuntu), open a terminal window and type this:

@@ -29,7 +29,7 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
-__version__          =  "0.17.9"
+__version__          =  "0.17.10"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
 import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
@@ -37,11 +37,6 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickl
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
-
-# The pywin32 module is also recommended on Windows but optional; it's only
-# used to adjust the process priority to be more friendly and to catch more
-# signals (other than just Ctrl-C) for better autosaves. When used with
-# Armory, btcrecover will just load the version that ships with Armory.
 
 
 def full_version():
@@ -5137,8 +5132,14 @@ def init_worker(wallet, char_mode):
 def set_process_priority_idle():
     try:
         if sys.platform == "win32":
-            import win32process
-            win32process.SetPriorityClass(win32process.GetCurrentProcess(), win32process.IDLE_PRIORITY_CLASS)
+            import ctypes, ctypes.wintypes
+            GetCurrentProcess = ctypes.windll.kernel32.GetCurrentProcess
+            GetCurrentProcess.argtypes = ()
+            GetCurrentProcess.restype  = ctypes.wintypes.HANDLE
+            SetPriorityClass = ctypes.windll.kernel32.SetPriorityClass
+            SetPriorityClass.argtypes = ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD
+            SetPriorityClass.restype  = ctypes.wintypes.BOOL
+            SetPriorityClass(GetCurrentProcess(), 0x00000040)  # IDLE_PRIORITY_CLASS
         else:
             os.nice(19)
     except StandardError: pass
@@ -5544,14 +5545,20 @@ def main():
 
     # Try to catch all types of intentional program shutdowns so we can
     # display password progress information and do a final autosave
+    windows_handler_routine = None
     try:
         sigint_handler = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGTERM, sigint_handler)     # OK to call on any OS
         if sys.platform != "win32":
             signal.signal(signal.SIGHUP, sigint_handler)  # can't call this on windows
         else:
-            import win32api
-            win32api.SetConsoleCtrlHandler(windows_ctrl_handler, True)
+            import ctypes, ctypes.wintypes
+            HandlerRoutine = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.DWORD)
+            SetConsoleCtrlHandler = ctypes.windll.kernel32.SetConsoleCtrlHandler
+            SetConsoleCtrlHandler.argtypes = HandlerRoutine, ctypes.wintypes.BOOL
+            SetConsoleCtrlHandler.restype  = ctypes.wintypes.BOOL
+            windows_handler_routine = HandlerRoutine(windows_ctrl_handler)  # creates a C callback from the Python function
+            SetConsoleCtrlHandler(windows_handler_routine, True)
     except StandardError: pass
 
     # Make est_passwords_per_5min evenly divisible by chunksize
@@ -5611,6 +5618,9 @@ def main():
 
         if not handled and not isinstance(e, KeyboardInterrupt): raise
         password_found = None  # neither False nor True -- unknown
+    finally:
+        if windows_handler_routine:
+            SetConsoleCtrlHandler(windows_handler_routine, False)
 
     # Autosave the final state (for all non-error cases -- we're shutting down (e.g. Ctrl-C or a
     # reboot), the password was found, or the search was exhausted -- or for handled out-of-memory)

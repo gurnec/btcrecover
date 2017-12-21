@@ -46,7 +46,7 @@ By default, *btcrecover* tries to use as much CPU time as is available and spare
 
 With MultiBit or Electrum wallets, *btcrecover* may not be able to efficiently use more than four or five CPU cores, sometimes even less depending on the contents of the tokenlist and the chosen typos. Specifying the `--no-dupchecks` option may help improve CPU usage and therefore the password guess rate in many cases with these two wallet types, and using slightly fewer or slightly greater `--threads` might also help. The only way to find out is to experiment.
 
-*btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching (but for Windows, it can only do this if you've installed the optional pywin32).
+*btcrecover* places itself in the lowest CPU priority class to minimize disruption to your PC while searching.
 
 ### Security Issues ###
 
