@@ -1354,6 +1354,63 @@ class WalletEthereum(WalletBIP39):
         return sha3.keccak_256(uncompressed_pubkey[1:]).digest()[-20:]
 
 
+############### LEDGER Ethereum ###############
+
+@register_selectable_wallet_class('Ethereum Ledger (m/44\'/60\'/0\')')
+class WalletEthereumLedger(WalletBIP39):
+
+    def __init__(self, path = None, loading = False):
+        if not path: path = "m/44'/60'/0'"
+        super(WalletEthereumLedger, self).__init__(path, loading)
+        global sha3
+        import sha3
+
+    def __setstate__(self, state):
+        super(WalletEthereumLedger, self).__setstate__(state)
+        # (re-)load the required libraries after being unpickled
+        global sha3
+        import sha3
+
+    @classmethod
+    def create_from_params(cls, *args, **kwargs):
+        if isinstance(kwargs.get("hash160s"), AddressSet):
+            raise ValueError("can't use an address database with Ethereum wallets")
+        self = super(WalletEthereumLedger, cls).create_from_params(*args, **kwargs)
+        if hasattr(self, "_known_hash160s") and isinstance(self._known_hash160s, AddressSet):
+            raise ValueError("can't use an address database with Ethereum wallets")
+        return self
+
+    @staticmethod
+    def _addresses_to_hash160s(addresses):
+        hash160s = set()
+        for address in addresses:
+            if address[:2].lower() == "0x":
+                address = address[2:]
+            if len(address) != 40:
+                raise ValueError("length (excluding any '0x' prefix) of Ethereum addresses must be 40")
+            cur_hash160 = base64.b16decode(address, casefold=True)
+            if not address.islower():  # verify the EIP55 checksum unless all letters are lowercase
+                checksum = sha3.keccak_256(base64.b16encode(cur_hash160).lower()).digest()
+                for nibble, c in enumerate(address, 0):
+                    if c.isalpha() and \
+                       c.isupper() != bool(ord(checksum[nibble // 2]) & (0b1000 if nibble&1 else 0b10000000)):
+                            raise ValueError("invalid EIP55 checksum")
+            hash160s.add(cur_hash160)
+        return hash160s
+
+    @staticmethod
+    def pubkey_to_hash160(uncompressed_pubkey):
+        """convert from an uncompressed public key to its Ethereum hash160 form
+
+        :param uncompressed_pubkey: SEC 1 EllipticCurvePoint OctetString
+        :type uncompressed_pubkey: str
+        :return: last 20 bytes of keccak256(raw_64_byte_pubkey)
+        :rtype: str
+        """
+        assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == "\x04"
+        return sha3.keccak_256(uncompressed_pubkey[1:]).digest()[-20:]
+
+
 ################################### Main ###################################
 
 
