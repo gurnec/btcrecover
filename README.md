@@ -14,7 +14,7 @@ If you find *btcrecover* helpful, please consider a small donation:
 
 **Thank You!**
 
-
+ 
 ## Features ##
 
  * Bitcoin wallet password recovery support for:
