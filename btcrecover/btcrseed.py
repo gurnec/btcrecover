@@ -764,11 +764,9 @@ class WalletBIP32(WalletBase):
                         WITNESS_VERSION = "\x00\x14"
                         witness_program = WITNESS_VERSION + pubkey_hash160
                         witness_program_hash160 = hashlib.new("ripemd160", hashlib.sha256(witness_program).digest()).digest()
-                        if witness_program_hash160 == hash160:
-                            return True
+                        return witness_program_hash160 == hash160
                     else:   # defaults to P2PKH
-                        if pubkey_hash160 == hash160:
-                            return True
+                        return pubkey_hash160 == hash160
 
         return False
 
