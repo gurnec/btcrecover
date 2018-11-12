@@ -41,6 +41,9 @@ GENERATOR_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036
 
 ADDRESSDB_DEF_FILENAME = "addresses.db"
 
+P2PKH_VERSION_BYTE = "\x00"
+P2SH_VERSION_BYTE = "\x05"
+
 def full_version():
     return "seedrecover {}, {}".format(
         __version__,
@@ -206,9 +209,9 @@ class WalletBase(object):
         hash160s = set()
         for address in addresses:
             hash160, version_byte = base58check_to_hash160(address)
-            if ord(version_byte) != 0:
-                raise ValueError("not a Bitcoin P2PKH address; version byte is {:#04x}".format(ord(version_byte)))
-            hash160s.add(hash160)
+            if version_byte != P2PKH_VERSION_BYTE and version_byte != P2SH_VERSION_BYTE:
+                raise ValueError("not a Bitcoin P2PKH or P2SH address; version byte is {:#04x}".format(ord(version_byte)))
+            hash160s.add( (hash160, version_byte) )
         return hash160s
 
     @staticmethod
@@ -448,7 +451,7 @@ class WalletElectrum1(WalletBase):
 
                     d_pubkey  = coincurve.PublicKey.from_valid_secret(d_privkey).format(compressed=False)
                     # Compute the hash160 of the *uncompressed* public key, and check for a match
-                    if hashlib_new("ripemd160", l_sha256(d_pubkey).digest()).digest() in self._known_hash160s:
+                    if hashlib_new("ripemd160", l_sha256(d_pubkey).digest()).digest() in [ hash160 for hash160,v in self._known_hash160s ]:
                         return mnemonic_ids, count  # found it
 
         return False, count
@@ -754,8 +757,18 @@ class WalletBIP32(WalletBase):
                                                 privkey_int) % GENERATOR_ORDER, 32)
 
                 d_pubkey = coincurve.PublicKey.from_valid_secret(d_privkey_bytes).format(compressed=False)
-                if self.pubkey_to_hash160(d_pubkey) in self._known_hash160s:
-                    return True
+
+                pubkey_hash160 = self.pubkey_to_hash160(d_pubkey)
+                for hash160, version_byte in self._known_hash160s:
+                    if version_byte == P2SH_VERSION_BYTE: # assuming P2SH(P2WPKH) BIP141
+                        WITNESS_VERSION = "\x00\x14"
+                        witness_program = WITNESS_VERSION + pubkey_hash160
+                        witness_program_hash160 = hashlib.new("ripemd160", hashlib.sha256(witness_program).digest()).digest()
+                        if witness_program_hash160 == hash160:
+                            return True
+                    else:   # defaults to P2PKH
+                        if pubkey_hash160 == hash160:
+                            return True
 
         return False
 
@@ -1338,7 +1351,7 @@ class WalletEthereum(WalletBIP39):
                     if c.isalpha() and \
                        c.isupper() != bool(ord(checksum[nibble // 2]) & (0b1000 if nibble&1 else 0b10000000)):
                             raise ValueError("invalid EIP55 checksum")
-            hash160s.add(cur_hash160)
+            hash160s.add( (cur_hash160, P2PKH_VERSION_BYTE) )
         return hash160s
 
     @staticmethod
