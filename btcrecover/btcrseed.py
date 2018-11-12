@@ -209,7 +209,7 @@ class WalletBase(object):
         hash160s = set()
         for address in addresses:
             hash160, version_byte = base58check_to_hash160(address)
-            if version_byte!=P2PKH_VERSION_BYTE and version_byte!=P2SH_VERSION_BYTE:
+            if version_byte != P2PKH_VERSION_BYTE and version_byte != P2SH_VERSION_BYTE:
                 raise ValueError("not a Bitcoin P2PKH or P2SH address; version byte is {:#04x}".format(ord(version_byte)))
             hash160s.add( (hash160, version_byte) )
         return hash160s
