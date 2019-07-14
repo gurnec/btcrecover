@@ -26,10 +26,15 @@
 #                      Thank You!
 
 from __future__ import print_function
-import sys, os.path, atexit, uuid, urllib2, json, time
+import sys, os.path, atexit, uuid, urllib2, json, time, ssl
+
+# Context to ignore SSL Errors
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
 
 # The base URL
-BASE_URL = "https://blockchain.info/"
+BASE_URL = "https://login.blockchain.com/"
 # The api_code (as of Feb 2 2017)
 API_CODE = "1770d5d9-bcea-4d28-ad21-6cbd5be018a8"
 
@@ -63,9 +68,9 @@ def do_request(query, body = None):
     if auth_token:
         req.add_header("authorization", "Bearer " + auth_token)
     try:
-        return urllib2.urlopen(req, cadefault=True)  # calls ssl.create_default_context() (despite what the docs say)
+        return urllib2.urlopen(req, context=ctx)  # fixed because otherwise SSL errors abound
     except TypeError:
-        return urllib2.urlopen(req)  # Python < 2.7.9 doesn't support the cadefault argument
+        return urllib2.urlopen(req, context=ctx)  # Python < 2.7.9 doesn't support the cadefault argument
 #
 # Performs a do_request(), decoding the result as json
 def do_request_json(query, body = None):
