@@ -150,7 +150,7 @@ try:
         key       = pbkdf2(password, salt_and_iv, iter_count, 32)
         decrypted = aes256_cbc_decrypt(key, salt_and_iv, data)           # CBC mode
         padding   = ord(decrypted[-1:])                                  # ISO 10126 padding length
-        return decrypted[:-padding] if 1 <= padding <= 16 and re.match('{\s*"guid"', decrypted) else None
+        return decrypted[:-padding] if 1 <= padding <= 16 and re.search('"guid"', decrypted) else None
 
     # Encryption scheme only used in version 0.0 wallets (N.B. this is untested)
     def decrypt_old():
