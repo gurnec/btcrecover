@@ -6,10 +6,10 @@ authors = ["Your Name <you@example.com>"]
 
 [tool.poetry.dependencies]
 python = "2.7.18"
-pycrypto = "^2.6.1"
 pylibscrypt = "^1.8.0"
 scrypt = "^0.8.17"
 protobuf = "^3.14.0"
+pycryptodome = "^3.9.9"
 
 [tool.poetry.dev-dependencies]
 
