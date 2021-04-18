@@ -60,3 +60,4 @@ if __name__ == "__main__":
         process.join(1.0)
 
     sys.exit(retval)
+  Python btcrecover.py-- help
