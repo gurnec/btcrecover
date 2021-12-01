@@ -1833,7 +1833,7 @@ def main(argv):
         # Add a final more thorough phase if it's not likely to take more than a few hours
         if len(mnemonic_ids_guess) <= 13 and passwords_per_seconds >=  750 or \
            len(mnemonic_ids_guess) <= 19 and passwords_per_seconds >= 2500:
-            phases.append(dict(typos=3, big_typos=1, min_typos=3, extra_args=["--no-dupchecks"]))
+            phases.append(dict(typos=12, big_typos=12, min_typos=3, extra_args=["--no-dupchecks"]))
 
     for phase_num, phase_params in enumerate(phases, 1):
 
