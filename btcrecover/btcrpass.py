@@ -5327,7 +5327,7 @@ def password_generator_factory(chunksize = 1, est_secs_per_password = 0):
 # Should be called after calling parse_arguments()
 # Returns a two-element tuple:
 #   the first element is the password, if found, otherwise False;
-#   the second is a human-readable result iff no password was found; or
+#   the second is a human-readable result if no password was found; or
 #   returns (None, None) for abnormal but not fatal errors (e.g. Ctrl-C)
 def main():
 
