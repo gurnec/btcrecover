@@ -1281,7 +1281,7 @@ class WalletMultiBitHD(WalletBitcoinj):
             if len(encrypted_data) < 32:
                 raise ValueError("MultiBit HD wallet files must be at least 32 bytes long")
 
-        # The likelihood of of finding a valid encrypted MultiBit HD wallet whose first 16,384
+        # The likelihood of finding a valid encrypted MultiBit HD wallet whose first 16,384
         # bytes have less than 7.8 bits of entropy per byte is... too small for me to figure out
         entropy_bits = est_entropy_bits(encrypted_data)
         if entropy_bits < 7.8:
@@ -1973,7 +1973,7 @@ class WalletBlockchain(object):
         # looks random, otherwise this could be some other type of base64-encoded file such
         # as a MultiBit key file (it should be safe to skip this test for v2.0+ wallets)
         if not iter_count:  # if this is a v0.0 wallet
-            # The likelihood of of finding a valid encrypted blockchain wallet (even at its minimum length
+            # The likelihood of finding a valid encrypted blockchain wallet (even at its minimum length
             # of about 500 bytes) with less than 7.4 bits of entropy per byte is less than 1 in 10^6
             # (decreased test below to 7.2 after being shown a wallet with just under 7.4 entropy bits)
             entropy_bits = est_entropy_bits(data)
