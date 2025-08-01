@@ -27,7 +27,7 @@
 # TODO: pythonize comments/documentation
 
 # (all optional futures for 2.7)
-from __future__ import print_function, absolute_import, division, unicode_literals
+from __future__ import print_function, absolute_import, division
 
 import io
 
@@ -38,29 +38,19 @@ import sys, argparse, itertools, string, re, multiprocessing, signal, os, gc, \
        time, timeit, hashlib, collections, base64, struct, atexit, zlib, math, json, numbers
 
 try:
-    import cPickle as pickle
+    import pickle as pickle
 except ImportError:
     import pickle
 
 # Python 2/3 compatibility
-try:
-    unicode = unicode
-except NameError:
-    # 'unicode' is undefined, must be Python 3
-    unicode = str
+unicode = str
 
-if not hasattr(sys, 'maxint'):
-    sys.maxint = sys.maxsize
+if not hasattr(sys, 'maxsize'):
+    sys.maxsize = sys.maxint
 
-try:
-    xrange = xrange
-except NameError:
-    xrange = range
+range = range
 
-try:
-    basestring = basestring
-except NameError:
-    basestring = str
+basestring = str
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -132,10 +122,10 @@ def init_wildcards():
     #
     # case-insensitive versions (e.g. %ia) of wildcard_sets for those which have them
     wildcard_nocase_sets = {
-        tstr("a") : tstr(string.lowercase + string.uppercase),
-        tstr("A") : tstr(string.uppercase + string.lowercase),
-        tstr("n") : tstr(string.lowercase + string.uppercase + string.digits),
-        tstr("N") : tstr(string.uppercase + string.lowercase + string.digits)
+        tstr("a") : tstr(string.ascii_lowercase + string.ascii_uppercase),
+        tstr("A") : tstr(string.ascii_uppercase + string.ascii_lowercase),
+        tstr("n") : tstr(string.ascii_lowercase + string.ascii_uppercase + string.digits),
+        tstr("N") : tstr(string.ascii_uppercase + string.ascii_lowercase + string.digits)
     }
     #
     wildcard_re = None
@@ -2849,8 +2839,13 @@ class MakePeekable(object):
     #
     def __iter__(self):
         return self
+    def __next__(self):
+        line = self.readline()
+        if not line:
+            raise StopIteration
+        return line
     def next(self):
-        return self.readline() if self._peeked else self._file.next()
+        return self.__next__()
     #
     reset_before_calling = {"seek", "tell", "truncate", "write", "writelines"}
     def __getattr__(self, name):
