@@ -28,16 +28,30 @@
 # (all optional futures for 2.7 except unicode_literals)
 from __future__ import print_function, absolute_import, division
 
+import sys
+if not hasattr(sys, 'maxint'):
+    sys.maxint = sys.maxsize
+
+try:
+    unicode = unicode
+except NameError:
+    unicode = str
+
+try:
+    xrange = xrange
+except NameError:
+    xrange = range
+
 __version__ = "0.7.3"
 
 from . import btcrpass
 from .addressset import AddressSet
-import sys, os, io, base64, hashlib, hmac, difflib, coincurve, itertools, \
+import os, io, base64, hashlib, hmac, difflib, coincurve, itertools, \
        unicodedata, collections, struct, glob, atexit, re, random, multiprocessing
 
 
 # Order of the base point generator, from SEC 2
-GENERATOR_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141L
+GENERATOR_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
 
 ADDRESSDB_DEF_FILENAME = "addresses.db"
 
@@ -59,7 +73,7 @@ def bytes_to_int(bytes_rep):
     :return: the unsigned integer
     :rtype: long
     """
-    return long(base64.b16encode(bytes_rep), 16)
+    return int(base64.b16encode(bytes_rep), 16)
 
 def int_to_bytes(int_rep, min_length):
     """convert an unsigned integer to a string of bytes (in big-endian order)
@@ -75,7 +89,7 @@ def int_to_bytes(int_rep, min_length):
     hex_rep = "{:X}".format(int_rep)
     if len(hex_rep) % 2 == 1:    # The hex decoder below requires
         hex_rep = "0" + hex_rep  # exactly 2 chars per byte.
-    return base64.b16decode(hex_rep).rjust(min_length, "\0")
+    return base64.b16decode(hex_rep).rjust(min_length, b"\0")
 
 
 dec_digit_to_base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -102,7 +116,7 @@ def base58check_to_bytes(base58_rep, expected_size):
     # Convert int to raw bytes
     all_bytes  = int_to_bytes(int_rep, expected_size + 4)
 
-    zero_count = next(zeros for zeros,byte in enumerate(all_bytes) if byte != "\0")
+    zero_count = next(zeros for zeros,byte in enumerate(all_bytes) if byte != b"\0")
     if len(base58_rep) - len(base58_stripped) != zero_count:
         raise ValueError("prepended zeros mismatch")
 
@@ -145,8 +159,8 @@ def compress_pubkey(uncompressed_pubkey):
     :return: the compressed public key
     :rtype: str
     """
-    assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == "\x04"
-    return chr((ord(uncompressed_pubkey[-1]) & 1) + 2) + uncompressed_pubkey[1:33]
+    assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == b"\x04"
+    return chr((ord(uncompressed_pubkey[-1]) & 1) + 2).encode() + uncompressed_pubkey[1:33]
 
 
 print = btcrpass.safe_print  # use btcrpass's print which never dies from printing Unicode
@@ -173,7 +187,7 @@ def load_wordlist(name, lang):
         wordlist = []
         for word in wordlist_file:
             word = word.strip()
-            if word and not word.startswith(u"#"):
+            if word and not word.startswith("#"):
                 wordlist.append(unicodedata.normalize("NFC", word))
     return wordlist
 
@@ -236,7 +250,7 @@ class WalletElectrum1(WalletBase):
             cls._word_to_id = { word:id for id,word in enumerate(cls._words) }
 
     @property
-    def word_ids(self):      return xrange(len(self._words))
+    def word_ids(self):      return range(len(self._words))
     @classmethod
     def id_to_word(cls, id): return cls._words[id]
 
@@ -272,12 +286,12 @@ class WalletElectrum1(WalletBase):
     def _load_from_dict(cls, wallet):
         seed_version = wallet.get("seed_version")
         if seed_version is None:             raise ValueError("Unrecognized wallet format (Electrum1 seed_version not found)")
-        if seed_version != 4:                raise NotImplementedError("Unsupported Electrum1 seed version " + seed_version)
+        if seed_version != 4:                raise NotImplementedError("Unsupported Electrum1 seed version " + str(seed_version))
         if not wallet.get("use_encryption"): raise ValueError("Electrum1 wallet is not encrypted")
         master_pubkey = base64.b16decode(wallet["master_public_key"], casefold=True)
         if len(master_pubkey) != 64:         raise ValueError("Electrum1 master public key is not 64 bytes long")
         self = cls(loading=True)
-        self._master_pubkey = "\x04" + master_pubkey  # prepend the uncompressed tag
+        self._master_pubkey = b"\x04" + master_pubkey  # prepend the uncompressed tag
         return self
 
     # Creates a wallet instance from either an mpk, an addresses container and address_limit,
@@ -345,7 +359,7 @@ class WalletElectrum1(WalletBase):
         # If an mpk has been provided (in the function call or from a user), convert it to the needed format
         if mpk:
             assert len(mpk) == 64, "mpk is 64 bytes long (after decoding from hex)"
-            self._master_pubkey = "\x04" + mpk  # prepend the uncompressed tag
+            self._master_pubkey = b"\x04" + mpk  # prepend the uncompressed tag
 
         # If an mpk wasn't provided (at all), and addresses and hash160s arguments also
         # weren't provided (in the original function call), prompt the user for addresses.
@@ -412,14 +426,14 @@ class WalletElectrum1(WalletBase):
         for count, mnemonic_ids in enumerate(mnemonic_ids_list, 1):
             # Compute the binary seed from the word list the Electrum1 way
             seed = ""
-            for i in xrange(0, 12, 3):
+            for i in range(0, 12, 3):
                 seed += "{:08x}".format( mnemonic_ids[i    ]
                      + num_words  * (   (mnemonic_ids[i + 1] - mnemonic_ids[i    ]) % num_words )
                      + num_words2 * (   (mnemonic_ids[i + 2] - mnemonic_ids[i + 1]) % num_words ))
             #
             unstretched_seed = seed
-            for i in xrange(100000):  # Electrum1's seed stretching
-                seed = l_sha256(seed + unstretched_seed).digest()
+            for i in range(100000):  # Electrum1's seed stretching
+                seed = l_sha256(seed.encode() + unstretched_seed.encode()).digest()
 
             # If a master public key was provided, check the pubkey derived from the seed against it
             if self._master_pubkey:
@@ -435,14 +449,14 @@ class WalletElectrum1(WalletBase):
                 try: master_pubkey_bytes = coincurve.PublicKey.from_valid_secret(seed).format(compressed=False)[1:]
                 except ValueError: continue
 
-                for seq_num in xrange(self._addrs_to_generate):
+                for seq_num in range(self._addrs_to_generate):
                     # Compute the next deterministic private/public key pair the Electrum1 way.
                     # FYI we derive a privkey first, and then a pubkey from that because it's
                     # likely faster than deriving a pubkey directly from the base point and
                     # seed -- it means doing a simple modular addition instead of a point
                     # addition (plus a scalar point multiplication which is needed for both).
                     d_offset  = bytes_to_int( l_sha256(l_sha256(
-                            "{}:0:{}".format(seq_num, master_pubkey_bytes)  # 0 means: not a change address
+                            "{}:0:{}".format(seq_num, master_pubkey_bytes).encode()  # 0 means: not a change address
                         ).digest()).digest() )
                     d_privkey = int_to_bytes((master_privkey + d_offset) % GENERATOR_ORDER, 32)
 
@@ -501,8 +515,8 @@ class WalletElectrum1(WalletBase):
     @staticmethod
     def performance_iterator():
         # See WalletBIP39.performance_iterator() for details
-        prefix = tuple(random.randrange(len(WalletElectrum1._words)) for i in xrange(8))
-        for guess in itertools.product(xrange(len(WalletElectrum1._words)), repeat = 4):
+        prefix = tuple(random.randrange(len(WalletElectrum1._words)) for i in range(8))
+        for guess in itertools.product(range(len(WalletElectrum1._words)), repeat = 4):
             yield prefix + guess
 
 
@@ -704,7 +718,7 @@ class WalletBIP32(WalletBase):
                 continue
 
             # Convert the mnemonic sentence to seed bytes (according to BIP39 or Electrum2)
-            seed_bytes = hmac.new("Bitcoin seed", self._derive_seed(mnemonic_ids), hashlib.sha512).digest()
+            seed_bytes = hmac.new(b"Bitcoin seed", self._derive_seed(mnemonic_ids), hashlib.sha512).digest()
 
             if self._verify_seed(seed_bytes):
                 return mnemonic_ids, count  # found it
@@ -721,7 +735,7 @@ class WalletBIP32(WalletBase):
                 try: data_to_hmac = coincurve.PublicKey.from_valid_secret(privkey_bytes).format()
                 except ValueError: return False
             else:               # else it's a hardened child key
-                data_to_hmac = "\0" + privkey_bytes  # prepended "\0" as per BIP32
+                data_to_hmac = b"\0" + privkey_bytes  # prepended "\0" as per BIP32
             data_to_hmac += struct.pack(">I", i)  # append the index (big-endian) as per BIP32
 
             seed_bytes = hmac.new(chaincode_bytes, data_to_hmac, hashlib.sha512).digest()
@@ -745,7 +759,7 @@ class WalletBIP32(WalletBase):
             except ValueError: return False
             privkey_int = bytes_to_int(privkey_bytes)
             #
-            for i in xrange(self._addrs_to_generate):
+            for i in range(self._addrs_to_generate):
                 seed_bytes = hmac.new(chaincode_bytes,
                     data_to_hmac + struct.pack(">I", i), hashlib.sha512).digest()
 
@@ -822,7 +836,7 @@ class WalletBIP39(WalletBIP32):
     # Configures the values of four globals used later in config_btcrecover():
     # mnemonic_ids_guess, close_mnemonic_ids, num_inserts, and num_deletes;
     # also selects the appropriate wordlist language to use
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = "", expected_len = None, closematch_cutoff = 0.65):
         if expected_len:
             if expected_len < 12:
                 raise ValueError("minimum BIP39 sentence length is 12 words")
@@ -841,7 +855,7 @@ class WalletBIP39(WalletBIP32):
                 c = ord(c)
                 if 0xD800 <= c <= 0xDBFF or 0xDC00 <= c <= 0xDFFF:
                     raise ValueError("this version of Python doesn't support passphrases with Unicode code points > "+str(sys.maxunicode))
-        self._derivation_salt = "mnemonic" + self._unicode_to_bytes(passphrase)
+        self._derivation_salt = b"mnemonic" + self._unicode_to_bytes(passphrase)
 
         # Special case for wallets which tell users to record only the first four letters of each word;
         # convert all short words into long ones (intentionally done *after* the finding of close words).
@@ -896,16 +910,16 @@ class WalletBIP39(WalletBIP32):
         if not lang:
             language_word_hits = {}  # maps a language id to the # of words found in that language
             for word in mnemonic_guess:
-                for lang, one_languages_words in self._language_words.iteritems():
+                for lang, one_languages_words in self._language_words.items():
                     if word in one_languages_words:
                         language_word_hits.setdefault(lang, 0)
                         language_word_hits[lang] += 1
             if len(language_word_hits) == 0:
                 raise ValueError("can't guess wordlist language: 0 valid words")
             if len(language_word_hits) == 1:
-                best_guess = language_word_hits.popitem()
+                best_guess = list(language_word_hits.items())[0]
             else:
-                sorted_hits = language_word_hits.items()
+                sorted_hits = list(language_word_hits.items())
                 sorted_hits.sort(key=lambda x: x[1])  # sort based on hit count
                 best_guess   = sorted_hits[-1]
                 second_guess = sorted_hits[-2]
@@ -947,7 +961,7 @@ class WalletBIP39(WalletBIP32):
                 close_mnemonic_ids[mnemonic_ids_guess[-1]] = \
                     tuple( (self._unicode_to_bytes(w),) for w in close_words[1:] )
             else:
-                if __name__ == b"__main__":
+                if __name__ == "__main__":
                     print(u"'{}' was in your guess, but there is no similar seed word;\n"
                           u"    trying all possible seed words here instead.".format(word))
                 else:
@@ -1003,7 +1017,7 @@ class WalletBIP39(WalletBIP32):
         bit_string        = "".join(self._word_to_binary[w] for w in mnemonic_words)
         cksum_len_in_bits = len(mnemonic_words) // 3  # as per BIP39
         entropy_bytes     = bytearray()
-        for i in xrange(0, len(bit_string) - cksum_len_in_bits, 8):
+        for i in range(0, len(bit_string) - cksum_len_in_bits, 8):
             entropy_bytes.append(int(bit_string[i:i+8], 2))
         cksum_int = int(bit_string[-cksum_len_in_bits:], 2)
         #
@@ -1025,7 +1039,7 @@ class WalletBIP39(WalletBIP32):
         # mode this creates an unwanted positive hit, so now we have to start with a random prefix.
         length = len(mnemonic_ids_guess) + num_inserts - num_deletes
         assert length >= 12
-        prefix = tuple(random.choice(self._words) for i in xrange(length-4))
+        prefix = tuple(random.choice(self._words) for i in range(length-4))
         for guess in itertools.product(self._words, repeat=4):
             yield prefix + guess
 
@@ -1178,7 +1192,7 @@ class WalletElectrum2(WalletBIP39):
                     if len(mpk) != 64:
                         raise ValueError("Electrum1 master public key is not 64 bytes long")
                     self = WalletElectrum1(loading=True)
-                    self._master_pubkey = "\x04" + mpk  # prepend the uncompressed tag
+                    self._master_pubkey = b"\x04" + mpk  # prepend the uncompressed tag
                     return self
 
                 else:
@@ -1187,7 +1201,7 @@ class WalletElectrum2(WalletBIP39):
             # Electrum 2.0 - 2.6.4 wallet (of any wallet type)
             mpks = wallet.get("master_public_keys")
             if mpks:
-                mpk = mpks.values()[0]
+                mpk = list(mpks.values())[0]
                 break
 
             raise RuntimeError("No master public keys found in Electrum2 wallet")
@@ -1206,7 +1220,7 @@ class WalletElectrum2(WalletBIP39):
         word = filter(lambda c: not unicodedata.combining(c), word)  # Electrum 2.x removes combining marks
         return intern(word.encode("utf_8"))
 
-    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = u"", expected_len = None, closematch_cutoff = 0.65):
+    def config_mnemonic(self, mnemonic_guess = None, lang = None, passphrase = "", expected_len = None, closematch_cutoff = 0.65):
         if expected_len is None:
             expected_len_specified = False
             if self._needs_passphrase:
@@ -1260,13 +1274,13 @@ class WalletElectrum2(WalletBIP39):
         passphrase = unicodedata.normalize("NFKD", passphrase)  # problematic w/Python narrow Unicode builds, same as Electrum
         passphrase = passphrase.lower()  # (?)
         passphrase = filter(lambda c: not unicodedata.combining(c), passphrase)  # remove combining marks
-        passphrase = u" ".join(passphrase.split())  # replace whitespace sequences with a single ASCII space
+        passphrase = " ".join(passphrase.split())  # replace whitespace sequences with a single ASCII space
         # remove ASCII whitespace between CJK characters (?)
-        passphrase = u"".join(c for i,c in enumerate(passphrase) if not (
+        passphrase = "".join(c for i,c in enumerate(passphrase) if not (
                 c in string.whitespace
             and any(intvl[0] <= ord(passphrase[i-1]) <= intvl[1] for intvl in self.CJK_INTERVALS)
             and any(intvl[0] <= ord(passphrase[i+1]) <= intvl[1] for intvl in self.CJK_INTERVALS)))
-        self._derivation_salt = "electrum" + passphrase.encode("utf_8")
+        self._derivation_salt = b"electrum" + passphrase.encode("utf_8")
 
         # Electrum 2.x doesn't separate mnemonic words with spaces in sentences for any CJK
         # scripts when calculating the checksum or deriving a binary seed (even though this
@@ -1282,13 +1296,13 @@ class WalletElectrum2(WalletBIP39):
 
     # Called by WalletBIP32.return_verified_password_or_false() to verify an Electrum2 checksum
     def _verify_checksum(self, mnemonic_words):
-        return hmac.new("Seed version", self._space.join(mnemonic_words), hashlib.sha512) \
-               .digest()[0] == "\x01"
+        return hmac.new(b"Seed version", self._space.join(mnemonic_words).encode(), hashlib.sha512) \
+               .digest()[0] == 1
 
     # Called by WalletBIP32.return_verified_password_or_false() to create a binary seed
     def _derive_seed(self, mnemonic_words):
         # Note: the words are already in Electrum2's normalized form
-        return btcrpass.pbkdf2_hmac("sha512", self._space.join(mnemonic_words), self._derivation_salt, 2048)
+        return btcrpass.pbkdf2_hmac("sha512", self._space.join(mnemonic_words).encode(), self._derivation_salt, 2048)
 
     # Returns a dummy xpub for performance testing purposes
     @staticmethod
@@ -1350,7 +1364,7 @@ class WalletEthereum(WalletBIP39):
         :return: last 20 bytes of keccak256(raw_64_byte_pubkey)
         :rtype: str
         """
-        assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == "\x04"
+        assert len(uncompressed_pubkey) == 65 and uncompressed_pubkey[0] == b"\x04"
         return sha3.keccak_256(uncompressed_pubkey[1:]).digest()[-20:]
 
 
@@ -1459,7 +1473,7 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
     # For (only) Electrum2, num_inserts are not required, so we try several sub-phases with a
     # different number of inserts each time; for all others the total num_inserts are required
     if isinstance(loaded_wallet, WalletElectrum2):
-        num_inserts_to_try = xrange(l_num_inserts + 1)  # try a range
+        num_inserts_to_try = range(l_num_inserts + 1)  # try a range
     else:
         num_inserts_to_try = l_num_inserts,             # only try the required max
     for subphase_num, cur_num_inserts in enumerate(num_inserts_to_try, 1):
@@ -1524,7 +1538,7 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
             # only add replacecloseword typos if they're not already covered by the
             # replaceword typos added above and there exists at least one close word
             num_replacecloseword = l_any_typos - l_big_typos
-            if num_replacecloseword > 0 and any(len(ids) > 0 for ids in close_mnemonic_ids.itervalues()):
+            if num_replacecloseword > 0 and any(len(ids) > 0 for ids in close_mnemonic_ids.values()):
                 l_btcr_args += " --typos-replacecloseword"
                 if num_replacecloseword < typos:
                     l_btcr_args += " --max-typos-replacecloseword " + str(num_replacecloseword)
@@ -1727,7 +1741,7 @@ def main(argv):
             phase.setdefault("typos", 0)
             if not args.mnemonic_prompt:
                 # Create a dummy mnemonic; only its language and length are used for anything
-                config_mnemonic_params["mnemonic_guess"] = " ".join("act" for i in xrange(args.mnemonic_length or 12))
+                config_mnemonic_params["mnemonic_guess"] = " ".join("act" for i in range(args.mnemonic_length or 12))
 
         if args.addressdb:
             print("Loading address database ...")
