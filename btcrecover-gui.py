@@ -137,17 +137,38 @@ class BTCRecoverGUI:
         Tooltip(typos_label, "The maximum number of typos to simulate in each password guess.\nA typo can be a swapped, deleted, or case-changed character.")
         tk.Spinbox(options_frame, from_=0, to=4, textvariable=self.typos_count, width=5).grid(row=0, column=1, sticky=tk.W, padx=5)
 
-        typo_types_label = tk.Label(options_frame, text="Typo Types:")
-        typo_types_label.grid(row=1, column=0, sticky=tk.W, pady=5)
-        Tooltip(typo_types_label, "Select the types of typos to simulate.\n'Swap' swaps adjacent characters, 'Delete' removes a character,\nand 'Case' changes the case of a letter.")
-        tk.Checkbutton(options_frame, text="Swap", variable=self.typo_swap).grid(row=1, column=1, sticky=tk.W)
-        tk.Checkbutton(options_frame, text="Delete", variable=self.typo_delete).grid(row=1, column=2, sticky=tk.W)
-        tk.Checkbutton(options_frame, text="Case", variable=self.typo_case).grid(row=1, column=3, sticky=tk.W)
+        self.typo_strategy = tk.StringVar(value="Common")
+        typo_strategy_label = tk.Label(options_frame, text="Typo Strategy:")
+        typo_strategy_label.grid(row=1, column=0, sticky=tk.W, pady=5)
+        Tooltip(typo_strategy_label, "Select a typo generation strategy.")
+        typo_strategy_menu = tk.OptionMenu(options_frame, self.typo_strategy, "None", "Common", "All", command=self.update_typo_options)
+        typo_strategy_menu.grid(row=1, column=1, columnspan=3, sticky=tk.W, padx=5)
+
+        self.typo_swap = tk.BooleanVar(value=True)
+        self.typo_delete = tk.BooleanVar(value=True)
+        self.typo_case = tk.BooleanVar(value=True)
 
         threads_label = tk.Label(options_frame, text="Threads:")
         threads_label.grid(row=2, column=0, sticky=tk.W, pady=5)
         Tooltip(threads_label, "The number of CPU threads to use for the recovery process.\nMore threads can be faster on multi-core CPUs.")
         tk.Spinbox(options_frame, from_=1, to=btcrpass.cpus, textvariable=self.threads_count, width=5).grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        self.custom_wildcard = tk.StringVar()
+        custom_wildcard_label = tk.Label(options_frame, text="Custom Wildcard:")
+        custom_wildcard_label.grid(row=3, column=0, sticky=tk.W, pady=5)
+        Tooltip(custom_wildcard_label, "Specify a custom character set for the wildcard 'c'.\nFor example, 'a-zA-Z0-9'.")
+        tk.Entry(options_frame, textvariable=self.custom_wildcard, width=20).grid(row=3, column=1, columnspan=3, sticky=tk.W, padx=5)
+
+        self.min_pass_len = tk.IntVar(value=0)
+        self.max_pass_len = tk.IntVar(value=0)
+        min_pass_len_label = tk.Label(options_frame, text="Min Pass Length:")
+        min_pass_len_label.grid(row=4, column=0, sticky=tk.W, pady=5)
+        Tooltip(min_pass_len_label, "The minimum password length to try.")
+        tk.Spinbox(options_frame, from_=0, to=100, textvariable=self.min_pass_len, width=5).grid(row=4, column=1, sticky=tk.W, padx=5)
+        max_pass_len_label = tk.Label(options_frame, text="Max Pass Length:")
+        max_pass_len_label.grid(row=4, column=2, sticky=tk.W, pady=5)
+        Tooltip(max_pass_len_label, "The maximum password length to try.")
+        tk.Spinbox(options_frame, from_=0, to=100, textvariable=self.max_pass_len, width=5).grid(row=4, column=3, sticky=tk.W, padx=5)
 
         run_frame = tk.Frame(master, padx=10, pady=10)
         run_frame.pack(fill=tk.BOTH, expand=True)
@@ -196,6 +217,21 @@ class BTCRecoverGUI:
             self.tokenlist_path.set(path)
             self.passwordlist_path.set("")
 
+    def update_typo_options(self, *args):
+        strategy = self.typo_strategy.get()
+        if strategy == "None":
+            self.typo_swap.set(False)
+            self.typo_delete.set(False)
+            self.typo_case.set(False)
+        elif strategy == "Common":
+            self.typo_swap.set(True)
+            self.typo_delete.set(True)
+            self.typo_case.set(True)
+        elif strategy == "All":
+            self.typo_swap.set(True)
+            self.typo_delete.set(True)
+            self.typo_case.set(True)
+
     def progress_callback(self, recovered_so_far, total_to_recover):
         self.progress['value'] = (recovered_so_far / total_to_recover) * 100
         self.master.update_idletasks()
@@ -232,6 +268,18 @@ class BTCRecoverGUI:
             if self.typo_case.get(): argv.append("--typos-case")
 
         argv.extend(["--threads", str(self.threads_count.get())])
+
+        custom_wildcard = self.custom_wildcard.get()
+        if custom_wildcard:
+            argv.extend(["--custom-wild", custom_wildcard])
+
+        min_len = self.min_pass_len.get()
+        if min_len > 0:
+            argv.extend(["--min-length", str(min_len)])
+
+        max_len = self.max_pass_len.get()
+        if max_len > 0:
+            argv.extend(["--max-length", str(max_len)])
 
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)

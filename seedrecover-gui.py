@@ -152,10 +152,12 @@ class SeedRecoverGUI:
         options_frame = tk.Frame(main_frame)
         options_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=5)
 
-        typos_label = tk.Label(options_frame, text="Typos:")
-        typos_label.grid(row=0, column=0, sticky=tk.W)
-        Tooltip(typos_label, "Maximum number of mistakes (typos) to try in the mnemonic.")
-        tk.Spinbox(options_frame, from_=0, to=5, textvariable=self.typos_count, width=5).grid(row=0, column=1, sticky=tk.W, padx=5)
+        self.typo_strategy = tk.StringVar(value="Common")
+        typo_strategy_label = tk.Label(options_frame, text="Typo Strategy:")
+        typo_strategy_label.grid(row=0, column=0, sticky=tk.W, pady=5)
+        Tooltip(typo_strategy_label, "Select a typo generation strategy.")
+        typo_strategy_menu = tk.OptionMenu(options_frame, self.typo_strategy, "None", "Common", "All")
+        typo_strategy_menu.grid(row=0, column=1, sticky=tk.W, padx=5)
 
         threads_label = tk.Label(options_frame, text="Threads:")
         threads_label.grid(row=0, column=2, sticky=tk.W, padx=20)
@@ -277,7 +279,14 @@ class SeedRecoverGUI:
             f.write(mnemonic)
         argv.extend(["--mnemonic-prompt"]) # This will be intercepted
 
-        argv.extend(["--typos", str(self.typos_count.get())])
+        strategy = self.typo_strategy.get()
+        if strategy == "None":
+            argv.extend(["--typos", "0"])
+        elif strategy == "Common":
+            argv.extend(["--typos", str(self.typos_count.get())])
+        elif strategy == "All":
+            argv.extend(["--typos", str(self.typos_count.get()), "--big-typos", str(self.typos_count.get())])
+
         argv.extend(["--threads", str(self.threads_count.get())])
 
         if self.passphrase.get():
