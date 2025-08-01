@@ -1426,7 +1426,7 @@ def replace_wrong_word(mnemonic_ids, i):
 #               full word list, and significantly increases the search time
 #   min_typos - min number of mistakes to apply to each guess
 num_inserts = num_deletes = 0
-def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, extra_args = []):
+def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, extra_args = [], progress_callback=None):
     if typos < 0:  # typos == 0 is silly, but causes no harm
         raise ValueError("typos must be >= 0")
     if big_typos < 0:
@@ -1549,7 +1549,8 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
             wallet=         loaded_wallet,
             base_iterator=  (mnemonic_ids_guess,) if not is_performance else None, # the one guess to modify
             perf_iterator=  lambda: loaded_wallet.performance_iterator(),
-            check_only=     loaded_wallet.verify_mnemonic_syntax
+            check_only=     loaded_wallet.verify_mnemonic_syntax,
+            progress_callback=progress_callback
         )
         (mnemonic_found, not_found_msg) = btcrpass.main()
 
@@ -1572,7 +1573,7 @@ def register_autodetecting_wallets():
             btcrpass.register_wallet_class(wallet_cls)
 
 
-def main(argv):
+def main(argv, progress_callback=None):
     global loaded_wallet
     loaded_wallet = wallet_type = None
     create_from_params     = {}  # additional args to pass to wallet_type.create_from_params()
@@ -1867,6 +1868,7 @@ def main(argv):
 
         # Perform this phase's search
         phase_params.setdefault("extra_args", []).extend(extra_args)
+        phase_params['progress_callback'] = progress_callback
         mnemonic_found = run_btcrecover(**phase_params)
 
         if mnemonic_found:

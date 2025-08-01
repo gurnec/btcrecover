@@ -25,12 +25,14 @@ import multiprocessing
 
 try:
     import Tkinter as tk
+    import ttk
     import tkFileDialog
     import tkMessageBox
     from ScrolledText import ScrolledText
 except ImportError:
     # Python 3
     import tkinter as tk
+    from tkinter import ttk
     from tkinter import filedialog as tkFileDialog
     from tkinter import messagebox as tkMessageBox
     from tkinter.scrolledtext import ScrolledText
@@ -81,6 +83,13 @@ class BTCRecoverGUI:
     def __init__(self, master):
         self.master = master
         master.title("BTCRecover GUI")
+
+        menubar = tk.Menu(master)
+        helpmenu = tk.Menu(menubar, tearoff=0)
+        helpmenu.add_command(label="About", command=self.show_about)
+        helpmenu.add_command(label="Usage", command=self.show_usage)
+        menubar.add_cascade(label="Help", menu=helpmenu)
+        master.config(menu=menubar)
 
         window_width = 500
         window_height = 400
@@ -144,11 +153,31 @@ class BTCRecoverGUI:
         run_frame.pack(fill=tk.BOTH, expand=True)
 
         self.start_button = tk.Button(run_frame, text="Start Recovery", command=self.run_recovery, font=("Helvetica", 12, "bold"))
-        self.start_button.pack(pady=10)
+        self.start_button.pack(side=tk.LEFT, padx=10, pady=10)
+
+        self.cancel_button = tk.Button(run_frame, text="Cancel", command=self.cancel_recovery, font=("Helvetica", 12, "bold"), state=tk.DISABLED)
+        self.cancel_button.pack(side=tk.RIGHT, padx=10, pady=10)
+
+        self.progress = ttk.Progressbar(run_frame, orient=tk.HORIZONTAL, length=100, mode='determinate')
+        self.progress.pack(fill=tk.X, padx=10, pady=5)
 
         self.output_console = ScrolledText(run_frame, height=10)
         self.output_console.pack(fill=tk.BOTH, expand=True)
         self.output_console.config(state=tk.DISABLED)
+
+    def show_about(self):
+        tkMessageBox.showinfo("About BTCRecover GUI",
+                              "BTCRecover GUI\n\n"
+                              "A simple graphical frontend for the btcrecover password recovery tool.\n\n"
+                              "Copyright (C) 2024")
+
+    def show_usage(self):
+        tkMessageBox.showinfo("How to Use",
+                              "1. Select your encrypted wallet file.\n"
+                              "2. Select a password list or a token list.\n"
+                              "3. (Optional) Adjust the typo and thread settings.\n"
+                              "4. Click 'Start Recovery' to begin.\n\n"
+                              "For more detailed instructions, please see the btcrecover documentation.")
 
     def select_wallet(self):
         path = tkFileDialog.askopenfilename(title="Select your wallet file")
@@ -166,6 +195,13 @@ class BTCRecoverGUI:
         if path:
             self.tokenlist_path.set(path)
             self.passwordlist_path.set("")
+
+    def progress_callback(self, recovered_so_far, total_to_recover):
+        self.progress['value'] = (recovered_so_far / total_to_recover) * 100
+        self.master.update_idletasks()
+
+    def cancel_recovery(self):
+        btcrpass.stop_all_threads = True
 
     def run_recovery(self):
         wallet = self.wallet_path.get()
@@ -198,6 +234,8 @@ class BTCRecoverGUI:
         argv.extend(["--threads", str(self.threads_count.get())])
 
         self.start_button.config(state=tk.DISABLED)
+        self.cancel_button.config(state=tk.NORMAL)
+        self.progress['value'] = 0
 
         # Redirect stdout and stderr
         old_stdout = sys.stdout
@@ -206,7 +244,7 @@ class BTCRecoverGUI:
         sys.stderr = sys.stdout
 
         try:
-            btcrpass.parse_arguments(argv)
+            btcrpass.parse_arguments(argv, progress_callback=self.progress_callback)
             (password_found, not_found_msg) = btcrpass.main()
 
             if isinstance(password_found, str):
@@ -225,6 +263,8 @@ class BTCRecoverGUI:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             self.start_button.config(state=tk.NORMAL)
+            self.cancel_button.config(state=tk.DISABLED)
+            self.progress['value'] = 0
 
 def main():
     root = tk.Tk()

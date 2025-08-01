@@ -1,0 +1,179 @@
+103 INFO: PyInstaller: 6.14.2, contrib hooks: 2025.8
+104 INFO: Python: 3.12.11
+106 INFO: Platform: Linux-6.8.0-x86_64-with-glibc2.39
+106 INFO: Python environment: /home/jules/.pyenv/versions/3.12.11
+107 INFO: wrote /app/btcrecover-gui.spec
+109 INFO: Module search paths (PYTHONPATH):
+['/app',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python312.zip',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/lib-dynload',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/setuptools/_vendor',
+ '/app']
+340 INFO: checking Analysis
+340 INFO: Building Analysis because Analysis-00.toc is non existent
+341 INFO: Running Analysis Analysis-00.toc
+341 INFO: Target bytecode optimization level: 0
+341 INFO: Initializing module dependency graph...
+341 INFO: Initializing module graph hook caches...
+356 INFO: Analyzing modules for base_library.zip ...
+1050 INFO: Processing standard module hook 'hook-encodings.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+4025 INFO: Processing standard module hook 'hook-pickle.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+5424 INFO: Processing standard module hook 'hook-heapq.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+6120 INFO: Caching module dependency graph...
+6179 INFO: Looking for Python shared library...
+6191 INFO: Using Python shared library: /home/jules/.pyenv/versions/3.12.11/lib/libpython3.12.so.1.0
+6191 INFO: Analyzing /app/btcrecover-gui.py
+/app/btcrecover/btcrpass.py:2111: SyntaxWarning: invalid escape sequence '\s'
+  return decrypted[:-padding] if 1 <= padding <= 16 and re.match(b'{\s*"guid"', decrypted) else None
+/app/btcrecover/btcrpass.py:2120: SyntaxWarning: invalid escape sequence '\s'
+  return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == b"\x80" and re.match(b'{\s*"guid"', decrypted) else None
+/app/btcrecover/btcrpass.py:3140: SyntaxWarning: invalid escape sequence '\s'
+  if re.match(b"#\s*--", first_line, re.UNICODE):  # if it's additional args, not just a comment
+/app/btcrecover/btcrpass.py:3981: SyntaxWarning: invalid escape sequence '\s'
+  if re.match(b"#\s*--", line, re.UNICODE):
+6573 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+6853 INFO: Processing standard module hook 'hook-xml.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+7431 INFO: Processing standard module hook 'hook-sqlite3.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+7821 INFO: Processing standard module hook 'hook-platform.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+/app/btcrecover/btcrseed.py:1797: SyntaxWarning: invalid escape sequence '\('
+  matched = re.match("create_from_params\(\) got an unexpected keyword argument '(.*)'", str(e))
+/app/btcrecover/btcrseed.py:1807: SyntaxWarning: invalid escape sequence '\('
+  matched = re.match("config_mnemonic\(\) got an unexpected keyword argument '(.*)'", str(e))
+8030 INFO: Processing standard module hook 'hook-difflib.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+8140 INFO: Processing standard module hook 'hook-passlib.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+/app/passlib/utils/pbkdf2.py:116: SyntaxWarning: invalid escape sequence '\d'
+  m = re.match("^(?P<name>[a-z]+)-?(?P<rev>\d)?-?(?P<size>\d{3,4})?$", name)
+8202 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/pre_find_module_path'
+8202 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+8273 WARNING: TclTkInfo: Tcl module directory '/usr/share/tcltk/tcl8' does not exist!
+8467 INFO: Processing standard module hook 'hook-_tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+8531 INFO: Processing module hooks (post-graph stage)...
+8531 WARNING: Hidden import "passlib.handlers" not found!
+8531 WARNING: Hidden import "passlib.handlers.digests" not found!
+8988 INFO: Processing standard module hook 'hook-_tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+8998 INFO: Performing binary vs. data reclassification (316 entries)
+9009 INFO: Looking for ctypes DLLs
+9101 INFO: Analyzing run-time hooks ...
+9103 INFO: Including run-time hook 'pyi_rth_inspect.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+9107 INFO: Including run-time hook 'pyi_rth__tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+9108 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+9111 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+9132 INFO: Creating base_library.zip...
+9193 INFO: Looking for dynamic libraries
+10040 INFO: Warnings written to /app/build/btcrecover-gui/warn-btcrecover-gui.txt
+10062 INFO: Graph cross-reference written to /app/build/btcrecover-gui/xref-btcrecover-gui.html
+10086 INFO: checking PYZ
+10086 INFO: Building PYZ because PYZ-00.toc is non existent
+10086 INFO: Building PYZ (ZlibArchive) /app/build/btcrecover-gui/PYZ-00.pyz
+10534 INFO: Building PYZ (ZlibArchive) /app/build/btcrecover-gui/PYZ-00.pyz completed successfully.
+10550 INFO: checking PKG
+10550 INFO: Building PKG because PKG-00.toc is non existent
+10550 INFO: Building PKG (CArchive) btcrecover-gui.pkg
+10570 INFO: Building PKG (CArchive) btcrecover-gui.pkg completed successfully.
+10571 INFO: Bootloader /home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/bootloader/Linux-64bit-intel/run
+10571 INFO: checking EXE
+10571 INFO: Building EXE because EXE-00.toc is non existent
+10571 INFO: Building EXE from EXE-00.toc
+10571 INFO: Copying bootloader EXE to /app/build/btcrecover-gui/btcrecover-gui
+10572 INFO: Appending PKG archive to custom ELF section in EXE
+10591 INFO: Building EXE from EXE-00.toc completed successfully.
+10597 INFO: checking COLLECT
+10597 INFO: Building COLLECT because COLLECT-00.toc is non existent
+10597 INFO: Building COLLECT COLLECT-00.toc
+10713 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+10720 INFO: Build complete! The results are available in: /app/dist
+10730 INFO: PyInstaller: 6.14.2, contrib hooks: 2025.8
+10730 INFO: Python: 3.12.11
+10730 INFO: Platform: Linux-6.8.0-x86_64-with-glibc2.39
+10730 INFO: Python environment: /home/jules/.pyenv/versions/3.12.11
+10730 INFO: wrote /app/seedrecover-gui.spec
+10731 INFO: Module search paths (PYTHONPATH):
+['/app',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python312.zip',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/lib-dynload',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages',
+ '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/setuptools/_vendor',
+ '/app',
+ '/app']
+10970 INFO: checking Analysis
+10970 INFO: Building Analysis because Analysis-01.toc is non existent
+10970 INFO: Running Analysis Analysis-01.toc
+10970 INFO: Target bytecode optimization level: 0
+10970 INFO: Reusing cached module dependency graph...
+11009 INFO: Initializing module graph hook caches...
+11024 INFO: Looking for Python shared library...
+11035 INFO: Using Python shared library: /home/jules/.pyenv/versions/3.12.11/lib/libpython3.12.so.1.0
+11035 INFO: Analyzing /app/seedrecover-gui.py
+/app/btcrecover/btcrpass.py:2111: SyntaxWarning: invalid escape sequence '\s'
+  return decrypted[:-padding] if 1 <= padding <= 16 and re.match(b'{\s*"guid"', decrypted) else None
+/app/btcrecover/btcrpass.py:2120: SyntaxWarning: invalid escape sequence '\s'
+  return decrypted[:-padding] if 1 <= padding <= 16 and decrypted[-padding] == b"\x80" and re.match(b'{\s*"guid"', decrypted) else None
+/app/btcrecover/btcrpass.py:3140: SyntaxWarning: invalid escape sequence '\s'
+  if re.match(b"#\s*--", first_line, re.UNICODE):  # if it's additional args, not just a comment
+/app/btcrecover/btcrpass.py:3981: SyntaxWarning: invalid escape sequence '\s'
+  if re.match(b"#\s*--", line, re.UNICODE):
+11427 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+11705 INFO: Processing standard module hook 'hook-xml.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+11825 INFO: Processing standard module hook 'hook-pickle.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+11910 INFO: Processing standard module hook 'hook-heapq.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+12298 INFO: Processing standard module hook 'hook-sqlite3.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+12717 INFO: Processing standard module hook 'hook-platform.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+/app/btcrecover/btcrseed.py:1797: SyntaxWarning: invalid escape sequence '\('
+  matched = re.match("create_from_params\(\) got an unexpected keyword argument '(.*)'", str(e))
+/app/btcrecover/btcrseed.py:1807: SyntaxWarning: invalid escape sequence '\('
+  matched = re.match("config_mnemonic\(\) got an unexpected keyword argument '(.*)'", str(e))
+12929 INFO: Processing standard module hook 'hook-difflib.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+13039 INFO: Processing standard module hook 'hook-passlib.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+/app/passlib/utils/pbkdf2.py:116: SyntaxWarning: invalid escape sequence '\d'
+  m = re.match("^(?P<name>[a-z]+)-?(?P<rev>\d)?-?(?P<size>\d{3,4})?$", name)
+13102 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/pre_find_module_path'
+13299 INFO: Processing standard module hook 'hook-_tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+13364 INFO: Processing module hooks (post-graph stage)...
+13364 WARNING: Hidden import "passlib.handlers" not found!
+13364 WARNING: Hidden import "passlib.handlers.digests" not found!
+13815 INFO: Processing standard module hook 'hook-encodings.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+14046 INFO: Processing standard module hook 'hook-_tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks'
+14055 INFO: Performing binary vs. data reclassification (316 entries)
+14067 INFO: Looking for ctypes DLLs
+14159 INFO: Analyzing run-time hooks ...
+14160 INFO: Including run-time hook 'pyi_rth_inspect.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+14164 INFO: Including run-time hook 'pyi_rth__tkinter.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+14166 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+14169 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from '/home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/hooks/rthooks'
+14188 INFO: Creating base_library.zip...
+14253 INFO: Looking for dynamic libraries
+15117 INFO: Warnings written to /app/build/seedrecover-gui/warn-seedrecover-gui.txt
+15138 INFO: Graph cross-reference written to /app/build/seedrecover-gui/xref-seedrecover-gui.html
+15162 INFO: checking PYZ
+15162 INFO: Building PYZ because PYZ-01.toc is non existent
+15162 INFO: Building PYZ (ZlibArchive) /app/build/seedrecover-gui/PYZ-01.pyz
+15628 INFO: Building PYZ (ZlibArchive) /app/build/seedrecover-gui/PYZ-01.pyz completed successfully.
+15645 INFO: checking PKG
+15645 INFO: Building PKG because PKG-01.toc is non existent
+15645 INFO: Building PKG (CArchive) seedrecover-gui.pkg
+15670 INFO: Building PKG (CArchive) seedrecover-gui.pkg completed successfully.
+15671 INFO: Bootloader /home/jules/.pyenv/versions/3.12.11/lib/python3.12/site-packages/PyInstaller/bootloader/Linux-64bit-intel/run
+15671 INFO: checking EXE
+15671 INFO: Building EXE because EXE-01.toc is non existent
+15671 INFO: Building EXE from EXE-01.toc
+15671 INFO: Copying bootloader EXE to /app/build/seedrecover-gui/seedrecover-gui
+15671 INFO: Appending PKG archive to custom ELF section in EXE
+15686 INFO: Building EXE from EXE-01.toc completed successfully.
+15692 INFO: checking COLLECT
+15692 INFO: Building COLLECT because COLLECT-01.toc is non existent
+15692 INFO: Building COLLECT COLLECT-01.toc
+16316 INFO: Building COLLECT COLLECT-01.toc completed successfully.
+16323 INFO: Build complete! The results are available in: /app/dist
+Current working directory: /app
+Dist path: /app/dist
+Building btcrecover-gui...
+Finished building btcrecover-gui.
+Contents of dist directory: ['btcrecover-gui']
+Current working directory: /app
+Dist path: /app/dist
+Building seedrecover-gui...
+Finished building seedrecover-gui.
+Contents of dist directory: ['seedrecover-gui', 'btcrecover-gui']

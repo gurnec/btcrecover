@@ -27,12 +27,14 @@ import multiprocessing
 
 try:
     import Tkinter as tk
+    import ttk
     import tkFileDialog
     import tkMessageBox
     from ScrolledText import ScrolledText
 except ImportError:
     # Python 3
     import tkinter as tk
+    from tkinter import ttk
     from tkinter import filedialog as tkFileDialog
     from tkinter import messagebox as tkMessageBox
     from tkinter.scrolledtext import ScrolledText
@@ -83,6 +85,13 @@ class SeedRecoverGUI:
     def __init__(self, master):
         self.master = master
         master.title("SeedRecover GUI")
+
+        menubar = tk.Menu(master)
+        helpmenu = tk.Menu(menubar, tearoff=0)
+        helpmenu.add_command(label="About", command=self.show_about)
+        helpmenu.add_command(label="Usage", command=self.show_usage)
+        menubar.add_cascade(label="Help", menu=helpmenu)
+        master.config(menu=menubar)
 
         window_width = 600
         window_height = 500
@@ -162,7 +171,13 @@ class SeedRecoverGUI:
         run_frame.grid(row=4, column=0, columnspan=3, sticky="ew")
 
         self.start_button = tk.Button(run_frame, text="Start Recovery", command=self.run_recovery, font=("Helvetica", 12, "bold"))
-        self.start_button.pack()
+        self.start_button.pack(side=tk.LEFT, padx=10, pady=10)
+
+        self.cancel_button = tk.Button(run_frame, text="Cancel", command=self.cancel_recovery, font=("Helvetica", 12, "bold"), state=tk.DISABLED)
+        self.cancel_button.pack(side=tk.RIGHT, padx=10, pady=10)
+
+        self.progress = ttk.Progressbar(run_frame, orient=tk.HORIZONTAL, length=100, mode='determinate')
+        self.progress.pack(fill=tk.X, padx=10, pady=5)
 
         # Output Console
         self.output_console = ScrolledText(main_frame, height=10)
@@ -172,6 +187,21 @@ class SeedRecoverGUI:
         main_frame.grid_columnconfigure(1, weight=1)
 
         self.update_wallet_options()
+
+    def show_about(self):
+        tkMessageBox.showinfo("About SeedRecover GUI",
+                              "SeedRecover GUI\n\n"
+                              "A simple graphical frontend for the seedrecover tool.\n\n"
+                              "Copyright (C) 2024")
+
+    def show_usage(self):
+        tkMessageBox.showinfo("How to Use",
+                              "1. Select the wallet type.\n"
+                              "2. Fill in the required information for the selected wallet type.\n"
+                              "3. Enter your best guess for the mnemonic seed phrase.\n"
+                              "4. (Optional) Adjust the typo and thread settings.\n"
+                              "5. Click 'Start Recovery' to begin.\n\n"
+                              "For more detailed instructions, please see the seedrecover documentation.")
 
     def update_wallet_options(self, *args):
         for widget in self.wallet_options_frame.winfo_children():
@@ -208,6 +238,13 @@ class SeedRecoverGUI:
         path = tkFileDialog.askopenfilename(title="Select your wallet file")
         if path:
             self.wallet_path.set(path)
+
+    def progress_callback(self, recovered_so_far, total_to_recover):
+        self.progress['value'] = (recovered_so_far / total_to_recover) * 100
+        self.master.update_idletasks()
+
+    def cancel_recovery(self):
+        btcrpass.stop_all_threads = True
 
     def run_recovery(self):
         argv = []
@@ -247,6 +284,7 @@ class SeedRecoverGUI:
             argv.append("--passphrase")
 
         self.start_button.config(state=tk.DISABLED)
+        self.cancel_button.config(state=tk.NORMAL)
 
         old_stdout = sys.stdout
         old_stderr = sys.stderr
@@ -276,7 +314,7 @@ class SeedRecoverGUI:
             except (ImportError, AttributeError):
                 pass
 
-            mnemonic_found = btcrseed.main(argv)
+            mnemonic_found = btcrseed.main(argv, progress_callback=self.progress_callback)
 
             # Restore original functions
             try:
@@ -306,6 +344,7 @@ class SeedRecoverGUI:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             self.start_button.config(state=tk.NORMAL)
+            self.cancel_button.config(state=tk.DISABLED)
 
 def main():
     root = tk.Tk()
