@@ -1,3 +1,6 @@
 *.pyc
 *.pyo
 /addresses.db
+dist/
+build/
+*.spec
