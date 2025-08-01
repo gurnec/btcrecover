@@ -1688,7 +1688,7 @@ def main(argv):
             encoding = sys.stdin.encoding or "ASCII"
             if "utf" not in encoding.lower():
                 print("terminal does not support UTF; mnemonics with non-ASCII chars might not work", file=sys.stderr)
-            mnemonic_guess = raw_input("Please enter your best guess for your mnemonic (seed)\n> ")
+            mnemonic_guess = input("Please enter your best guess for your mnemonic (seed)\n> ")
             if not mnemonic_guess:
                 sys.exit("canceled")
             if isinstance(mnemonic_guess, str):
@@ -1752,7 +1752,7 @@ def main(argv):
         pause_at_exit = True
         atexit.register(lambda: pause_at_exit and
                                 not multiprocessing.current_process().name.startswith("PoolWorker-") and
-                                raw_input("Press Enter to exit ..."))
+                                input("Press Enter to exit ..."))
 
     if not loaded_wallet and not wallet_type:  # neither --wallet nor --wallet-type were specified
 
