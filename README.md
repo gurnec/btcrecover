@@ -170,6 +170,10 @@ BTCRecover offers experimental GPU acceleration for select wallets (e.g., Bitcoi
 - GPU Acceleration doc: docs/GPU_Acceleration.md
 - Reference docs at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
 
+Performance Benchmarking
+
+*btcrecover* includes a tool to benchmark performance for your specific hardware and wallet type. For more details, see the [Performance Benchmarking Guide](docs/BENCHMARKING.md).
+
 Troubleshooting
 
 - Dependencies fail to build: ensure compiler toolchain installed (Windows Build Tools, Xcode CLT on macOS, build-essential on Linux) and GMP as required for coincurve.

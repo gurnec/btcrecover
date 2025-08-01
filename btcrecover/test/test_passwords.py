@@ -162,7 +162,7 @@ class GeneratorTester(unittest.TestCase):
         if expected_skipped is not None:
             self.assertEqual(skipped, expected_skipped)
         try:
-            generated_passwords = tok_it.next()
+            generated_passwords = next(tok_it)
             for p in generated_passwords:
                 self.assertIs(type(p), tstr)
             self.assertEqual(generated_passwords, expected_passwords)
@@ -179,7 +179,7 @@ class GeneratorTester(unittest.TestCase):
         if expected_skipped is not None:
             self.assertEqual(skipped, expected_skipped)
         try:
-            generated_passwords = pwl_it.next()
+            generated_passwords = next(pwl_it)
             for p in generated_passwords:
                 self.assertIs(type(p), tstr)
             self.assertEqual(generated_passwords, expected_passwords)
@@ -236,35 +236,35 @@ class Test01Basics(GeneratorTester):
         btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
                                  tokenlist = StringIO(tstr("one two three four five six")))
         tok_it = btcrpass.password_generator(2, only_yield_count=True)
-        self.assertEqual(tok_it.next(), 2)
+        self.assertEqual(next(tok_it), 2)
         self.assertIsNone(tok_it.send( (3, True) ))
-        self.assertEqual(tok_it.next(), 3)
+        self.assertEqual(next(tok_it), 3)
         self.assertIsNone(tok_it.send( (3, False) ))
-        self.assertEqual(tok_it.next(), ["six"])
-        self.assertRaises(StopIteration, tok_it.next)
+        self.assertEqual(next(tok_it), ["six"])
+        self.assertRaises(StopIteration, next, tok_it)
 
         btcrpass.parse_arguments(("--passwordlist __funccall --listpass"+utf8_opt).split(),
                                  passwordlist = StringIO(tstr("one two three four five six".replace(" ", "\n"))))
         pwl_it = btcrpass.password_generator(2, only_yield_count=True)
-        self.assertEqual(pwl_it.next(), 2)
+        self.assertEqual(next(pwl_it), 2)
         self.assertIsNone(pwl_it.send( (3, True) ))
-        self.assertEqual(pwl_it.next(), 3)
+        self.assertEqual(next(pwl_it), 3)
         self.assertIsNone(pwl_it.send( (3, False) ))
-        self.assertEqual(pwl_it.next(), ["six"])
-        self.assertRaises(StopIteration, pwl_it.next)
+        self.assertEqual(next(pwl_it), ["six"])
+        self.assertRaises(StopIteration, next, pwl_it)
 
     def test_only_yield_count_all(self):
         btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
                                  tokenlist = StringIO(tstr("one two three")))
         tok_it = btcrpass.password_generator(4, only_yield_count=True)
-        self.assertEqual(tok_it.next(), 3)
-        self.assertRaises(StopIteration, tok_it.next)
+        self.assertEqual(next(tok_it), 3)
+        self.assertRaises(StopIteration, next, tok_it)
 
         btcrpass.parse_arguments(("--passwordlist __funccall --listpass"+utf8_opt).split(),
                                  passwordlist = StringIO(tstr("one two three".replace(" ", "\n"))))
         pwl_it = btcrpass.password_generator(4, only_yield_count=True)
-        self.assertEqual(pwl_it.next(), 3)
-        self.assertRaises(StopIteration, pwl_it.next)
+        self.assertEqual(next(pwl_it), 3)
+        self.assertRaises(StopIteration, next, pwl_it)
 
     def test_count(self):
         btcrpass.parse_arguments(("--tokenlist __funccall --listpass"+utf8_opt).split(),
@@ -1076,9 +1076,9 @@ class Test07WalletDecryption(unittest.TestCase):
             password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
                 ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
                   ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
-            self.assertEqual(password_found_iterator.next(), (False, 2))
-            self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
-            self.assertRaises(StopIteration, password_found_iterator.next)
+            self.assertEqual(next(password_found_iterator), (False, 2))
+            self.assertEqual(next(password_found_iterator), (correct_pass, 2))
+            self.assertRaises(StopIteration, next, password_found_iterator)
             pool.close()
             pool.join()
 
@@ -1302,9 +1302,9 @@ class Test08BIP39Passwords(unittest.TestCase):
         password_found_iterator = pool.imap(btcrpass.return_verified_password_or_false,
             ( ( tstr("btcr-wrong-password-1"), tstr("btcr-wrong-password-2") ),
               ( tstr("btcr-wrong-password-3"), correct_pass, tstr("btcr-wrong-password-4") ) ))
-        self.assertEqual(password_found_iterator.next(), (False, 2))
-        self.assertEqual(password_found_iterator.next(), (correct_pass, 2))
-        self.assertRaises(StopIteration, password_found_iterator.next)
+        self.assertEqual(next(password_found_iterator), (False, 2))
+        self.assertEqual(next(password_found_iterator), (correct_pass, 2))
+        self.assertRaises(StopIteration, next, password_found_iterator)
         pool.close()
         pool.join()
 

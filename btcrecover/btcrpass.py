@@ -47,6 +47,13 @@ unicode = str
 
 if not hasattr(sys, 'maxsize'):
     sys.maxsize = sys.maxint
+if not hasattr(sys, 'maxint'):
+    sys.maxint = sys.maxsize
+
+try:
+    xrange = xrange
+except NameError:
+    xrange = range
 
 range = range
 
@@ -2702,8 +2709,8 @@ def count_valid_wildcards(str_with_wildcards, permit_contracting_wildcards = Fal
     # Remove all valid wildcards, syntax checking the min to max ranges; if any %'s are left they are invalid
     try:
         valid_wildcards_removed, count = \
-            re.subn(br"%(?:(?:(\d+),)?(\d+))?(?:i?[{}]|i?\[.+?\]{}|(?:;.+?;(\d+)?|;(\d+))?b)"
-                    .format(wildcard_keys, b"|[<>-]" if permit_contracting_wildcards else b""),
+            re.subn(r"%(?:(?:(\d+),)?(\d+))?(?:i?[{}]|i?\[.+?\]{}|(?:;.+?;(\d+)?|;(\d+))?b)"
+                    .format(wildcard_keys, "|[<>-]" if permit_contracting_wildcards else ""),
                     syntax_check_range, str_with_wildcards)
     except ValueError as e: return unicode(e)
     if tstr("%") in valid_wildcards_removed:
@@ -3009,6 +3016,11 @@ def init_parser_common():
         parser_common.add_argument("--exclude-passwordlist", metavar="FILE", nargs="?", const="-", help="never try passwords read (exactly one per line) from this file or from stdin")
         parser_common.add_argument("--listpass",    action="store_true", help="just list all password combinations to test and exit")
         parser_common.add_argument("--performance", action="store_true", help="run a continuous performance test (Ctrl-C to exit)")
+        benchmark_group = parser_common.add_argument_group("benchmark options")
+        benchmark_group.add_argument("--benchmark", action="store_true", help="run a detailed performance benchmark")
+        benchmark_group.add_argument("--benchmark-output", metavar="FILE", help="save benchmark results to a JSON file")
+        benchmark_group.add_argument("--benchmark-typos-complexity", type=int, metavar="INT", help="typo complexity for benchmarking")
+        benchmark_group.add_argument("--benchmark-tokenlist-complexity", type=int, metavar="INT", help="tokenlist complexity for benchmarking")
         parser_common.add_argument("--pause",       action="store_true", help="pause before exiting")
         parser_common.add_argument("--version","-v",action="store_true", help="show full version information and exit")
         bip39_group = parser_common.add_argument_group("BIP-39 passwords")
@@ -3076,6 +3088,7 @@ def register_simple_typo(name, help = None):
 def parse_arguments(effective_argv, wallet = None, base_iterator = None,
                     perf_iterator = None, inserted_items = None, check_only = None, **kwds):
 
+    global base_password_generator, has_any_wildcards
     # effective_argv is what we are effectively given, either via the command line, via embedded
     # options in the tokenlist file, or as a result of restoring a session, before any argument
     # processing or defaulting is done (unless it's is done by argparse). Each time effective_argv
@@ -3137,8 +3150,30 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
     if args.version: sys.exit(0)
 
 
-    if args.performance and (base_iterator or args.passwordlist or args.tokenlist):
-        error_exit("--performance cannot be used with --tokenlist or --passwordlist")
+    if args.performance and args.benchmark:
+        error_exit("cannot use --performance and --benchmark together")
+
+    if (args.performance or args.benchmark) and (base_iterator or args.passwordlist or args.tokenlist):
+        error_exit("--performance or --benchmark cannot be used with --tokenlist or --passwordlist")
+
+    if args.benchmark:
+        if args.benchmark_typos_complexity is not None:
+            args.typos = args.benchmark_typos_complexity
+            if not (args.typos_swap or args.typos_repeat or args.typos_delete or args.typos_case or args.typos_closecase or args.typos_replace or args.typos_map or args.typos_insert):
+                args.typos_swap = True
+
+        if args.benchmark_tokenlist_complexity is not None:
+            global token_lists, has_any_duplicate_tokens, has_any_anchors
+            token_lists = [[None, "token%d" % i] for i in range(args.benchmark_tokenlist_complexity)]
+            token_lists.reverse()
+            has_any_duplicate_tokens = False
+            has_any_wildcards = False
+            has_any_anchors = False
+            base_password_generator = tokenlist_base_password_generator
+        else:
+            base_password_generator = default_performance_base_password_generator
+
+        args.no_eta = True
 
     if args.list_gpus:
         devices_avail = get_opencl_devices()  # all available OpenCL device objects
@@ -3685,7 +3720,6 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
 
 
     # If specified, use a custom base password generator instead of a tokenlist or passwordlist file
-    global base_password_generator, has_any_wildcards
     if base_iterator:
         assert not args.passwordlist, "can't specify --passwordlist with base_iterator"
         # (--tokenlist is already excluded by argparse when base_iterator is specified)
@@ -3958,7 +3992,7 @@ class AnchoredToken(object):
     MIDDLE     = 3  # has .begin and .end attributes
 
     def __init__(self, token, line_num = "?"):
-        if token.startswith(b"^"):
+        if token.startswith(tstr("^")):
             # If it is a syntactically correct positional, relative, or middle anchor
             match = re.match(br"\^(?:(?P<begin>\d+)?(?P<middle>,)(?P<end>\d+)?|(?P<rel>[rR])?(?P<pos>\d+))[\^$]", token)
             if match:
@@ -4011,10 +4045,10 @@ class AnchoredToken(object):
             #
             # Else it's a begin anchor
             else:
-                if len(token) > 1 and token[1] in b"0123456789,":
+                if len(token) > 1 and token[1] in tstr("0123456789,"):
                     print(prog+": warning: token on line", line_num, "looks like it might be a positional or middle anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
-                if len(token) > 2 and token[1].lower() == b"r" and token[2] in b"0123456789":
+                if len(token) > 2 and token[1].lower() == tstr("r") and token[2] in tstr("0123456789"):
                     print(prog+": warning: token on line", line_num, "looks like it might be a relative anchor, " +
                           "but it can't be parsed correctly, so it's assumed to be a simple beginning anchor instead", file=sys.stderr)
                 cached_str = tstr("^")  # begin building the cached __str__
@@ -4022,16 +4056,16 @@ class AnchoredToken(object):
                 self.pos   = 0
                 self.text  = token[1:]
             #
-            if self.text.endswith(b"$"):
+            if self.text.endswith(tstr("$")):
                 error_exit("token on line", line_num, "is anchored with both ^ at the beginning and $ at the end")
             #
             cached_str += self.text  # finish building the cached __str__
         #
         # Parse end anchor if present
-        elif token.endswith(b"$"):
+        elif token.endswith(tstr("$")):
             cached_str = token
             self.type  = AnchoredToken.POSITIONAL
-            self.pos   = b"$"
+            self.pos   = tstr("$")
             self.text  = token[:-1]
         #
         else: raise ValueError("token passed to AnchoredToken constructor is not an anchored token")
@@ -4065,7 +4099,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
     for line_num, line in enumerate(tokenlist_file, first_line_num):
 
         # Ignore comments
-        if line.startswith(b"#"):
+        if line.startswith(tstr("#")):
             if re.match(br"#\s*--", line, re.UNICODE):
                 print(prog+": warning: all options must be on the first line, ignoring options on line", unicode(line_num), file=sys.stderr)
             continue
@@ -4084,7 +4118,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
         # If a "+" is present at the beginning followed by at least one token,
         # then exactly one of the token(s) is required. This is noted in the structure
         # by removing the preceding None we added above (and also delete the "+")
-        if new_list[1] == b"+" and len(new_list) > 2:
+        if new_list[1] == tstr("+") and len(new_list) > 2:
             del new_list[0:2]
 
         # Check token syntax and convert any anchored tokens to an AnchoredToken object
@@ -4103,7 +4137,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
 
             # Check for tokens which look suspiciously like command line options
             # (using a private ArgumentParser member func is asking for trouble...)
-            if token.startswith(b"--") and parser_common._get_option_tuples(token):
+            if token.startswith(tstr("--")) and parser_common._get_option_tuples(token):
                 if line_num == 1:
                     print(prog+": warning: token on line 1 looks like an option, "
                                "but line 1 did not start like this: #--option1 ...", file=sys.stderr)
@@ -4112,7 +4146,7 @@ def parse_tokenlist(tokenlist_file, first_line_num = 1):
                                " but all options must be on the first line", file=sys.stderr)
 
             # Parse anchor if present and convert to an AnchoredToken object
-            if token.startswith(b"^") or token.endswith(b"$"):
+            if token.startswith(tstr("^")) or token.endswith(tstr("$")):
                 token = AnchoredToken(token, line_num)  # (the line_num is just for error messages)
                 new_list[i] = token
                 has_any_anchors = True
@@ -4436,7 +4470,7 @@ def tokenlist_base_password_generator():
         # Remove any None's, then check against token length constraints:
         # (product_limitedlen, if used, has already done all this)
         if not using_product_limitedlen:
-            tokens_combination = filter(lambda t: t is not None, tokens_combination)
+            tokens_combination = list(filter(lambda t: t is not None, tokens_combination))
             if not l_args_min_tokens <= l_len(tokens_combination) <= l_args_max_tokens: continue
 
         # There are three types of anchors: positional, middle/range, & relative. Positionals
@@ -5466,6 +5500,94 @@ def main():
 
     # If --listpass was requested, just list out all the passwords and exit
     passwords_count = 0
+    if args.benchmark:
+        print("--- btcrecover Benchmark ---")
+        if args.enable_gpu:
+            device = loaded_wallet._cl_devices[0].name.strip()
+        else:
+            device = "CPU"
+        print("Device:", device)
+        print("Wallet:", loaded_wallet.__class__.__name__)
+
+        if args.benchmark_typos_complexity is not None:
+            print("Typos Complexity:", args.benchmark_typos_complexity)
+        if args.benchmark_tokenlist_complexity is not None:
+            print("Tokenlist Complexity:", args.benchmark_tokenlist_complexity)
+        print("Running benchmark for 10 seconds...")
+
+        if args.enable_gpu:
+            chunksize = sum(args.global_ws)
+        else:
+            measure_performance_iterations = loaded_wallet.passwords_per_seconds(0.5)
+            inner_iterations = int(round(2*measure_performance_iterations * (1.0/100.0))) or 1
+            outer_iterations = int(round(measure_performance_iterations / inner_iterations))
+            performance_generator = default_performance_base_password_generator()
+            start = timeit.default_timer()
+            for o in xrange(outer_iterations):
+                loaded_wallet.return_verified_password_or_false(list(itertools.islice(performance_generator, inner_iterations)))
+            est_secs_per_password = (timeit.default_timer() - start) / (outer_iterations * inner_iterations)
+            chunksize = int(round((1.0 / 100.0) / est_secs_per_password)) or 1
+
+        password_iterator, _ = password_generator_factory(chunksize)
+
+        if args.threads > 1 and not args.enable_gpu:
+            pool = multiprocessing.Pool(args.threads, init_worker, (loaded_wallet, tstr))
+            password_found_iterator = pool.imap(return_verified_password_or_false, password_iterator)
+        else:
+            pool = None
+            password_found_iterator = itertools.imap(return_verified_password_or_false, password_iterator)
+
+        start_time = timeit.default_timer()
+        passwords_tried = 0
+
+        for _, passwords_tried_last in password_found_iterator:
+            passwords_tried += passwords_tried_last
+            if timeit.default_timer() - start_time > 10.0:
+                if pool: pool.terminate()
+                break
+
+        duration = timeit.default_timer() - start_time
+        pps = passwords_tried / duration
+
+        print("\n--- Benchmark Results ---")
+        print("Passwords per second: {:.2f}".format(pps))
+
+        print("\n--- Estimating Recovery Time ---")
+        print("To estimate the time to recover your password, you need to know the size of your password space.")
+        print("Password Space Size: The total number of possible passwords.")
+        print("Estimated Time (seconds) = Password Space Size / Passwords per Second")
+
+        if args.benchmark_output:
+            benchmark_data = {
+                "timestamp": time.time(),
+                "version": __version__,
+                "device": {
+                    "type": "GPU" if args.enable_gpu else "CPU",
+                    "name": device
+                },
+                "wallet": {
+                    "type": loaded_wallet.__class__.__name__,
+                    "difficulty": loaded_wallet.difficulty_info()
+                },
+                "benchmark_parameters": {
+                    "duration_seconds": duration,
+                    "typos_complexity": args.benchmark_typos_complexity,
+                    "tokenlist_complexity": args.benchmark_tokenlist_complexity
+                },
+                "results": {
+                    "passwords_per_second": pps
+                }
+            }
+
+            try:
+                with open(args.benchmark_output, "w") as f:
+                    json.dump(benchmark_data, f, indent=4)
+                print("\nBenchmark results saved to:", args.benchmark_output)
+            except IOError as e:
+                error_exit("could not write to benchmark output file: " + str(e))
+
+        return None, "Benchmark complete."
+
     if args.listpass:
         if tstr == unicode:
             stdout_encoding = sys.stdout.encoding if hasattr(sys.stdout, "encoding") else None  # for unittest
