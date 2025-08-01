@@ -29,11 +29,38 @@
 # (all optional futures for 2.7)
 from __future__ import print_function, absolute_import, division, unicode_literals
 
+import io
+
 __version__          =  "0.17.10"
 __ordering_version__ = b"0.6.4"  # must be updated whenever password ordering changes
 
-import sys, argparse, itertools, string, re, multiprocessing, signal, os, cPickle, gc, \
+import sys, argparse, itertools, string, re, multiprocessing, signal, os, gc, \
        time, timeit, hashlib, collections, base64, struct, atexit, zlib, math, json, numbers
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
+# Python 2/3 compatibility
+try:
+    unicode = unicode
+except NameError:
+    # 'unicode' is undefined, must be Python 3
+    unicode = str
+
+if not hasattr(sys, 'maxint'):
+    sys.maxint = sys.maxsize
+
+try:
+    xrange = xrange
+except NameError:
+    xrange = range
+
+try:
+    basestring = basestring
+except NameError:
+    basestring = str
 
 # The progressbar module is recommended but optional; it is typically
 # distributed with btcrecover (it is loaded later on demand)
@@ -52,16 +79,15 @@ def full_version():
 
 # One of these two is typically called relatively early by parse_arguments()
 def enable_unicode_mode():
-    global io, tstr, tstr_from_stdin, tchr
-    import locale, io
+    global tstr, tstr_from_stdin, tchr
+    import locale
     tstr              = unicode
     preferredencoding = locale.getpreferredencoding()
     tstr_from_stdin   = lambda s: s if isinstance(s, unicode) else unicode(s, preferredencoding)
     tchr              = unichr
 #
 def enable_ascii_mode():
-    global io, tstr, tstr_from_stdin, tchr
-    io              = None
+    global tstr, tstr_from_stdin, tchr
     tstr            = str
     tstr_from_stdin = str
     tchr            = chr
@@ -81,10 +107,10 @@ def init_wildcards():
     # been set to one with a single-byte code page e.g. ISO-8859-1 (Latin1) or Windows-1252
     wildcard_sets = {
         tstr("d") : tstr(string.digits),
-        tstr("a") : tstr(string.lowercase),
-        tstr("A") : tstr(string.uppercase),
-        tstr("n") : tstr(string.lowercase + string.digits),
-        tstr("N") : tstr(string.uppercase + string.digits),
+    tstr("a") : tstr(string.ascii_lowercase),
+    tstr("A") : tstr(string.ascii_uppercase),
+    tstr("i") : tstr(string.ascii_lowercase) + tstr(string.ascii_uppercase),
+    tstr("I") : tstr(string.ascii_uppercase) + tstr(string.ascii_lowercase),
         tstr("s") : tstr(" "),        # space
         tstr("l") : tstr("\n"),       # line feed
         tstr("r") : tstr("\r"),       # carriage return
@@ -799,7 +825,7 @@ class WalletBitcoinCore(object):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             derived_key = password + self._salt
@@ -1074,7 +1100,7 @@ class WalletMultiBit(object):
 
         # Convert Unicode strings (lazily) to UTF-16 bytestrings, truncating each code unit to 8 bits
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_16_le", "ignore")[::2], orig_passwords)
+            passwords = map(lambda p: p.encode("utf_16_le", "ignore")[::2], orig_passwords)
         else:
             passwords = orig_passwords
 
@@ -1240,7 +1266,7 @@ class WalletBitcoinj(object):
         scrypt_p             = self._scrypt_p
 
         # Convert strings (lazily) to UTF-16BE bytestrings
-        passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
+        passwords = map(lambda p: p.encode("utf_16_be", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             derived_key = l_scrypt(password, scrypt_salt, scrypt_n, scrypt_r, scrypt_p, 32)
@@ -1317,7 +1343,7 @@ class WalletMultiBitHD(WalletBitcoinj):
         encrypted_block_noiv = self._encrypted_block_noiv
 
         # Convert strings (lazily) to UTF-16BE bytestrings
-        passwords = itertools.imap(lambda p: p.encode("utf_16_be", "ignore"), passwords)
+        passwords = map(lambda p: p.encode("utf_16_be", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             derived_key = l_scrypt(password, b'\x35\x51\x03\x80\x75\xa3\xb0\xc5', olen=32)  # w/a hardcoded salt
@@ -1483,7 +1509,7 @@ class WalletMsigna(object):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             password_hashed = l_sha256(l_sha256(password).digest()).digest()  # mSIGNA does this first
@@ -1586,7 +1612,7 @@ class WalletElectrum1(WalletElectrum):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             key  = l_sha256( l_sha256( password ).digest() ).digest()
@@ -1727,7 +1753,7 @@ class WalletElectrum2(WalletElectrum):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             key  = l_sha256( l_sha256( password ).digest() ).digest()
@@ -1764,7 +1790,7 @@ class WalletElectrumLooseKey(WalletElectrum):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
             key         = l_sha256( l_sha256( password ).digest() ).digest()
@@ -1851,7 +1877,7 @@ class WalletElectrum28(object):
 
         # Convert Unicode strings (lazily) to UTF-8 bytestrings
         if tstr == unicode:
-            passwords = itertools.imap(lambda p: p.encode("utf_8", "ignore"), passwords)
+            passwords = map(lambda p: p.encode("utf_8", "ignore"), passwords)
 
         for count, password in enumerate(passwords, 1):
 
@@ -2636,7 +2662,7 @@ def load_savestate(autosave_file):
     # Try to load both save slots, ignoring pickle errors at first
     autosave_file.seek(0)
     try:
-        savestate0 = cPickle.load(autosave_file)
+        savestate0 = pickle.load(autosave_file)
     except Exception as e:
         first_error = e
     else:  assert autosave_file.tell() <= SAVESLOT_SIZE, "load_savestate: slot 0 data <= "+unicode(SAVESLOT_SIZE)+" bytes long"
@@ -2645,7 +2671,7 @@ def load_savestate(autosave_file):
     if autosave_len > SAVESLOT_SIZE:  # if the second save slot is present
         autosave_file.seek(SAVESLOT_SIZE)
         try:
-            savestate1 = cPickle.load(autosave_file)
+            savestate1 = pickle.load(autosave_file)
         except Exception: pass
         else:  assert autosave_file.tell() <= 2*SAVESLOT_SIZE, "load_savestate: slot 1 data <= "+unicode(SAVESLOT_SIZE)+" bytes long"
     else:
@@ -3740,7 +3766,7 @@ def parse_arguments(effective_argv, wallet = None, base_iterator = None,
             ) and not pause_registered ):
         sys.stdin.close()   # this doesn't really close the fd
         try:   os.close(0)  # but this should, where supported
-        except StandardError: pass
+        except Exception: pass
 
     if tokenlist_file and not (pause_registered and tokenlist_file == sys.stdin):
         tokenlist_file.close()
@@ -5194,7 +5220,7 @@ def do_autosave(skip, inside_interrupt_handler = False):
         try:   os.fsync(autosave_file.fileno())
         except StandardError: pass
     savestate[b"skip"] = skip  # overwrite the one item which changes for each autosave
-    cPickle.dump(savestate, autosave_file, cPickle.HIGHEST_PROTOCOL)
+    pickle.dump(savestate, autosave_file, pickle.HIGHEST_PROTOCOL)
     assert autosave_file.tell() <= start_pos + SAVESLOT_SIZE, "do_autosave: data <= "+unicode(SAVESLOT_SIZE)+" bytes long"
     autosave_file.flush()
     try:   os.fsync(autosave_file.fileno())
