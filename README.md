@@ -1,7 +1,12 @@
 # BTCRecover
-[![Build Status](https://travis-ci.org/gurnec/btcrecover.svg?branch=master)](https://travis-ci.org/gurnec/btcrecover) ![license](https://img.shields.io/badge/license-GPLv2-blue.svg)
+[![Build Status](https://travis-ci.org/3rdIteration/btcrecover.svg?branch=master)](https://travis-ci.org/3rdIteration/btcrecover) ![license](https://img.shields.io/badge/license-GPLv2-blue.svg)
 
-An open-source wallet password and seed recovery toolkit for Bitcoin and compatible wallets. BTCRecover is designed for scenarios where you know most of your password or mnemonic, but need assistance trying likely combinations, fixing typos, or filling in missing words. It supports a GUI for simplicity and a CLI for power users, with multithreading, optional autosave, and “offline” extraction modes to minimize risk to your wallet data. See also the documentation site for features and guides: btcrecover.readthedocs.io.
+> **Note:** You are viewing the `README` for an older, unmaintained version of BTCRecover. The project has been significantly updated and is actively maintained by the community. For the latest version, more features, and up-to-date documentation, please visit:
+>
+> - **Active GitHub Repository:** [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover)
+> - **Modern Documentation:** [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
+
+An open-source wallet password and seed recovery toolkit for Bitcoin and compatible wallets. BTCRecover is designed for scenarios where you know most of your password or mnemonic, but need assistance trying likely combinations, fixing typos, or filling in missing words. It supports a GUI for simplicity and a CLI for power users, with multithreading, optional autosave, and “offline” extraction modes to minimize risk to your wallet data. See also the documentation site for features and guides: [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/).
 
 If you find BTCRecover helpful, please consider a small donation:
 3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
@@ -17,7 +22,7 @@ Highlights
 - “Offline” and “nearly offline” extract modes to protect keys
 - Experimental GPU acceleration for specific wallets
 
-For an at-a-glance feature overview and GPU notes, see the docs at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the upstream repository readme at [github.com/gurnec](https://github.com/gurnec/btcrecover).
+For an at-a-glance feature overview and GPU notes, see the docs at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the active repository at [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover).
 
 Security First
 - Always work on copies of wallet files, never the originals.
@@ -25,52 +30,11 @@ Security First
 - Run locally on a trusted machine; do not share seeds/passwords.
 - Review Limitations & Caveats before large runs.
 
-Quick Start
+Quick Start & Installation
 
-Prerequisites
-- Python (the original project targets Python 2.7; many users run with modern Python in forks—adjust as needed)
-- pip
-- Libraries: coincurve (and pysha3 for Ethereum keystores)
+For the most up-to-date and user-friendly installation instructions, please see the **[Installation Guide on btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/INSTALL/)**.
 
-Note: The ecosystem has multiple maintained forks and updated docs with streamlined installers and GPU guides; if you prefer a more current environment or broader wallet support, consult [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the active forks such as [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover).
-
-Installation
-
-Option A: Zip download
-1) Download the latest source: https://github.com/gurnec/btcrecover/archive/master.zip
-2) Unzip the archive.
-
-Option B: Git clone
-git clone https://github.com/gurnec/btcrecover.git
-cd btcrecover
-
-Install dependencies
-
-Windows
-Open Command Prompt:
-C:\Python27\Scripts\pip install coincurve==5.2.0 pysha3
-
-Linux (Debian/Ubuntu-like)
-sudo apt-get update
-sudo apt-get install -y python-pip
-sudo pip install coincurve==5.2.0 pysha3
-
-macOS
-1) Ensure Command Line Tools:
-xcode-select --install
-2) Install GMP (required for coincurve on some setups):
-curl -O https://gmplib.org/download/gmp/gmp-6.1.2.tar.xz
-tar xf gmp-6.1.2.tar.xz
-cd gmp-6.1.2
-./configure --prefix=/usr/local/opt/gmp
-make && make check
-sudo make install
-cd ..
-rm -rf gmp-6.1.2 gmp-6.1.2.tar.xz
-3) Install libraries:
-sudo pip install coincurve==5.2.0 pysha3
-
-Tip: If using newer Python versions or encountering build issues, see platform-specific guidance in the docs and forks at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover).
+The documentation on the official site covers installation on Windows, Linux, and macOS, and includes details for setting up GPU acceleration. The instructions in this `README` are outdated and have been removed to avoid confusion.
 
 Using the GUI
 
@@ -92,7 +56,7 @@ Seed Recovery (GUI)
 
 Command Line (Advanced)
 
-The CLI enables advanced composition strategies, token files, typos, and scripting. Refer to the tutorials for structured token files and typo generation. For a comprehensive guide, including GPU usage and extract scripts, see [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the upstream repo docs at [github.com/gurnec](https://github.com/gurnec/btcrecover).
+The CLI enables advanced composition strategies, token files, typos, and scripting. Refer to the tutorials for structured token files and typo generation. For a comprehensive guide, including GPU usage and extract scripts, see [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the active repo at [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover).
 
 Token Files
 
@@ -100,7 +64,7 @@ Token files list fragments (“tokens”) you remember—names, years, symbols�
 
 Start with the Token File Tutorial:
 - Upstream tutorial: TUTORIAL.md#the-token-file (in this repository)
-- Additional examples and hints: [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the upstream repo [github.com/gurnec](https://github.com/gurnec/btcrecover)
+- Additional examples and hints: [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and the active repo [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover)
 
 Typos
 
@@ -162,7 +126,7 @@ Minimize risk by extracting only the data needed for recovery. Most supported wa
 
 See:
 - Extract Scripts documentation in this repo (docs/Extract_Scripts.md)
-- Additional guidance and “offline mode” overview at [github.com/gurnec](https://github.com/gurnec/btcrecover) and [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
+- Additional guidance and “offline mode” overview at [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover) and [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
 
 GPU Acceleration
 
@@ -174,7 +138,7 @@ Troubleshooting
 
 - Dependencies fail to build: ensure compiler toolchain installed (Windows Build Tools, Xcode CLT on macOS, build-essential on Linux) and GMP as required for coincurve.
 - Slow performance: reduce typo depth, refine tokens, use targeted masks, increase threads, or consider GPU where supported.
-- Wallet not listed: many altcoins derived from Core/Electrum/bitcoinj may work. Check the docs and issues in upstream/forks: [github.com/gurnec](https://github.com/gurnec/btcrecover), [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover).
+- Wallet not listed: many altcoins derived from Core/Electrum/bitcoinj may work. Check the docs and issues in the active fork: [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover).
 - Safety: always use copies of wallet files; prefer offline extraction.
 
 Limitations & Caveats
@@ -191,8 +155,7 @@ Contributing and Community
 
 - Issues and PRs are welcome. Please include environment details, wallet type, and minimal repro steps.
 - For broader community guidance, examples, and extended forks, explore:
-  - Upstream repo: [github.com/gurnec](https://github.com/gurnec/btcrecover)
-  - Active fork and enhancements: [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover)
+  - Active fork and enhancements: [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover)
   - Project docs: [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
 
 License
@@ -209,11 +172,10 @@ You should have received a copy of the GNU General Public License along with thi
 
 References and Further Reading
 - Official docs and how-tos: [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/)
-- Upstream codebase: [github.com/gurnec](https://github.com/gurnec/btcrecover)
-- Maintained fork with additional features: [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover)
+- Maintained fork with additional features: [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover)
 
 ------------------------------------------------------------
 
 Notes on sources:
-- The project overview, GPU acceleration mention, GUI, autosave/resume, and offline extract modes are documented at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/) and mirrored in the upstream README at [github.com/gurnec](https://github.com/gurnec/btcrecover).
-- The active fork and modern usage patterns are often referenced at [github.com/3rdIteration](https://github.com/3rdIteration/btcrecover).
+- The project overview, GPU acceleration mention, GUI, autosave/resume, and offline extract modes are documented at [btcrecover.readthedocs.io](https://btcrecover.readthedocs.io/en/latest/).
+- The active fork and modern usage patterns are often referenced at [github.com/3rdIteration/btcrecover](https://github.com/3rdIteration/btcrecover).
