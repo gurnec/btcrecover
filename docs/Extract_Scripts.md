@@ -17,7 +17,7 @@ You can download the entire *btcrecover* package from: <https://github.com/gurne
 If you'd prefer to download just a single extract script, please select the one for your wallet software from below, then right click and choose “Save link as...” or “Save target as...”:
 
  * Armory - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-armory-privkey.py>
- * Bitcoin Classic/XT/Core - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bitcoincore-mkey.py>
+ * Bitcoin Unlimited/Classic/XT/Core - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bitcoincore-mkey.py>
  * Bither - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-bither-partkey.py>
  * Blockchain main password - <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-main-data.py>
  * Blockchain second password -  <https://github.com/gurnec/btcrecover/raw/master/extract-scripts/extract-blockchain-second-hash.py>
@@ -33,7 +33,7 @@ If you're on Windows, you will also need to install the latest version of Python
 ### Table of Contents ###
 
  * [Armory](#usage-for-armory)
- * [Bitcoin Classic/XT/Core (including pywallet dump files)](#usage-for-bitcoin-classicxtcore)
+ * [Bitcoin Unlimited/Classic/XT/Core (including pywallet dump files)](#usage-for-bitcoin-unlimitedclassicxtcore)
  * [Bither](#usage-for-bither)
  * [Blockchain.info](#usage-for-blockchaininfo)
  * [Electrum (1.x or 2.x)](#usage-for-electrum)
@@ -87,7 +87,7 @@ If someone has one of your (decrypted) private keys and also has or gains access
 Armory automatically pre-generates 100 addresses and private keys before they are needed, which is why you can ask it to display a "new" address without a password. If you've asked for and then used 100 new addresses without providing a password, it's possible that Armory will be unable to provide a new address (without a password) as required by this procedure. If this is the case, you'll have no choice but to choose an already used address. To assist in choosing such an address, you can run `extract-armory-privkey.py list` from the command line to display a list of addresses available in the wallet which include an encrypted private key (including pre-generated addresses that may not be visible via the Armory GUI) along with the first and last known dates of use for each address. These dates of known use do not check the current block chain; you should always check a questionable address on <https://btc.blockr.io/> to check it's current balance before you use it with this procedure.
 
 
-### Usage for Bitcoin Classic/XT/Core ###
+### Usage for Bitcoin Unlimited/Classic/XT/Core ###
 
 After downloading the script, **make a copy of your wallet.dat file into a different folder** (to make it easy, into the same folder as *extract-bitcoincore-mkey.py*). As an example for Windows, click on the Start Menu, then click “Run...”, and then type this to open your Bitcoin folder which contains your wallet.dat file: `%appdata%\Bitcoin`. From here you can copy and paste your wallet.dat file into a separate folder. Next you'll need to open a Command Prompt window and type something like this (depending on where the downloaded script is, and assuming you've made a copy of your wallet.dat into the same folder):
 
@@ -99,7 +99,7 @@ You should get a message which looks like this as a result:
     Bitcoin Core encrypted master key, salt, iter_count, and crc in base64:
     lV/wGO5oAUM42KTfq5s3egX3Uhk6gc5gEf1R3TppgzWNW7NGZQF5t5U3Ik0qYs5/dprb+ifLDHuGNQIA+8oRWA==
 
-If you instead have a dump file of a Bitcoin Classic/XT/Core wallet that was created by pywallet, just follow these same instructions except use the *extract-bitcoincore-mkey-from-pywallet.py* script instead.
+If you instead have a dump file of a Bitcoin Unlimited/Classic/XT/Core wallet that was created by pywallet, just follow these same instructions except use the *extract-bitcoincore-mkey-from-pywallet.py* script instead.
 
 When you (or someone else) runs *btcrecover* to search for passwords, you will not need your wallet file, only the output from *extract-bitcoincore-mkey.py*. To continue the example:
 
@@ -110,9 +110,9 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
     ...
     Password found: xxxx
 
-#### Bitcoin Classic/XT/Core Technical Details ####
+#### Bitcoin Unlimited/Classic/XT/Core Technical Details ####
 
-The *extract-bitcoincore-mkey.py* script is intentionally short and should be easy to read for any Python programmer. It opens a wallet.dat file using the Python bsddb.db library (the Berkeley DB library which comes with Python 2.7), and then extracts a single key/value pair with the key string of `\x04mkey\x01\x00\x00\x00`. This key/value pair contains an encrypted version of the Bitcoin Classic/XT/Core “master key”, or mkey for short, along with some other information required to try decrypting the mkey, specifically the mkey salt and iteration count. This information is then converted to base64 format for easy copy/paste, and printed to the screen.
+The *extract-bitcoincore-mkey.py* script is intentionally short and should be easy to read for any Python programmer. It opens a wallet.dat file using the Python bsddb.db library (the Berkeley DB library which comes with Python 2.7), and then extracts a single key/value pair with the key string of `\x04mkey\x01\x00\x00\x00`. This key/value pair contains an encrypted version of the Bitcoin Unlimited/Classic/XT/Core “master key”, or mkey for short, along with some other information required to try decrypting the mkey, specifically the mkey salt and iteration count. This information is then converted to base64 format for easy copy/paste, and printed to the screen.
 
 The encrypted mkey is useful to *btcrecover*, but it does not contain any of your Bitcoin address or private key information. *btcrecover* can attempt to decrypt the mkey by trying different password combinations. Should it succeed, it and whoever runs it will then know the password to your wallet file, but without the rest of your wallet file, the password and the decrypted mkey are of no use.
 
@@ -276,6 +276,8 @@ Without access to the rest of your wallet file, it is impossible the decrypted p
 
 ### Usage for MultiBit Classic ###
 
+***Warning:*** Using the `extract-multibit-privkey.py` script on a MultiBit Classic key file, as described below, can lead to *false positives*. A *false positive* occurs when *btcrecover* reports that it has found the password, but is mistaken—the password which it displays may not be correct. If you plan to test a large number of passwords (on the order of 10 billion (10,000,000,000) or more), it's **strongly recommended** that you use *btcrecover* directly with a key file instead of using `extract-multibit-privkey.py`.
+
 *btcrecover* doesn’t operate directly on MultiBit wallet files, instead it operates on MultiBit private key backup files. When you first add a password to your MultiBit wallet, and after that each time you add a new receiving address or change your wallet password, MultiBit creates an encrypted private key backup file in a `key-backup` directory that's near the wallet file. These private key backup files are much faster to try passwords against (by a factor of over 1,000), which is why *btcrecover* uses them. For the default wallet that is created when MultiBit is first installed, this directory is located here:
 
     %appdata%\MultiBit\multibit-data\key-backup
@@ -305,7 +307,9 @@ When you (or someone else) runs *btcrecover* to search for passwords, you will n
 
 #### MultiBit Classic Technical Details ####
 
-The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts 8 bytes of password salt plus the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 30% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 bytes are decrypted (assuming the password search succeeds). Because these 16 characters, once decrypted, are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
+**Warning:** MultiBit Classic data-extracts have a false positive rate of approximately 1 in 3×10<sup>11</sup>. See the warning above for more information.
+
+The *extract-multibit-privkey.py* script is intentionally short and should be easy to read for any Python programmer. This script extracts 8 bytes of password salt plus the first 16 encrypted base58-encoded characters (out of 52) from the first private key from a MultiBit private key backup file. Because less than 34% of a single private key is extracted, the private key itself cannot be feasibly reconstructed even after these first 16 bytes are decrypted (assuming the password search succeeds). Because these 16 characters, once decrypted, are base58 encoded, *btcrecover* can use them alone to check passwords. It tries decrypting the bytes with each password, and once the result is a valid 16-character long base58-encoded private key prefix, it has found the correct password.
 
 Without access to the rest of your private key backup file or your wallet file, these 16 characters alone do not put any of your Bitcoin funds at risk, even after a successful password guess and decryption.
 

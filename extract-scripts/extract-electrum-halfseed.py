@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-electrum-halfseed.py -- Electrum partial seed extractor
 # Copyright (C) 2014, 2015 Christopher Gurnee
@@ -21,7 +21,7 @@
 # If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
-#           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
+#           3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
 #
 #                      Thank You!
 

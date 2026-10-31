@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-blockchain-second-hash.py -- Blockchain second password hash extractor
 # Copyright (C) 2014-2016 Christopher Gurnee
@@ -21,7 +21,7 @@
 # If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
-#           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
+#           3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
 #
 #                      Thank You!
 
@@ -89,14 +89,14 @@ data = open(wallet_filename, "rb").read(64 * 2**20)  # up to 64M, typical size i
 iter_count = 0
 
 try:
-    class MayBeBlockchainV0: pass;  # an exception which jumps to the end of the try block below
+    class MayBeBlockchainV0(BaseException): pass;  # an exception which jumps to the end of the try block below
     try:
 
         # Most blockchain files (except v0.0 wallets) are JSON encoded; try to parse it as such
         try:
             data = json.loads(data)
         except ValueError:
-            raise MayBeBlockchainV0();
+            raise MayBeBlockchainV0()
 
         # Config files have no version attribute; they encapsulate the wallet file plus some detrius
         if u"version" not in data:
@@ -107,14 +107,14 @@ try:
             try:
                 data = json.loads(data)  # try again to parse a v2.0/v3.0 JSON-encoded wallet file
             except ValueError:
-                raise MayBeBlockchainV0();
+                raise MayBeBlockchainV0()
 
         # Extract what's needed from a v2.0/3.0 wallet file
         if data[u"version"] > 3:
-            raise NotImplementedError("Unsupported Blockchain wallet version " + tstr(data[u"version"]))
+            raise NotImplementedError("Unsupported Blockchain wallet version " + str(data[u"version"]))
         iter_count = data[u"pbkdf2_iterations"]
         if not isinstance(iter_count, int) or iter_count < 1:
-            raise ValueError("Invalid Blockchain pbkdf2_iterations " + tstr(iter_count))
+            raise ValueError("Invalid Blockchain pbkdf2_iterations " + str(iter_count))
         data = data[u"payload"]
 
     except MayBeBlockchainV0:
@@ -136,7 +136,8 @@ try:
     # Now that data contains the encrypted binary data, prompt for a password and decrypt it
     load_crypto_libraries()
     # Replace getpass.getpass with raw_input if there's trouble reading non-ASCII characters
-    password = getpass.getpass("Please enter the Blockchain wallet's main password: ")
+    password = getpass.getpass("(note your password will not be displayed as you type)\n"
+                               "Please enter the Blockchain wallet's main password: ")
     if not password:
         sys.exit("Encrypted Blockchain files must be decrypted to extract the second password hash")
     # Convert from the terminal's character encoding to UTF-8

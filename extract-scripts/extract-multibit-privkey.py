@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # extract-multibit-privkey.py -- MultiBit private key extractor
 # Copyright (C) 2014, 2015 Christopher Gurnee
@@ -21,7 +21,7 @@
 # If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
-#           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
+#           3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
 #
 #                      Thank You!
 
@@ -54,6 +54,9 @@ with open(privkey_filename, "rb") as privkey_file:
     if len(salt_privkey) < 32:
         print(prog+": error: file is not a MultiBit private key file (too short)", file=sys.stderr)
         sys.exit(1)
+
+print("\nWARNING: please read the important warning in the Usage for MultiBit\n"
+        "         Classic section of Extract_Scripts.md before proceeding.\n")
 
 print("MultiBit partial first encrypted private key, salt, and crc in base64:", file=sys.stderr)
 

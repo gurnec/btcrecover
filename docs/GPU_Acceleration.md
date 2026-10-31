@@ -1,8 +1,8 @@
 ## *btcrecover* GPU Acceleration Guide ##
 
-*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Classic/XT/Core or altcoin wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
+*btcrecover* includes experimental support for using one or more graphics cards or dedicated accelerator cards to increase search performance. This can offer on the order of *100x* better performance with Bitcoin Unlimited/Classic/XT/Core or altcoin wallets when enabled and correctly tuned. With Armory (which uses a GPU-resistant key derivation function), this can offer a modest improvement of 2x - 5x.
 
-In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](INSTALL.md#windows-gpu-acceleration-for-bitcoin-classicxtcore-armory-or-litecoin-qt) section of the Installation Guide. GPU acceleration should also work on Linux and OS X, however instructions for installing the required Python libraries are not currently included in this tutorial.
+In order to use this feature, you must have a card and drivers which support OpenCL (most AMD and NVIDIA cards and drivers already support OpenCL on Windows), and you must install the required Python libraries as described in the [Windows GPU acceleration](INSTALL.md#windows-gpu-acceleration-for-bitcoin-unlimitedclassicxtcore-armory-or-litecoin-qt) section of the Installation Guide. GPU acceleration should also work on Linux and OS X, however instructions for installing the required Python libraries are not currently included in this tutorial.
 
 Due to its experimental status, it's highly recommended that you run the GPU unit tests before running it with a wallet. The two commands below will run the relevant tests in ASCII and Unicode modes, respectively (or you can leave out `GPUTests` to run all of the unit tests if you'd prefer). Any skipped tests can be safely ignored, unless *all* the tests are skipped which probably means there was a problem loading OpenCL.
 
@@ -11,7 +11,7 @@ Due to its experimental status, it's highly recommended that you run the GPU uni
 
 Assuming the tests do not fail, GPU support can be enabled by adding the `--enable-gpu` option to the command line. There are other additional options, specifically `--global-ws` and `--local-ws`, which should also be provided along with particular values to improve the search performance. Unfortunately, the exact values for these options can only be determined by trial and error, as detailed below.
 
-### GPU performance tuning for Bitcoin Classic/XT/Core and Litecoin-Qt ###
+### GPU performance tuning for Bitcoin Unlimited/Classic/XT/Core and Litecoin-Qt ###
 
 A good starting point for these wallets is:
 
@@ -27,7 +27,7 @@ Although this procedure can be tedious, with larger tokenlists or passwordlists 
 
 ### GPU performance tuning for Armory ###
 
-Performance tuning for Armory is similar to tuning for Bitcoin Classic/XT/Core, but unfortunately it's much more complex. Armory uses a memory-hard key derivation function called ROMix-SHA-512 which is specifically designed to resist GPU-based acceleration. You should start by reading the section above, which also applies to Armory. In addition to `--global-ws` and `--local-ws`, there is a third option, `--mem-factor`, which affects the GPU memory usage, and as a consequence overall performance.
+Performance tuning for Armory is similar to tuning for Bitcoin Unlimited/Classic/XT/Core, but unfortunately it's much more complex. Armory uses a memory-hard key derivation function called ROMix-SHA-512 which is specifically designed to resist GPU-based acceleration. You should start by reading the section above, which also applies to Armory. In addition to `--global-ws` and `--local-ws`, there is a third option, `--mem-factor`, which affects the GPU memory usage, and as a consequence overall performance.
 
 GPU memory usage is directly proportional to `--global-ws`. The larger the `--global-ws`, the more GPU memory is used. With Armory wallets, a larger `--global-ws` usually improves performance, so you should start with a `--global-ws` that is as high as your GPU will allow. In order to help you locate this value, you can run *btcrecover* with the `--calc-memory` options, as seen below:
 

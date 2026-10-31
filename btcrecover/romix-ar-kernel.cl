@@ -19,7 +19,7 @@
  * If you find this program helpful, please consider a small
  * donation to the developer at the following Bitcoin address:
  *
- *           17LGpN2z62zp7RS825jXwYtE7zZ19Mxxu8
+ *           3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
  *
  *                      Thank You!
 
